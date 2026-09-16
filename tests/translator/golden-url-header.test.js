@@ -24,9 +24,16 @@ const SPECIALIZED = new Set([
 ]);
 
 // Sanitize header: khử token + field thời gian động (kimi X-Msh-Device-Id) để snapshot ổn định.
+// X-Msh-Version cũng là field động — nó đổi mỗi lần release, nên để nguyên thì golden
+// snapshot vỡ ở MỌI lần bump version (đó là lý do file snapshot này từng bị gitignore).
+// Golden test phải khoá hành vi, không phải số version.
 function sanitize(headers) {
   const out = {};
   for (const [k, v] of Object.entries(headers)) {
+    if (/^x-msh-version$/i.test(k)) {
+      out[k] = "<VER>";
+      continue;
+    }
     out[k] = typeof v === "string"
       ? v.replace(/Bearer .+/, "Bearer <TOK>")
           .replace(/sk-test-APIKEY|tok-test-ACCESS/g, "<CRED>")
