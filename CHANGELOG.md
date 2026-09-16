@@ -1,3 +1,16 @@
+# v0.5.75.10 (2026-09-16)
+
+## Fixes
+- **Every request in a session was blocked (HTTP 503 "Blocked") when the conversation quoted a curl command.** Render serves each public web service behind Cloudflare's managed WAF, which inspects the request **body** and rejects anything containing a backtick-quoted `curl`/`wget` command with an http(s) URL — it reads the markdown inline-code span as command-injection/SSRF. That WAF is not configurable (Render's docs: *"There's nothing to configure"*; the request to disable it is an open item in their tracker), and it runs at the edge, so an inbound-IP allowlist does not bypass it either.
+  - The blast radius is what made this severe: one quoted curl command anywhere in the context — an `AGENTS.md`, a loaded skill, a tool result — blocks **every subsequent request** in that session, because the text rides along in the conversation history. Editing the source file does not recover the session; by then the pattern is in past messages too. A real session hit this at 265 messages and could not continue at all; 125 files on this machine carry the pattern, including auto-loaded skills.
+  - `BaseExecutor` now detects the WAF page and retries **once** with the inline-code marker stripped. Detection requires both the status and the marker text, so a genuine 403 (bad key, quota, region lock) is left alone. Bounded to a single extra attempt.
+  - Scope is a **host list**, not a provider or a proxy pool: `frp` is a client-facing alias whose real target is the compatible node's `baseUrl`; the native `freebuff` provider talks to `www.codebuff.com` directly and must not be rewritten; and the shared `vercel-relay` pool is not the cause (the block happens with or without a proxy). Only the opening backtick is removed — the command text, its URL and every other byte are untouched, so a request with no trigger goes out unchanged. Moving the upstream off Render deactivates the guard by deleting one line.
+- **Golden URL/header snapshot broke on every version bump**: `tests/translator/golden-url-header.test.js` pinned the literal app version in `X-Msh-Version`. It is the same class of volatile value the file's own `sanitize()` already masks (credentials, kimi device timestamps); now masked as `<VER>` so a release no longer fails it.
+
+## Internal
+- Test suite unchanged at **48 failures**, all catalogued in `tests/__baseline__/known-fails.txt`; the regression gate reports *"No regression"*. 13 new cases cover the WAF guard, including a regression for backtick pairing (the first implementation matched whole inline-code spans and was defeated by an earlier unpaired backtick in the prompt).
+- DB path, `machineId`, salts and FreeBuff trust are unchanged — no migration and no re-login.
+
 # v0.5.75.9 (2026-09-16)
 
 ## Fixes
