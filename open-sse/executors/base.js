@@ -4,6 +4,7 @@ import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { dbg } from "../utils/debugLog.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE } from "../providers/shared.js";
 import { resolveOpenAICompatibleApiType } from "../services/provider.js";
+import { isWafProtectedUrl, isWafBlockResponse, sanitizeWafTriggers } from "../config/wafGuard.js";
 
 /**
  * BaseExecutor - Base class for provider executors
@@ -141,13 +142,38 @@ export class BaseExecutor {
         const bodyStr = JSON.stringify(transformedBody);
         const fetchT0 = Date.now();
         dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
-        const response = await proxyAwareFetch(url, {
+        let response = await proxyAwareFetch(url, {
           method: "POST",
           headers,
           body: bodyStr,
           signal: mergedSignal
         }, proxyOptions);
         clearTimeout(connectTimer);
+        // Render/Cloudflare WAF false positive: it blocks any request BODY holding a
+        // backtick-quoted curl/wget command, reading the markdown inline-code span as
+        // command-injection/SSRF. One such line anywhere in the conversation — an
+        // AGENTS.md, a loaded skill, a tool result — kills every request in that
+        // session, including ones sent after the source file is fixed. Retry ONCE
+        // with the inline-code markers stripped; the command text and URL stay
+        // intact. Bounded to a single extra attempt, and only for hosts known to
+        // inspect the body (see open-sse/config/wafGuard.js).
+        if (isWafProtectedUrl(url) && (response.status === 403 || response.status === 503)) {
+          const peek = await response.clone().text().catch(() => "");
+          if (isWafBlockResponse(response.status, peek)) {
+            const { body: safeBody, count } = sanitizeWafTriggers(bodyStr);
+            if (count > 0 && safeBody !== bodyStr) {
+              log?.warn?.("WAF", `${this.provider} | ${url} blocked (${response.status}); retrying once with ${count} inline-code trigger(s) neutralised`);
+              response = await proxyAwareFetch(url, {
+                method: "POST",
+                headers,
+                body: safeBody,
+                signal: mergedSignal
+              }, proxyOptions);
+            } else {
+              log?.warn?.("WAF", `${this.provider} | ${url} blocked (${response.status}); no known trigger in body`);
+            }
+          }
+        }
         const ct = response.headers?.get?.("content-type") || "";
         const cl = response.headers?.get?.("content-length") || "?";
         dbg("FETCH", `${this.provider.toUpperCase()} ← ${response.status} | ttft=${Date.now() - fetchT0}ms | ct=${ct} | cl=${cl}`);
