@@ -1434,6 +1434,17 @@ Notes:
 
 - Set `ENABLE_REQUEST_LOGS=true`
 
+**`503 Blocked` — "Your request was blocked by this site's web application firewall (WAF)"**
+
+- Your upstream is behind a **body-inspecting WAF** (Render puts every public web service behind Cloudflare's managed one). It rejects any request body containing a backtick-quoted `curl`/`wget` command with an http(s) URL, reading the Markdown inline-code span as command-injection/SSRF.
+- This is worse than it sounds: **one** such line anywhere in the context — a skill file, an `AGENTS.md`, a tool result — blocks **every** request in that session, because the text rides along in the conversation history. Editing the source file does **not** recover it (by then the pattern is also in past messages). **Start a new session.**
+- **PanRouter v0.5.75.10+ handles this automatically.** It detects the WAF page and retries once with the inline-code marker stripped, scope limited to the affected host. Look for this in the log:
+  ```
+  [WAF] <provider> | <url> blocked (403); retrying once with N inline-code trigger(s) neutralised
+  ```
+- Only the `curl`/`wget` form is covered. If the block comes back, it is a **different** WAF signature — nothing else is guessed at. Add more hosts with `WAF_PROTECTED_HOSTS="host-a,host-b"` (comma-separated hostnames).
+- The WAF itself is **not configurable** (Render's own docs: *"There's nothing to configure"*) and it runs at the edge, so an inbound-IP allowlist does not bypass it. The durable fix is to host that upstream somewhere without a body-inspecting WAF.
+
 ---
 
 ## 🛠️ Tech Stack
