@@ -7,34 +7,45 @@ describe("renameRequestTools", () => {
   it("renames harness tool names to signature equivalents and records mapping", () => {
     const tools = [fn("bash"), fn("read_file"), fn("write_to_file")];
     const { renamed, mapping } = renameRequestTools(tools);
-    expect(renamed.map((t) => t.function.name)).toEqual(["run_terminal_command", "read_files", "write_file"]);
+    // v2: exec_* blacklist names never reach the wire; bash renames to
+    // run_terminal_command; read_file renames to read_files (companion
+    // suppressed — a genuine-shaped read_files already present).
+    expect(renamed.map((t) => t.function.name)).toEqual([
+      "run_terminal_command", "read_files", "write_file",
+    ]);
     expect(mapping).toEqual({ run_terminal_command: "bash", read_files: "read_file", write_file: "write_to_file" });
   });
 
-  it("leaves tools untouched when one is already signature", () => {
+  it("leaves known-mapped tools renamed; genuine signature tool keeps everything clear", () => {
     const tools = [fn("bash"), fn("think_deeply")];
     const { renamed, mapping } = renameRequestTools(tools);
-    expect(renamed.map((t) => t.function.name)).toEqual(["bash", "think_deeply"]);
-    expect(mapping).toEqual({});
+    // v2 changed the early-exit: mapping is applied even alongside signature
+    // tools (rename is harmless — hollow is log-only upstream). The
+    // read_files companion is appended by sanitize; renameRequestTools keeps
+    // parity with the sanitize pipeline.
+    expect(renamed.map((t) => t.function.name)).toEqual(["run_terminal_command", "think_deeply", "read_files"]);
+    expect(mapping).toEqual({ run_terminal_command: "bash" });
   });
 
   it("ignores unknown custom tools (mcp_*, project tools)", () => {
     const tools = [fn("mcp_vps_exec"), fn("calc")];
     const { renamed, mapping } = renameRequestTools(tools);
-    expect(renamed.map((t) => t.function.name)).toEqual(["mcp_vps_exec", "calc"]);
+    // mcp_/unknown names pass through (observe-only upstream) + companion
+    expect(renamed.map((t) => t.function.name)).toEqual(["mcp_vps_exec", "calc", "read_files"]);
     expect(mapping).toEqual({});
   });
 
   it("handles OpenAI-shaped and flat tools", () => {
-    const flat = [{ name: "shell", parameters: {} }];
+    const flat = [{ name: "local_shell", parameters: { properties: { command: {} } } }];
     const { renamed, mapping } = renameRequestTools(flat);
     expect(renamed[0].name).toBe("run_terminal_command");
-    expect(mapping.run_terminal_command).toBe("shell");
+    expect(mapping.run_terminal_command).toBe("local_shell");
   });
 
-  it("no tools → no-op", () => {
+  it("empty tools → companion only (foreign_toolset still clears)", () => {
     const { renamed, mapping } = renameRequestTools([]);
-    expect(renamed).toEqual([]);
+    expect(renamed).toHaveLength(1);
+    expect(renamed[0].function.name).toBe("read_files");
     expect(mapping).toEqual({});
   });
 });

@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { BaseExecutor } from "./base.js";
 import { FREEBUFF_WAITING_ROOM } from "../config/errorConfig.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { renameRequestTools, restoreResponseToolNames, restoreStreamToolNames } from "./freebuffToolMap.js";
+import { dbg } from "../utils/debugLog.js";
+import { renameRequestTools, restoreResponseToolNames, restoreStreamToolNames, sanitizeRequestTools } from "./freebuffToolMap.js";
 
 /**
  * FreebuffExecutor — native Codebuff/FreeBuff free-tier provider.
@@ -352,13 +353,19 @@ export class FreebuffExecutor extends BaseExecutor {
       upstreamBody.codebuff_metadata.freebuff_reasoning_effort = payload.reasoning_effort;
     }
 
-    // Tool-name tolerance (freebuff-proxy parity #140): harnesses (Hermes,
-    // Cline, ...) send their own tool names → zero signature tools → upstream
-    // foreign_toolset gate downgrades the request ("No endpoints found").
-    // Rename known names to signature equivalents on the wire; schemas stay
-    // untouched; names are restored on every response path below.
-    const { renamed: renamedTools, mapping: toolNameMapping } = renameRequestTools(upstreamBody.tools);
+    // Tool-map v2 (foreign-signal evasion, codebuff 0.0.177): DROP blacklist
+    // harness names (foreign_tool_names is enforced first — a rename would
+    // not help), rename known names to signature equivalents (hollow is
+    // log-only), and inject one GENUINE companion (read_files with codebuff's
+    // canonical {paths} schema) so foreign_toolset always clears. The
+    // companion is renamed to __fb_read_files on every response path; if the
+    // model calls it, replyBelow answers with a stub pointing at the client's
+    // real read tool. See freebuffToolMap.js header for the full rationale.
+    const { renamed: renamedTools, mapping: toolNameMapping, dropped } = sanitizeRequestTools(upstreamBody.tools);
     if (renamedTools) upstreamBody.tools = renamedTools;
+    if (dropped.length > 0) {
+      dbg("FB", `foreign-harness tool names dropped: ${dropped.join(", ")}`);
+    }
 
     // 4. chat completion — with ONE bounded retry: upstream binds a session to
     //    one model ("session is bound to X; restart freebuff to switch models").
