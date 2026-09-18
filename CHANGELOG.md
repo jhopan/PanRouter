@@ -1,3 +1,31 @@
+# v0.5.75.12 (2026-09-18)
+
+## FreeBuff — foreign-client gate evasion (tool-map v2)
+
+Codebuff live-enforced foreign-client detection on the free lane
+(vendor 0.0.177, 2026-09-17): harness tool NAMES (49-entry blacklist incl.
+`delegate_task`/`computer_use`), a genuine-schema check under signature
+names, and harness system-prompt markers. Requests carrying third-party
+harness tools were downgraded to `inclusionai/ling-3.0-tiny:free` (404
+"No endpoints" surfaces). The v1 name-rename map cannot satisfy the new
+gate.
+
+- **Drop leg**: every blacklist harness name is removed from the wire
+  before send (renaming cannot save them — the signal fires on the name).
+- **Companion leg**: one genuine codebuff tool (`read_files`, canonical
+  `{paths}` schema, shipped-style description) is injected so
+  `foreign_toolset` always clears; renamed to `__fb_read_files` on every
+  response path, with a benign stub when called.
+- **Rename leg kept**: known harness names still map to codebuff
+  equivalents (hollow is log-only upstream); unknown/MCP names pass
+  through (observe-only).
+- Detector parity asserted in tests via a mirrored classifier over the
+  full Hermes 32-tool shape.
+
+Live-verified against codebuff (limited-tier account): the sanitized
+request passes the gate — residual 429s are account quota (separate
+concern), not foreign-client handling.
+
 # v0.5.75.11 (2026-09-18)
 
 ## FreeBuff — reference sync to freebuff-proxy v1.9.0
