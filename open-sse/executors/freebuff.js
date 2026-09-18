@@ -37,10 +37,17 @@ const SESSION_TTL_MS = 5 * 60 * 60 * 1000; // < the 6h run rotation window
 const JITTER_MAX_MS = 200;
 
 // model id (without the freebuff/ prefix) → upstream free agent id
+// Mirrors freebuff-proxy v1.9.0's registry fallback map (registry_test.go:
+// expectedFallback) — luna's base2 root retired upstream (free_mode_legacy_
+// luna_agent) → base3; per-model roots for every served free model.
 const MODEL_TO_AGENT = {
   "deepseek/deepseek-v4-flash": "base2-free-deepseek-flash",
   "deepseek/deepseek-v4-pro": "base2-free-deepseek",
-  "openai/gpt-5.6-luna": "base2-free-luna",
+  "deepseek/deepseek-v4-pro-max": "base2-free-deepseek-pro-max",
+  "deepseek/deepseek-v4-flash-max": "base2-free-deepseek-flash-max",
+  "openai/gpt-5.6-luna": "base3-free-luna",
+  "openai/gpt-5.6-luna-max": "base2-free-luna-max",
+  "openai/gpt-5.6-luna-es": "base2-free-luna-es",
   "minimax/minimax-m3": "base2-free-minimax-m3",
   "mimo/mimo-v2.5": "base2-free-mimo",
   "z-ai/glm-5.2": "base2-free-glm",
@@ -48,6 +55,10 @@ const MODEL_TO_AGENT = {
   "crof/kimi-k3-eco": "base2-free-kimi-k3-eco",
   "anthropic/claude-fable-5": "base2-free-fable",
   "meta/muse-spark-1.2-contributor": "base2-free-muse-spark",
+  "meta/muse-spark-1.3-contributor": "base2-free-muse-spark-1-3",
+  "stealth/ox-alpha": "base2-free-ox-alpha",
+  "upstage/solar-pro4": "base2-free-solar-pro4",
+  "google/gemini-3.8-flash": "base2-free-gemini-3-8-flash",
 };
 
 const BUFFY_PROMPT = "You are Buffy, the strategic coding assistant.";

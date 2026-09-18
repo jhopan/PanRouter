@@ -134,6 +134,9 @@ export const MODEL_CAPABILITIES = {
   // FreeBuff/Codebuff free-tier catalog (provider "freebuff") — OmniRoute parity
   "mimo-v2.5":          { vision: true, reasoning: true, thinkingFormat: null, thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
   "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 48000 },
+  // fb-proxy v1.9.0 catalog additions (modelcat/catalog_gen.go)
+  "ox-alpha":           { vision: false, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+  "gemini-3.8-flash":   { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 65536 },
 };
 
 const KIRO_GPT_5_6_CAPABILITIES = { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 };
