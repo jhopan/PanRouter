@@ -1,3 +1,25 @@
+# v0.5.75.11 (2026-09-18)
+
+## FreeBuff — reference sync to freebuff-proxy v1.9.0
+
+- **Model catalog grows 5 → 13**: adds DeepSeek V4 Pro, GLM 5.2, Solar Pro 4,
+  Muse Spark 1.2/1.3 (Contributor), Claude Fable 5, Ox Alpha, and
+  Gemini 3.8 Flash. Display name of `deepseek/deepseek-v4-flash` updated to
+  "DeepSeek V4.1 Flash" (id unchanged — display-only rename upstream).
+- **Executor agent mapping synced byte-exact with freebuff-proxy v1.9.0**
+  (`registry_test.go: expectedFallback`, 18 entries): `openai/gpt-5.6-luna`
+  moved from the retired `base2-free-luna` root to `base3-free-luna`
+  (upstream `free_mode_legacy_luna_agent` retirement — the old root no longer
+  exists, so chats would 404); adds per-model roots for the -max/-es variants
+  (`deepseek-v4-pro-max`, `deepseek-v4-flash-max`, `gpt-5.6-luna-max`,
+  `gpt-5.6-luna-es`), `muse-spark-1-3`, `ox-alpha`, `solar-pro4`,
+  `gemini-3-8-flash`.
+- Capabilities: added `ox-alpha` (text-only, reasoning) and `gemini-3.8-flash`
+  (vision + reasoning) entries.
+
+Reference: `freebuff-proxy` repo v1.9.0 (2026-09-17); upstream decolua/9router
+unchanged since 17c4cc76; OmniRoute freebuff surfaces unchanged in v3.8.50.
+
 # v0.5.75.10 (2026-09-16)
 
 ## Fixes
