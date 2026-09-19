@@ -28,6 +28,15 @@
  *  3. PASS THROUGH every remaining client tool untouched — unknown names are
  *     observe-only upstream (`unrecognised`, never enforced), and MCP-style
  *     `server__tool` names are explicitly exempt.
+ *     v2.1 LIVE-TEST correction (2026-09-19, natusa): the v1 RENAME leg is
+ *     now DISABLED, not just "harmless". Live matrix proved upstream ENFORCES
+ *     hollow when no genuine tool exists: `[read_files{file_path}]` (renamed
+ *     view) → 409 session_superseded, while `[read_files{paths}]` (genuine)
+ *     → 200. The old flow renamed `view`→`read_files` FIRST, which both
+ *     created a hollow definition and suppressed the companion (the name was
+ *     already taken) → genuine=0 → every tools-carrying request 409'd.
+ *     With rename off: dropped blacklist leaves only unrecognised names
+ *     (observe-only) + the genuine companion → clears.
  *  4. System prompt: harness markers ("You are Claude Code", cc_version=, ...)
  *     are enforced, but PanRouter never sends harness system prompts to this
  *     executor — the caveman/RTK pipeline rewrites them. Nothing to do here;
@@ -105,9 +114,16 @@ const COMPANION_TOOL = {
   },
 };
 
-// v1 rename map — kept: renamed names keep completions coherent and the
-// rename leg is harmless under v2 (hollow is log-only).
+// v1 rename map — DISABLED in v2.1 (kept as reference in
+// CLIENT_TO_OFFICIAL_DISABLED below).
 const CLIENT_TO_OFFICIAL = {
+  // v2.1: RENAME LEG DISABLED — live-tested 2026-09-19: upstream 0.0.177+
+  // enforces hollow (signature name + client schema → reject when no genuine
+  // tool exists), and the rename was BOTH creating hollows and suppressing
+  // the companion. Mapping kept as documentation/reference only.
+};
+
+const CLIENT_TO_OFFICIAL_DISABLED = {
   // Claude Code / generic agentic CLIs
   read: "read_files",
   view: "read_files",
@@ -207,12 +223,9 @@ export function sanitizeRequestTools(tools) {
       dropped.push(name);
       continue; // drop leg — blacklist names never reach the wire
     }
-    const lower = name.toLowerCase();
-    const official = CLIENT_TO_OFFICIAL[lower];
-    if (official && official !== name && !FOREIGN_HARNESS_TOOL_NAMES.has(official)) {
-      setToolFunctionName(tool, official);
-      mapping[official] = name;
-    }
+    // v2.1: rename leg DISABLED (see header) — renaming signature names onto
+    // client schemas manufactures hollows. Client names pass through as-is
+    // (unrecognised = observe-only upstream).
     out.push(tool);
   }
   // Companion leg — always present, guarantees Genuine > 0 even when every
@@ -236,7 +249,21 @@ export function renameRequestTools(tools) {
 
 /** Restore client tool names on a response body (non-stream JSON). */
 export function restoreResponseToolNames(data, mapping) {
-  if (!mapping || Object.keys(mapping).length === 0) return data;
+  const hasMapping = mapping && Object.keys(mapping).length > 0;
+  if (!hasMapping) {
+    // v2.1: even with no rename mapping, the companion must still be
+    // renamed to the sentinel — clients must never dispatch on it.
+    const choices = data?.choices || [];
+    for (const choice of choices) {
+      const tcs = choice?.message?.tool_calls;
+      if (Array.isArray(tcs)) {
+        for (const tc of tcs) {
+          if (tc?.function?.name === "read_files") tc.function.name = "__fb_read_files";
+        }
+      }
+    }
+    return data;
+  }
   const choices = data?.choices || [];
   for (const choice of choices) {
     const tcs = choice?.message?.tool_calls;

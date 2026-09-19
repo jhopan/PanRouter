@@ -134,10 +134,18 @@ describe("freebuffToolMap v2 — foreign-signal evasion (codebuff 0.0.177)", () 
     expect(count).toBe(1);
   });
 
-  it("rename leg still works and response restore maps back", () => {
+  it("v2.1: rename leg disabled — client names pass through untouched", () => {
     const { tools, mapping } = sanitizeRequestTools([fn("read_file", { file_path: {} })]);
-    expect(tools[0].function.name).toBe("read_files");
-    expect(mapping.read_files).toBe("read_file");
+    // view/read_file no longer renamed to read_files (that manufactured a
+    // hollow and suppressed the companion). Wire = [read_file, read_files(companion)].
+    expect(tools.some((t) => t.function.name === "read_file")).toBe(true);
+    expect(mapping).toEqual({});
+    // gate still clears: exactly one genuine (the companion)
+    expect(classify(tools)).toBeNull();
+  });
+
+  it("v2.1: legacy mapping fixture — restore path still works when mapping exists", () => {
+    const mapping = { read_files: "read_file" };
     const body = { choices: [{ message: { tool_calls: [{ function: { name: "read_files", arguments: "{}" } }] } }] };
     restoreResponseToolNames(body, mapping);
     expect(body.choices[0].message.tool_calls[0].function.name).toBe("read_file");
@@ -150,20 +158,23 @@ describe("freebuffToolMap v2 — foreign-signal evasion (codebuff 0.0.177)", () 
     expect(body.choices[0].message.tool_calls[0].function.name).toBe("__fb_read_files");
   });
 
-  it("stream restore handles both mapping and companion in one line", () => {
+  it("stream restore: companion renamed to sentinel even without mapping", () => {
     const { mapping } = sanitizeRequestTools([fn("run_command", { command: {} })]);
     const line = 'data: {"choices":[{"delta":{"tool_calls":[{"function":{"name":"read_files"}}]}}]}';
     const out = restoreStreamToolNames(line, mapping);
     expect(out).toContain('"name":"__fb_read_files"');
-    const line2 = 'data: {"choices":[{"delta":{"tool_calls":[{"function":{"name":"run_terminal_command"}}]}}]}';
+    // v2.1: no mapping anymore — client names untouched on the way back
+    const line2 = 'data: {"choices":[{"delta":{"tool_calls":[{"function":{"name":"run_command"}}]}}]}';
     const out2 = restoreStreamToolNames(line2, mapping);
     expect(out2).toContain('"name":"run_command"');
   });
 
-  it("renameRequestTools stays API-compatible with v1 callers", () => {
+  it("renameRequestTools stays API-compatible with v1 callers (no rename, companion added)", () => {
     const { renamed, mapping } = renameRequestTools([fn("bash", { command: {} })]);
-    expect(renamed[0].function.name).toBe("run_terminal_command");
-    expect(mapping.run_terminal_command).toBe("bash");
+    // v2.1: bash is NOT a blacklist name → passes through; companion appended
+    expect(renamed.some((t) => t.function.name === "bash")).toBe(true);
+    expect(renamed.some((t) => t.function.name === "read_files")).toBe(true);
+    expect(mapping).toEqual({});
   });
 
   it("mcp-style names pass through untouched (upstream exempts them)", () => {

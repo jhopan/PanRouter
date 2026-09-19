@@ -1,45 +1,32 @@
 import { describe, it, expect } from "vitest";
-import { renameRequestTools, restoreResponseToolNames, restoreStreamToolNames } from "../../open-sse/executors/freebuffToolMap.js";
+import { renameRequestTools, sanitizeRequestTools, restoreResponseToolNames, restoreStreamToolNames } from "../../open-sse/executors/freebuffToolMap.js";
 
 const fn = (name) => ({ type: "function", function: { name, parameters: { type: "object", properties: {} } } });
 
-describe("renameRequestTools", () => {
-  it("renames harness tool names to signature equivalents and records mapping", () => {
-    const tools = [fn("bash"), fn("read_file"), fn("write_to_file")];
-    const { renamed, mapping } = renameRequestTools(tools);
-    // v2: exec_* blacklist names never reach the wire; bash renames to
-    // run_terminal_command; read_file renames to read_files (companion
-    // suppressed — a genuine-shaped read_files already present).
-    expect(renamed.map((t) => t.function.name)).toEqual([
-      "run_terminal_command", "read_files", "write_file",
-    ]);
-    expect(mapping).toEqual({ run_terminal_command: "bash", read_files: "read_file", write_file: "write_to_file" });
-  });
-
-  it("leaves known-mapped tools renamed; genuine signature tool keeps everything clear", () => {
-    const tools = [fn("bash"), fn("think_deeply")];
-    const { renamed, mapping } = renameRequestTools(tools);
-    // v2 changed the early-exit: mapping is applied even alongside signature
-    // tools (rename is harmless — hollow is log-only upstream). The
-    // read_files companion is appended by sanitize; renameRequestTools keeps
-    // parity with the sanitize pipeline.
-    expect(renamed.map((t) => t.function.name)).toEqual(["run_terminal_command", "think_deeply", "read_files"]);
-    expect(mapping).toEqual({ run_terminal_command: "bash" });
-  });
-
-  it("ignores unknown custom tools (mcp_*, project tools)", () => {
-    const tools = [fn("mcp_vps_exec"), fn("calc")];
-    const { renamed, mapping } = renameRequestTools(tools);
-    // mcp_/unknown names pass through (observe-only upstream) + companion
-    expect(renamed.map((t) => t.function.name)).toEqual(["mcp_vps_exec", "calc", "read_files"]);
+// v2.1: rename leg DISABLED (live matrix 2026-09-19 — hollow is enforced
+// upstream when no genuine tool exists, and rename manufactured hollows while
+// suppressing the genuine companion). Pipeline now: DROP blacklist names →
+// PASS THROUGH everything else → APPEND genuine read_files companion.
+describe("renameRequestTools (v2.1 pipeline)", () => {
+  it("drops blacklist names, keeps client names, appends companion", () => {
+    const tools = [fn("bash"), fn("read_file"), fn("computer_use"), fn("delegate_task")];
+    const { renamed, mapping, dropped } = renameRequestTools(tools);
+    expect(renamed.map((t) => t.function.name).sort()).toEqual(["bash", "read_file", "read_files"].sort());
+    expect(dropped.sort()).toEqual(["computer_use", "delegate_task"].sort());
     expect(mapping).toEqual({});
   });
 
-  it("handles OpenAI-shaped and flat tools", () => {
-    const flat = [{ name: "local_shell", parameters: { properties: { command: {} } } }];
-    const { renamed, mapping } = renameRequestTools(flat);
-    expect(renamed[0].name).toBe("run_terminal_command");
-    expect(mapping.run_terminal_command).toBe("local_shell");
+  it("unknown custom tools (mcp_*, project tools) pass through", () => {
+    const tools = [fn("mcp_vps_exec"), fn("calc")];
+    const { renamed, mapping } = renameRequestTools(tools);
+    expect(renamed.map((t) => t.function.name).sort()).toEqual(["calc", "mcp_vps_exec", "read_files"].sort());
+    expect(mapping).toEqual({});
+  });
+
+  it("companion suppressed when a genuine-shaped read_files already present", () => {
+    const genuine = { type: "function", function: { name: "read_files", parameters: { type: "object", properties: { paths: { type: "array", items: { type: "string" } } }, required: ["paths"] } } };
+    const { renamed } = renameRequestTools([genuine]);
+    expect(renamed.filter((t) => t.function.name === "read_files")).toHaveLength(1);
   });
 
   it("empty tools → companion only (foreign_toolset still clears)", () => {
@@ -50,12 +37,12 @@ describe("renameRequestTools", () => {
   });
 });
 
-describe("restoreResponseToolNames", () => {
+describe("restore paths", () => {
   it("restores names in JSON choices[].message.tool_calls", () => {
-    const mapping = { run_terminal_command: "bash" };
-    const data = { choices: [{ message: { role: "assistant", tool_calls: [{ id: "1", function: { name: "run_terminal_command", arguments: "{}" } }] } }] };
+    const mapping = { read_files: "read_file" };
+    const data = { choices: [{ message: { role: "assistant", tool_calls: [{ id: "1", function: { name: "read_files", arguments: "{}" } }] } }] };
     restoreResponseToolNames(data, mapping);
-    expect(data.choices[0].message.tool_calls[0].function.name).toBe("bash");
+    expect(data.choices[0].message.tool_calls[0].function.name).toBe("read_file");
   });
 
   it("no mapping → untouched", () => {
@@ -63,20 +50,34 @@ describe("restoreResponseToolNames", () => {
     restoreResponseToolNames(data, {});
     expect(data.choices[0].message.tool_calls[0].function.name).toBe("bash");
   });
-});
 
-describe("restoreStreamToolNames", () => {
-  it("rewrites SSE data lines containing renamed tool calls", () => {
-    const mapping = { run_terminal_command: "bash" };
-    const line = 'data: {"choices":[{"delta":{"tool_calls":[{"function":{"name":"run_terminal_command","arguments":"{\\"command\\":\\"ls\\"}"}}]}}]}';
-    const out = restoreStreamToolNames(line, mapping);
-    expect(out).toContain('"name":"bash"');
-    expect(out).not.toContain('"name":"run_terminal_command"');
+  it("companion renamed to sentinel in JSON (mapping empty)", () => {
+    const data = { choices: [{ message: { tool_calls: [{ function: { name: "read_files", arguments: "{}" } }] } }] };
+    restoreResponseToolNames(data, {});
+    expect(data.choices[0].message.tool_calls[0].function.name).toBe("__fb_read_files");
   });
 
-  it("passes through lines without tool_calls or non-data lines", () => {
-    const mapping = { run_terminal_command: "bash" };
-    expect(restoreStreamToolNames("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}", mapping)).not.toContain("bash");
-    expect(restoreStreamToolNames(": connected", mapping)).toBe(": connected");
+  it("stream: companion → sentinel; client names untouched when no mapping", () => {
+    const line = 'data: {"choices":[{"delta":{"tool_calls":[{"function":{"name":"read_files"}}]}}]}';
+    expect(restoreStreamToolNames(line, {})).toContain('"name":"__fb_read_files"');
+    const line2 = 'data: {"choices":[{"delta":{"tool_calls":[{"function":{"name":"bash"}}]}}]}';
+    expect(restoreStreamToolNames(line2, {})).toContain('"name":"bash"');
+  });
+
+  it("stream: mapping entries still restored (legacy fixtures)", () => {
+    const mapping = { read_files: "read_file" };
+    const line = 'data: {"choices":[{"delta":{"tool_calls":[{"function":{"name":"read_files"}}]}}]}';
+    const out = restoreStreamToolNames(line, mapping);
+    // mapping restore wins for mapped names; sentinel applies only to the
+    // bare companion (same name — mapping restored first by design)
+    expect(out).toContain('"name":"read_file"');
+  });
+});
+
+describe("sanitizeRequestTools (direct v2 API)", () => {
+  it("drops blacklist + companion, keeps passthrough", () => {
+    const { tools, dropped } = sanitizeRequestTools([fn("view"), fn("Monitor"), fn("browser_exec")]);
+    expect(dropped.sort()).toEqual(["Monitor", "browser_exec"].sort());
+    expect(tools.map((t) => t.function.name).sort()).toEqual(["read_files", "view"].sort());
   });
 });
