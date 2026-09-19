@@ -1,3 +1,26 @@
+# v0.5.75.13 (2026-09-19)
+
+## FreeBuff — tool-map v2.1: rename leg removed
+
+Live matrix against codebuff 0.0.177 (natusa, 2026-09-19) overturned the
+v2 assumption that hollow signature tools are log-only:
+
+| wire tools                              | result          |
+|-----------------------------------------|-----------------|
+| none                                    | 200 OK          |
+| genuine `read_files{paths}` only        | 200 OK          |
+| genuine + hollow `run_terminal_command` | 200 OK          |
+| hollow `read_files{file_path}` alone    | 409 superseded  |
+| Hermes 22-tool set (v2 rename active)   | 409 superseded  |
+
+The v1 rename put signature names under client schemas (hollows) AND took
+the `read_files` slot, suppressing the genuine companion — genuine=0 on
+every tools-carrying request. v2.1: rename leg removed entirely (kept as
+`CLIENT_TO_OFFICIAL_DISABLED` reference). Pipeline: drop blacklist names →
+pass the rest through → guarantee the genuine `read_files` companion.
+Companion is renamed to `__fb_read_files` on every response path even with
+no rename mapping, so clients never dispatch on it.
+
 # v0.5.75.12 (2026-09-18)
 
 ## FreeBuff — foreign-client gate evasion (tool-map v2)
