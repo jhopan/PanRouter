@@ -73,6 +73,9 @@ import p69 from "./opencode.js";
 import p127 from "./opencode-zen.js";
 import p128 from "./agnes.js";
 import p129 from "./freemodel-dev.js";
+import p130 from "./orcarouter.js";
+import p131 from "./apinex.js";
+import p132 from "./tokenharbor.js";
 import p70 from "./openrouter.js";
 import p71 from "./perplexity-web.js";
 import p72 from "./perplexity.js";
@@ -259,4 +262,7 @@ export default [
   p127,
   p128,
   p129,
+  p130,
+  p131,
+  p132,
 ];
