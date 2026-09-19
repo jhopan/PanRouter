@@ -70,6 +70,7 @@ import p123 from "./ollama-search.js";
 import p67 from "./openai.js";
 import p68 from "./opencode-go.js";
 import p69 from "./opencode.js";
+import p127 from "./opencode-zen.js";
 import p70 from "./openrouter.js";
 import p71 from "./perplexity-web.js";
 import p72 from "./perplexity.js";
@@ -253,4 +254,5 @@ export default [
   p124,
   p125,
   p126,
+  p127,
 ];

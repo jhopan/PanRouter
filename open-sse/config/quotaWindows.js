@@ -57,6 +57,8 @@ export const QUOTA_WINDOWS = {
     zed: { scope: QUOTA_SCOPES.MONTHLY, usageKey: null },
     // Weekly + monthly pools.
     "opencode-go": { scope: QUOTA_SCOPES.WEEKLY, usageKey: null },
+    // OpenCode Zen PAYG: rolling/weekly/monthly pools; calendar-weekly parking.
+    "opencode-zen": { scope: QUOTA_SCOPES.WEEKLY, usageKey: null },
     // Weekly quota (needs a Xiaomi session; API key alone can't read resetAt).
     "xiaomi-mimo": { scope: QUOTA_SCOPES.WEEKLY, usageKey: null },
     // Daily free-tier request caps.
