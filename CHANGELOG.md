@@ -1,3 +1,31 @@
+# v0.5.75.14 (2026-09-19)
+
+## OpenCode — free-tier fixes ported + Zen PAYG provider
+
+### OpenCode Free (`oc/`) — all merged upstream fixes
+- **Canonical identity**: UA `opencode/1.18.31` (≥1.17 gate) + canonical
+  `ses_`/`msg_` id formats; foreign session ids deterministically translated.
+- **Stable session per identity** (0c6ab4f9): free-tier quota is accounted
+  per session — one long-lived canonical session per connection instead of
+  a fresh mint per request (stops 429 FreeUsageLimitError churn).
+- **Decoy cloak unconditional** (93837af0): `bash`+`read` injected on every
+  request (chat + Responses), `forceStream` on the transport.
+- **Force-auto tool choice** for muse models (aa14ef72); stale reasoning
+  items stripped on Responses (eafac37d); **union-alpha** added via the
+  Messages API (2b65c49f).
+
+### Multi-account free tier (manual connections)
+Free/no-auth providers now honor **manual connections**: iterate explicit
+connections first (drain — never round-robin), each with its own identity
+→ own stable session → own proxy resolution. Virtual "Public" identity
+stays as fallback. Add as many OpenCode connections as wanted in the
+dashboard; each behaves as a separate account.
+
+### OpenCode Zen (PAYG, `ocz/`) — new provider
+Ported from decolua PR #4145 (closed unmerged upstream): apikey provider
+on `zen/v1` with dual openai/claude/responses transports, 71 models,
+usage (rolling/weekly/monthly), weekly quota window.
+
 # v0.5.75.13 (2026-09-19)
 
 ## FreeBuff — tool-map v2.1: rename leg removed
