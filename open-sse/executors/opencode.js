@@ -499,9 +499,10 @@ export class OpenCodeExecutor extends BaseExecutor {
       body.store = false;
       normalizeResponsesTools(body);
       sanitizeResponsesItems(body);
-      if (!Array.isArray(body.tools) || body.tools.length === 0) {
-        cloakOpencodeTools(body, true);
-      }
+      // PR #4155: cloak unconditionally on the Responses path — existing client
+      // tools are preserved (cloak skips duplicates); without it Zen 403s any
+      // Responses request that carries external tools.
+      cloakOpencodeTools(body, true);
     } else if (body && typeof body === "object") {
       cloakOpencodeTools(body, false);
     }
