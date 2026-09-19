@@ -397,7 +397,7 @@ PanRouter works seamlessly with all major AI coding tools:
 > **OpenCode Free** model list fluctuates over time (some models free only for limited promos) — subject to change without notice.
 > **Vertex AI**: the $300 free credit for new GCP accounts is still valid, but since Mar 2026 the **Gemini API endpoint no longer consumes these credits** — call the **Vertex AI Studio** endpoint instead.
 
-### 🔑 API Key Providers (40+)
+### 🔑 API Key Providers (50+)
 
 <div align="center">
   <table>
@@ -486,7 +486,7 @@ PanRouter works seamlessly with all major AI coding tools:
       </td>
     </tr>
   </table>
-  <p><i>...and 20+ more providers including Nebius, Chutes, Hyperbolic, and custom OpenAI/Anthropic compatible endpoints</i></p>
+  <p><i>...and 30+ more providers including Nebius, Chutes, Hyperbolic, **Agnes AI**, **FreeModel.dev**, **OrcaRouter** (Responses), **APInex**, **TokenHarbor**, and custom OpenAI/Anthropic compatible endpoints</i></p>
 </div>
 
 ### 🏠 Self-hosted Providers

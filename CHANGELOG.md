@@ -1,3 +1,32 @@
+# v0.5.75.15 (2026-09-19)
+
+## New providers (OmniRoute parity + operator-requested gateways)
+
+- **Agnes AI (`agnes/`)** — apikey, `apihub.agnes-ai.com/v1`. Free multimodal
+  tier (text/image/video), recurring-uncapped budget; 1.5/2.0/2.5 Flash
+  (262k–512k ctx). Key: platform.agnes-ai.com.
+- **FreeModel.dev (`fmd/`)** — apikey, `api.freemodel.dev/v1`. One-time
+  initial credits over GPT-5.x; live catalog pins gpt-5.6-luna/sol/terra.
+  Key: freemodel.dev.
+- **OrcaRouter (`orca/`)** — apikey, `api.orcarouter.ai/v1/responses`
+  (Responses API). Free pins: deepseek-v4-flash-free, tencent/hy3-free,
+  glm-5.3-flash-free, orca/orcaverify-text1.0-free. Key:
+  orcarouter.ai/console/token.
+- **APInex (`apinex/`)** — apikey, `api.apinex.bond/v1` chat-completions.
+  Free vendor prefix `free/`; pins free/glm-5.3-flash. Key: apinex.bond/keys.
+- **TokenHarbor (`th/`)** — apikey, `tokenharbor.ai/v1` chat-completions.
+  `:free` suffix; pins deepseek-v4.1-flash:free, deepseek-v4-flash:free,
+  mimo-v2.5:free. Key: tokenharbor.ai/dashboard/api-keys.
+
+## OpenCode — cloak decoys on every Responses request
+
+muse-1.3 + external tools 403'd (FreeTierError) because the cloak fired
+only when tools were empty; `cloakOpencodeTools` is now called
+unconditionally on the Responses path (PR #4155 parity, live-verified
+200 with 5 external tools).
+
+README: API-key provider count updated to 50+, new gateways listed.
+
 # v0.5.75.14 (2026-09-19)
 
 ## OpenCode — free-tier fixes ported + Zen PAYG provider
