@@ -44,8 +44,43 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
     const providerId = resolveProviderId(provider);
 
-    // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings)
+    // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings).
+    // Manual accounts: if the operator added explicit connections for this free
+    // provider, iterate THOSE first (drain, per-connection identity → per-connection
+    // stable upstream session and per-connection proxy). The virtual "Public"
+    // identity is the fallback when no manual connection exists or all are
+    // excluded by fallback. This is what makes multi-account free tier possible
+    // without any real credential — each connection is just an identity bucket.
     if (FREE_PROVIDERS[providerId]?.noAuth) {
+      const manualConnections = await getProviderConnections({ provider: providerId, isActive: true });
+      const usable = manualConnections.filter(c => !excludeSet.has(c.id));
+      if (usable.length > 0) {
+        const settings = await getSettings();
+        const override = (settings.providerStrategies || {})[providerId] || {};
+        const strategy = override.rotateStrategy || "none";
+        let pickedId = override.proxyPoolId || null;
+        if (strategy !== "none") {
+          const allPools = await getProxyPools({ isActive: true });
+          const poolIds = allPools.filter(p => p.proxyUrl).map(p => p.id);
+          pickedId = pickProxyPoolId(poolIds, strategy, providerId);
+        }
+        const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
+        const conn = usable[0]; // drain: first active manual account
+        return {
+          id: conn.id,
+          connectionName: conn.name || "Manual account",
+          isActive: true,
+          accessToken: "public",
+          providerSpecificData: {
+            ...(conn.providerSpecificData || {}),
+            connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
+            connectionProxyUrl: resolvedProxy.connectionProxyUrl,
+            connectionNoProxy: resolvedProxy.connectionNoProxy,
+            connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
+            vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+          },
+        };
+      }
       const settings = await getSettings();
       const override = (settings.providerStrategies || {})[providerId] || {};
       const strategy = override.rotateStrategy || "none";
