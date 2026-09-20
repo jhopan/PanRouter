@@ -187,4 +187,24 @@ describe("freebuffToolMap v2 — foreign-signal evasion (codebuff 0.0.177)", () 
     // mirror upstream: no blacklist name, at least one genuine tool
     expect(classify(tools)).toBeNull();
   });
+
+  describe("v2.2 duplicate-name dedupe (fork #655 parity)", () => {
+    it("virtualizes later duplicates to mcp__<name> and maps them back on restore", () => {
+      const { tools, mapping } = sanitizeRequestTools([fn("terminal"), fn("execute_code"), fn("terminal")]);
+      const names = tools.map((t) => t.function.name);
+      expect(names).toEqual(["terminal", "execute_code", "mcp__terminal", "read_files"]);
+      expect(mapping["mcp__terminal"]).toBe("terminal");
+      const resp = { choices: [{ message: { tool_calls: [{ type: "function", function: { name: "mcp__terminal", arguments: "{}" } }] } }] };
+      const out = restoreResponseToolNames(resp, mapping);
+      expect(out.choices[0].message.tool_calls[0].function.name).toBe("terminal");
+    });
+
+    it("keeps the wire name-unique with the full Hermes set (detector still clean)", () => {
+      const { tools } = sanitizeRequestTools(HERMES_TOOLS);
+      const names = tools.map((t) => t.function.name);
+      expect(new Set(names).size).toBe(names.length);
+      expect(classify(tools)).toBeNull();
+    });
+  });
+
 });

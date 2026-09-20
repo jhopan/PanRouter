@@ -1,5 +1,18 @@
 # Unreleased
 
+## FreeBuff tool-map v2.2 — duplicate-name dedupe (fork #655 parity)
+
+Ported from `jhopan/freebuff-proxy` (`31931c8e`): strict upstreams
+(DeepSeek, Muse Spark, MiMo) reject duplicate wire tool names
+("Tool names must be unique"). `sanitizeRequestTools` now keeps the first
+occurrence of a name and virtualizes later duplicates to `mcp__<name>`
+(still callable — MCP-style names are observe-only upstream);
+`restoreResponseToolNames`/stream restore maps them back to the client's
+name. Two new unit tests pin the behavior, including full-Hermes-set
+name-unique + detector-clean.
+
+# Unreleased
+
 ## FreeBuff sync from fork (upstream freebuff 0.0.180)
 
 - Registry: 3 early-access wire ids pinned — `deepseek/deepseek-v4.1-flash`,

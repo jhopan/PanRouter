@@ -217,6 +217,7 @@ export function sanitizeRequestTools(tools) {
   const mapping = {};
   const dropped = [];
   const out = [];
+  const seen = new Set();
   for (const tool of tools) {
     const name = toolFunctionName(tool);
     if (FOREIGN_HARNESS_TOOL_NAMES.has(name)) {
@@ -226,6 +227,21 @@ export function sanitizeRequestTools(tools) {
     // v2.1: rename leg DISABLED (see header) — renaming signature names onto
     // client schemas manufactures hollows. Client names pass through as-is
     // (unrecognised = observe-only upstream).
+    // v2.2 (fork #655 parity): strict upstreams (DeepSeek, Muse Spark, MiMo)
+    // reject duplicate wire names ("Tool names must be unique"). First
+    // occurrence keeps the plain name; later duplicates virtualize to
+    // mcp__<name> and restore maps them back (MCP-style names are exempt
+    // upstream, so this stays callable and observe-only).
+    if (seen.has(name)) {
+      const virt = `mcp__${name}`;
+      mapping[virt] = name;
+      const clone = structuredClone(tool);
+      const fn = clone?.function || clone;
+      if (fn && typeof fn === "object") fn.name = virt;
+      out.push(clone);
+      continue;
+    }
+    seen.add(name);
     out.push(tool);
   }
   // Companion leg — always present, guarantees Genuine > 0 even when every
