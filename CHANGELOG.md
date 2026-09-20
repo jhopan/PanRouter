@@ -1,3 +1,13 @@
+# Unreleased
+
+## FreeBuff sync from fork (upstream freebuff 0.0.180)
+
+- Registry: 3 early-access wire ids pinned — `deepseek/deepseek-v4.1-flash`,
+  `deepseek/deepseek-v4.1-pro`, `z-ai/glm-5.3` (provisioned tiers; sessions
+  admit against their own roots, no picker/quota entries upstream).
+- Executor: matching `MODEL_TO_AGENT` roots added (`base2-free-deepseek-v4-1-flash`,
+  `base2-free-deepseek-v4-1-pro`, `base2-free-glm-5-3`).
+
 # v0.5.75.15 (2026-09-19)
 
 ## New providers (OmniRoute parity + operator-requested gateways)

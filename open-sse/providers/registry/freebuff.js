@@ -27,6 +27,9 @@ export default {
   models: [
     { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4.1 Flash" },
     { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash (Early Access)" },
+    { id: "deepseek/deepseek-v4.1-pro", name: "DeepSeek V4.1 Pro (Early Access)" },
+    { id: "z-ai/glm-5.3", name: "GLM 5.3 (Early Access)" },
     { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash" },
     { id: "z-ai/glm-5.2", name: "GLM 5.2" },
     { id: "mimo/mimo-v2.5", name: "MiMo 2.5" },
