@@ -18,6 +18,8 @@ export default function LoginPage() {
   const [samlLoginLabel, setSamlLoginLabel] = useState("Sign in with SAML SSO");
   const [mustChange, setMustChange] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [sshHost, setSshHost] = useState("");
+  const [sshPort, setSshPort] = useState(20128);
 
   // Countdown for rate-limit
   useEffect(() => {
@@ -80,6 +82,10 @@ export default function LoginPage() {
         const data = await res.json();
         if (data.mustChangePassword) {
           setMustChange(true);
+          try {
+            setSshHost(window.location.hostname);
+            setSshPort(Number(window.location.port) || 20128);
+          } catch { /* SSR — keep defaults */ }
           return;
         }
         window.location.assign("/dashboard");
@@ -171,6 +177,33 @@ export default function LoginPage() {
               <p className="text-sm text-amber-600 dark:text-amber-400 text-center">
                 Set a new password before accessing the dashboard remotely.
               </p>
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-text-muted">
+                <p className="font-medium text-text-main mb-1">
+                  First-time setup on a remote server
+                </p>
+                <p className="mb-2">
+                  The default password only works over localhost. To change it
+                  from this browser, run this on YOUR computer and keep the
+                  terminal open — it makes this page count as local:
+                </p>
+                <pre className="overflow-x-auto rounded bg-black/20 p-2 text-[11px] leading-relaxed select-all">
+{`ssh -L ${sshPort}:localhost:${sshPort} <user>@${sshHost || "your-vps-host"}`}
+                </pre>
+                <p className="mt-2">
+                  Then open{" "}
+                  <code className="px-1 rounded bg-black/20">
+                    http://localhost:{sshPort}
+                  </code>{" "}
+                  in this browser and log in with the default password. The
+                  new password you set below works everywhere afterwards.
+                </p>
+                <p className="mt-2">
+                  Alternative: set{" "}
+                  <code className="px-1 rounded bg-black/20">INITIAL_PASSWORD</code>{" "}
+                  in the server <code className="px-1 rounded bg-black/20">.env</code>{" "}
+                  and restart — then no tunnel is needed.
+                </p>
+              </div>
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">New password</label>
                 <Input
