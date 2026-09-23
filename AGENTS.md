@@ -4,7 +4,37 @@ PanRouter — local AI routing gateway (`/v1/*` OpenAI-compatible) + Next.js das
 
 ## Project identity — PanRouter is the primary project
 
+> **freebucks-proxy: all work happens in ITS OWN repo (`C:\Users\ACER\Documents\Project\freebuff-proxy`, `jhopan/freebucks-proxy` — full `AGENTS.md` with VPS deployment, release-update runbook, dashboard 403 bootstrap, account-injection state). Deploy/update/account-injection/dashboard-admin for freebucks-proxy happens THERE. This repo stays focused on PanRouter — NOTHING outside this project without explicit operator approval.**
+
+**Scope rule (mandatory): work in THIS project only. Do not touch other projects, folders, or repos without explicit approval. References exist to be READ (git fetch + read, port with merit); never push to them, never edit their files, never run mutating commands in them — the only exceptions are `git fetch`/`git merge`/`git push` on the jhopan freebucks-proxy fork itself, which is ours.**
+
 **PanRouter is ours, and it is what we develop, ship, and sell.** Everything in this repo is PanRouter.
+
+### References (read-only sources we sync FROM)
+
+All four are READ-ONLY references — read them, borrow fixes and ideas, never push to any of them. Syncing is optional and judged on merit; PanRouter is the primary project and versions independently.
+
+| Reference | URL | Local checkout | What we take from it |
+|---|---|---|---|
+| **freebucks-proxy** (fork; dulu `freebuff-proxy`) | https://github.com/jhopan/freebucks-proxy.git | `C:\Users\ACER\Documents\Project\freebuff-proxy` (folder belum direname) | FreeBuff model catalog + agent roots (modelcat), foreign-client gate semantics (foreign_signals), release binary for the VPS bridge, fork changelog + tool-mapping writeup |
+| **9router (upstream)** | https://decolua/9router → https://github.com/decolua/9router.git | git remote `upstream` in this repo | Everything engine-side: translators, executors, registry, dashboard |
+| **OmniRoute** | https://github.com/diegosouzapw/OmniRoute.git | `C:\Users\ACER\Documents\Project\OmniRoute` | FreeBuff wire lifecycle (executor patterns), provider porting reference (TS) |
+| **VansRouter** | https://github.com/Vanszs/VansRouter.git | not checked out | 9router-family router patterns; consult on demand |
+
+### Updating references (how to pull updates into PanRouter)
+
+Prosedur update per referensi — **selalu lewat fork kita (`jhopan/freebucks-proxy`) untuk FreeBuff**, jangan pernah port langsung dari vendor/upstream; referensi lain dibaca saja:
+
+1. **freebucks-proxy (jhopan fork)** — satu-satunya sumber FreeBuff:
+   - `git -C Documents/Project/freebuff-proxy pull origin main` — ambil update dari `jhopan/freebucks-proxy` SAJA (fork itu sendiri yang mengurus sinkronisasi vendor; di AGENTS.md ini tidak ada prosedur menyentuh upstream lain).
+   - Port yang relevan ke PanRouter: katalog model baru (`registry/freebuff.js`), roots baru (`executors/freebuff.js` `MODEL_TO_AGENT`), perbaikan tool-map (`freebuffToolMap.js`). Perbaikan UI/perf Go fork tidak diport.
+   - Contoh 0.0.180 (2026-09-19): +3 model early-access (deepseek-v4.1-flash, deepseek-v4.1-pro, glm-5.3) + tool-map v2.2 dedupe.
+2. **9router (upstream)** — `git fetch upstream` di repo ini, baca PR/commit, port yang ber-merit ke kode kita. Jangan merge butir; tidak ada kewajiban mergeable.
+3. **OmniRoute** — checkout `Documents/Project/OmniRoute`, `git fetch origin`, baca registry/provider baru (TS), port pola ke JS registry PanRouter.
+4. **VansRouter** — shallow-clone on demand saja kalau butuh pola.
+Setelah port: verifikasi (`node --check`, vitest file terkait, uji live bila perilaku), commit + push, catat di `CHANGELOG.md`.
+
+Precedence when they disagree: **freebucks-proxy (jhopan fork) > OmniRoute**. The jhopan fork is the ONLY FreeBuff source of truth — its `wirefacts/` snapshots pin the wire version we implement against; if anything disagrees, trust the fork and live wire tests.
 
 - **Upstream `decolua/9router` is a read-only REFERENCE, not a parent to keep parity with.** Read it, borrow ideas and fixes from it, never push to it. Direction of travel is one way: 9router → reference material; PanRouter → development.
 - **Version is INDEPENDENT.** PanRouter does NOT track upstream's version number, and is never "behind" or "ahead" in that sense. It versions on its own cadence, driven by our own work (see `CHANGELOG.md`): new providers (FreeBuff, AgentRouter, B.AI), the per-key prepaid token pool, per-provider quota windows, our release pipeline. Bump it when we ship something — that is the whole rule.
@@ -86,6 +116,8 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - Conventional Commits (`fix(translator): …`). Root and `cli/` are versioned independently of each other **and of upstream** (see Project identity); log changes in `CHANGELOG.md`.
 - Config-driven: never hardcode provider/model/role/block strings — use `open-sse/config/` + `open-sse/translator/schema/` constants.
+- **Always run `npm run dev` for live testing.** Unit tests and `npm run build` alone are not verification — for any behavioral change (executor, translator, auth, dashboard), start the dev server (`npm run dev`, port 20127) and exercise the changed path with real requests before claiming it works. Kill the dev server before `next build` (they share `.next`), and verify the port is actually free (`netstat` empty for 20127): a half-dead dev server corrupts the build's `.next` and surfaces as `Jest worker encountered ... child process exceptions` when a page is opened.
+- **Explain-only requests are read-only.** When the operator asks to explain something (`coba jelaskan`, `jelasin aja dulu`, `jelaskan dulu`), answer the question — do not modify files, configs, tests, or remote state, and do not run mutating commands. Changes happen only on an explicit follow-up instruction.
 
 ### Releases (mandatory)
 
@@ -143,4 +175,66 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - `bai`/`BAI` alias, OpenAI-compatible `https://api.b.ai/v1/chat/completions`, Bearer key. Catalog auto-arrives once a connection exists (`BAI/glm-5.3-flash` etc.). Credit-based — `insufficient_user_quota` means top-up. Caps (vision/reasoning) resolve via the standard 4-layer capabilities lookup.
 
+### Agnes AI (provider, v0.5.75.15)
 
+- `agnes` alias, apikey, `https://apihub.agnes-ai.com/v1/chat/completions`, Bearer key. **Recurring-uncapped free tier** (permanen free, rate-limit saja — 20 RPM teks, tanpa kartu kredit). Key dari `platform.agnes-ai.com`. Models: `agnes-1.5/2.0/2.5` Flash (262k–512k ctx, vision, tool calling). One-time-initial vs recurring budget: Agnes = recurring.
+
+### FreeModel.dev (provider, v0.5.75.15)
+
+- `fmd` alias (aliases `freemodel`), apikey, `https://api.freemodel.dev/v1/chat/completions`, Bearer key. **One-time-initial** budget (kredit awal gratis, habis = habis, tidak reset — untuk eksperimen, bukan beban rutin). Live `/v1/models` exposes `gpt-5.6-luna/sol/terra`; pinned alongside OmniRoute 5.x rows (`gpt-5.5/5.4/5.4-mini/5.3-codex` etc.).
+
+### OrcaRouter (provider, v0.5.75.15)
+
+- `orca` alias (aliases `orcarouter`), apikey, **Responses API** `https://api.orcarouter.ai/v1/responses` (bukan chat/completions), Bearer token. Key dari `orcarouter.ai/console/token`. Free pins: `deepseek/deepseek-v4-flash-free`, `tencent/hy3-free`, `z-ai/glm-5.3-flash-free`, `orca/orcaverify-text1.0-free`. Katalog terbuka tanpa key (197 model) — `passthroughModels` aktif. Kalau nanti butuh bentuk chat/completions klasik, tambah transport kedua di registry (pola opencode-go).
+
+### APInex (provider, v0.5.75.15)
+
+- `apinex` alias (aliases `apn`), apikey, `https://api.apinex.bond/v1/chat/completions`, Bearer key. Key dari `apinex.bond/keys`. Free models pakai prefix vendor `free/` — pin `free/glm-5.3-flash`, sisanya via passthrough.
+
+### TokenHarbor (provider, v0.5.75.15)
+
+- `th` alias (aliases `tokenharbor`), apikey, `https://tokenharbor.ai/v1/chat/completions`, Bearer key. Key dari `tokenharbor.ai/dashboard/api-keys`. Free models pakai suffix `:free` — pins: `deepseek-v4.1-flash:free`, `deepseek-v4-flash:free`, `mimo-v2.5:free`; paid models via passthrough.
+
+
+
+
+
+### 📊 Resource sizing (measured)
+
+# PanRouter resource sizing (measured on vps-natusa, 1 GB RAM)
+
+## Current usage (idle, 1 user, uptime 4+ days)
+
+| Process | RSS | Note |
+|---|---|---|
+| `node /usr/bin/panrouter` (CLI launcher) | 4.7 MB + 12.9 MB in swap | parent, mostly swapped out |
+| `next-server (v16.3.5)` (SSR worker) | **~115 MB** | the real consumer |
+| **PanRouter total** | **~120 MB** | |
+
+Context on the same box: PanDrive 12.5 MB, cloudflared 23 MB, system ~90 MB.
+
+## Why so big
+
+Next.js runs **server-side rendering** — every page hit is rendered in Node. Baseline RSS of a
+production Next server is 80-120 MB regardless of traffic; concurrency multiplies render workers.
+
+## Per-user scaling (rough)
+
+| Concurrent users | Expected RSS |
+|---|---|
+| 1-5 (idle/light) | 120-150 MB |
+| 10-20 active | 200-300 MB |
+| 50+ | 400-600 MB (or scale out) |
+
+Node's GC lets heap grow before collecting, so RSS creeps under load — cap it.
+
+## Recommendations (apply in this order)
+
+1. **Cap the heap**: run with `NODE_OPTIONS="--max-old-space-size=256"` (256 MB cap for a 1 GB box).
+   Without it Node can balloon to the OOM killer under spikes.
+2. **Process manager with memory limit**: pm2 (`pm2 start panrouter --max-memory-restart 300M`) or a
+   systemd `MemoryMax=300M` unit — auto-restart instead of OOM-kill.
+3. **Static where possible**: pages that need no per-request server data can be `output: 'export'`
+   (then any static file server uses ~10-20 MB instead of 120+).
+4. **1 GB box ceiling**: PanRouter (~120) + PanDrive (~13) + cloudflared (~23) + system (~90) ≈ 250 MB
+   base → fits today, but 20+ concurrent PanRouter users need either the heap cap or a 2 GB box.
