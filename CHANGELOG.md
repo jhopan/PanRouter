@@ -1,3 +1,38 @@
+# v0.5.75.16 (2026-09-24)
+
+## FreeBuff sync + tool-map v2.2
+
+- 3 early-access models dari fork 0.0.180 (deepseek-v4.1-flash, v4.1-pro,
+  glm-5.3) + roots MODEL_TO_AGENT senada.
+- Dedupe nama tool duplikat di wire (fork #655 parity): first wins, duplikat
+  virtualize ke mcp__<name>, restore memetakan balik.
+
+## OpenCode fingerprint + opencode-zen resmi (upstream v0.5.82-0.5.86 port)
+
+- Fingerprint tools (bash/glob/grep/read) pada setiap request Responses +
+  restore nama klien (fix 403 FreeTierError dengan client tools).
+- opencode-zen (ocz/) resmi: registry + usage service.
+- opencode-go reasoning_effort glm-5.3-flash; Muse tool_choice/reasoning fixes.
+
+## Relay lossless header forwarding
+
+- proxyFetch: Headers instance dinormalisasi sebelum spread; vercel-deploy
+  meneruskan header mentah dari entries() — relay tidak lagi kehilangan
+  auth/content-type di jalur tertentu.
+
+## Xiaomi MiMo V2.6 + server-assisted desktop login
+
+- Model V2.6 + thinking levels; capacity fallback ke mimo-v2.6-flash-free.
+- mimoLoginSession + API routes login (alur VPS-friendly).
+
+## Lainnya
+
+- Claude Opus 5.5; refusal stop_reason → content_filter.
+- Streaming: abort setelah HTTP 200 kirim error frame in-band.
+- Qoder: billing block (code 110), cegah replay signed request.
+- Antigravity: drop requestType "agent" (hindari 429 palsu).
+- Login page: panduan ssh -L saat password default ditolak dari remote.
+
 # Unreleased
 
 ## FreeBuff tool-map v2.2 — duplicate-name dedupe (fork #655 parity)
