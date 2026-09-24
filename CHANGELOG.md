@@ -2,6 +2,7 @@
 
 ## FreeBuff tool-map v2.2 — duplicate-name dedupe (fork #655 parity)
 
+
 Ported from `jhopan/freebuff-proxy` (`31931c8e`): strict upstreams
 (DeepSeek, Muse Spark, MiMo) reject duplicate wire tool names
 ("Tool names must be unique"). `sanitizeRequestTools` now keeps the first
@@ -10,6 +11,11 @@ occurrence of a name and virtualizes later duplicates to `mcp__<name>`
 `restoreResponseToolNames`/stream restore maps them back to the client's
 name. Two new unit tests pin the behavior, including full-Hermes-set
 name-unique + detector-clean.
+## Fixes
+- **Qoder**: prevent proxy failures from silently replaying signed inference requests over a direct connection with the same COSY request ID (`403/103 Duplicate request`).
+- **Qoder**: return first-frame upstream errors, including `403/103 Duplicate request`, as HTTP failures instead of assistant text; handle fragmented frames and heartbeat prefixes while preserving billing error mapping.
+
+# v0.5.81 (2026-09-18)
 
 # Unreleased
 

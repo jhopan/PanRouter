@@ -6,6 +6,7 @@ import { getThinkingLevels } from "../providers/thinkingLevels.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
+import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import {
   normalizeResponsesInput,
@@ -16,6 +17,8 @@ import {
 
 const OPENCODE_UA = "opencode/1.18.31";
 const MAX_SESSION_LENGTH = 256;
+
+
 const MAX_TOOL_NAME_LEN = 128;
 const SESSION_HEADER = "x-opencode-session";
 const SESSION_FIELD = "_opencodeSession";
@@ -23,68 +26,6 @@ const REQ_FIELD = "_opencodeRequest";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 export const OPENCODE_REQUEST_RE = /^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-// OpenCode free tier requires both 'bash' and 'read' in tools payload.
-// Injected as cloaked decoy tools so external CLI tools (e.g. Claude Code's Bash/Read)
-// take precedence while satisfying upstream verification.
-const OPENCODE_DECOY_CHAT_TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "bash",
-      description: "This tool is currently unavailable and must not be used.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "read",
-      description: "This tool is currently unavailable and must not be used.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-];
-
-const OPENCODE_DECOY_RESPONSES_TOOLS = [
-  {
-    type: "function",
-    name: "bash",
-    description: "This tool is currently unavailable and must not be used.",
-    parameters: { type: "object", properties: {} },
-  },
-  {
-    type: "function",
-    name: "read",
-    description: "This tool is currently unavailable and must not be used.",
-    parameters: { type: "object", properties: {} },
-  },
-];
-
-function cloakOpencodeTools(body, isResponses) {
-  if (!body || typeof body !== "object") return;
-  if (isResponses) {
-    if (!Array.isArray(body.tools)) body.tools = [];
-    const names = new Set(body.tools.map((t) => t.name || t.function?.name));
-    for (const tool of OPENCODE_DECOY_RESPONSES_TOOLS) {
-      if (!names.has(tool.name)) body.tools.push({ ...tool });
-    }
-    if (!body.tool_choice) body.tool_choice = "auto";
-  } else {
-    const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
-    if (!hasTools) {
-      body.tools = OPENCODE_DECOY_CHAT_TOOLS.map((t) => ({ ...t, function: { ...t.function } }));
-      if (!body.tool_choice) body.tool_choice = "none";
-    } else {
-      const names = new Set(body.tools.map((t) => t.function?.name || t.name));
-      for (const tool of OPENCODE_DECOY_CHAT_TOOLS) {
-        if (!names.has(tool.function.name)) {
-          body.tools.push({ ...tool, function: { ...tool.function } });
-        }
-      }
-    }
-  }
-}
 
 function hasValidOpencodeVersion(ua) {
   const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
@@ -98,6 +39,15 @@ const RESPONSES_MODELS = new Set([
   "muse-spark-1.2-contributor-free",
   "muse-spark-1.3-contributor-free",
 ]);
+function isResponsesModel(model) {
+  const base = baseModelId(model);
+  return RESPONSES_MODELS.has(base) || isMuseSparkModel(base);
+}
+
+function baseModelId(model) {
+  return String(model || "").replace(/\([^()]+\)\s*$/, "").trim();
+}
+
 const MESSAGES_MODELS = new Set(["union-alpha"]);
 
 let lastTimestamp = 0;
@@ -172,6 +122,7 @@ function nativeSession(headers) {
     }
   }
   return null;
+
 }
 
 // Upstream free-tier quota is accounted per session. Minting a fresh
@@ -308,15 +259,13 @@ function bodyHasSessionHints(body) {
   }
 }
 
-// Strip the thinking suffix "model(level)" so registry lookups hit the base id.
-function baseModelId(model) {
-  return String(model || "").replace(/\([^()]+\)\s*$/, "").trim();
-}
+// Upstream free-tier quota is accounted per session. Minting a fresh
+// x-opencode-session on every request burns through it and surfaces as
+// 429 FreeUsageLimitError with growing reset-after delays, while the real
+// CLI reuses one long-lived canonical session per conversation. Mirror
+// that: one stable canonical session per downstream identity, evicted
+// after MEMORY_CONFIG.sessionTtlMs like the other session stores.
 
-function isResponsesModel(model) {
-  const base = baseModelId(model);
-  return RESPONSES_MODELS.has(base) || isMuseSparkModel(base);
-}
 
 function isMessagesModel(model) {
   return MESSAGES_MODELS.has(baseModelId(model));
@@ -334,6 +283,8 @@ function resolveOpencodeSession(body, credentials, providerSessionId, clientTool
       break;
     }
   }
+
+
 
   const hinted = incoming || normalizeSession(providerSessionId);
   if (hinted) return translateSessionId(hinted, clientTool);
@@ -461,6 +412,8 @@ export class OpenCodeExecutor extends BaseExecutor {
 
   prepareRequestCredentials({ body, credentials, providerSessionId, clientTool } = {}) {
     const sourceCredentials = credentials || {};
+
+
     const session = resolveOpencodeSession(body, sourceCredentials, providerSessionId, clientTool);
 
     return {
@@ -472,6 +425,8 @@ export class OpenCodeExecutor extends BaseExecutor {
 
   transformRequest(model, body, stream, credentials) {
     if (body && typeof body === "object" && model && !body.model) body.model = model;
+
+
     // Zen rejects non-streaming requests on free models with 403 FreeTierError;
     // always stream upstream and let the handler layer aggregate for non-stream clients.
     if (body && typeof body === "object") body.stream = true;
@@ -499,12 +454,13 @@ export class OpenCodeExecutor extends BaseExecutor {
       body.store = false;
       normalizeResponsesTools(body);
       sanitizeResponsesItems(body);
-      // PR #4155: cloak unconditionally on the Responses path — existing client
-      // tools are preserved (cloak skips duplicates); without it Zen 403s any
-      // Responses request that carries external tools.
-      cloakOpencodeTools(body, true);
+
+      // Free-tier fingerprint tools are required even when an agent client
+      // already supplied tools. ZCode/Claude Code requests normally have
+      // non-empty tool arrays; skipping cloaking here triggers 403 FreeTierError.
+      applyFingerprintTools(body, true);
     } else if (body && typeof body === "object") {
-      cloakOpencodeTools(body, false);
+      applyFingerprintTools(body, false);
     }
     return injectReasoningContent({ provider: this.provider, model, body });
   }
@@ -538,6 +494,8 @@ export class OpenCodeExecutor extends BaseExecutor {
       "User-Agent": isOpencodeDownstream ? downstreamUa : OPENCODE_UA,
       "x-opencode-client": lower["x-opencode-client"] || "desktop",
       "x-opencode-session": session,
+
+
       "x-opencode-request": requestId,
       "x-opencode-project": lower["x-opencode-project"] || "global",
       "Accept": stream ? "text/event-stream" : "*/*",

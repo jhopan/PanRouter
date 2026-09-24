@@ -21,6 +21,7 @@ const CAPACITY_ADAPTER_CAPS = [
   // pdf, videoInput temporarily hidden — no translator support yet for those blocks.
   { key: "audioInput", label: "Audio", icon: "graphic_eq", desc: "Audio input" },
 ];
+const DEFAULT_FALLBACK_MODEL = "oc/mimo-v2.6-flash-free";
 const EMPTY_CAP_ENTRY = { enabled: true, roundRobin: false, comboName: "", models: [] };
 const EMPTY_CAPACITY_ADAPTER = {
   vision: { ...EMPTY_CAP_ENTRY },

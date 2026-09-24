@@ -13,7 +13,7 @@ import { getComboByName } from "@/lib/localDb";
 
 const CAPABILITY_KEYS = ["vision", "pdf", "audioInput", "videoInput"];
 const HARD_CAPS = new Set(CAPABILITY_KEYS);
-const DEFAULT_FALLBACK_MODEL = "oc/mimo-v2.5-free";
+const DEFAULT_FALLBACK_MODEL = "oc/mimo-v2.6-flash-free";
 
 // Normalize a capability entry to { enabled, roundRobin, comboName, models }.
 // Accepted shapes:

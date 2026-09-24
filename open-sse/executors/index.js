@@ -44,8 +44,8 @@ const executors = {
   vertex: new VertexExecutor("vertex"),
   "vertex-partner": new VertexExecutor("vertex-partner"),
   opencode: new OpenCodeExecutor(),
-  "opencode-go": new OpenCodeGoExecutor()
-  ,"opencode-zen": new OpenCodeZenExecutor(),
+  "opencode-go": new OpenCodeGoExecutor(),
+  "opencode-zen": new OpenCodeZenExecutor(),
   "grok-web": new GrokWebExecutor(),
   "grok-cli": new GrokCliExecutor(),
   gcli: new GrokCliExecutor(), // Alias
@@ -94,6 +94,7 @@ export { VertexExecutor } from "./vertex.js";
 export { DefaultExecutor } from "./default.js";
 export { OpenCodeExecutor } from "./opencode.js";
 export { OpenCodeGoExecutor } from "./opencode-go.js";
+export { OpenCodeZenExecutor } from "./opencode-zen.js";
 export { GrokWebExecutor } from "./grok-web.js";
 export { GrokCliExecutor } from "./grok-cli.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
