@@ -63,6 +63,11 @@ export const QUOTA_WINDOWS = {
     "xiaomi-mimo": { scope: QUOTA_SCOPES.WEEKLY, usageKey: null },
     // Daily free-tier request caps.
     groq: { scope: QUOTA_SCOPES.DAILY, usageKey: null },
+    // Rolling 7-day free allowance (no usage API). The 429 body itself states
+    // the exact reset ("next rolling 7-day period starts on 2 Oct 2026 at
+    // 06:22 UTC") — quotaWindow.js parses it; the weekly calendar here is only
+    // the fallback when the message shape changes.
+    tokenharbor: { scope: QUOTA_SCOPES.WEEKLY, usageKey: null },
     // ── Calendar-only providers ────────────────────────────────────────────
     cline: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 0 },
     freebuff: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 7 }, // Pacific midnight
@@ -146,6 +151,9 @@ export const QUOTA_EXHAUSTED_SIGNALS = [
   "quota will reset",
   "quota exhausted",
   "free limit reached",
+  // TokenHarbor free-tier rolling window: "You've used this period's free
+  // allowance. Your next rolling 7-day period starts on <date> at <hh:mm> UTC."
+  "free allowance",
 ];
 
 /**

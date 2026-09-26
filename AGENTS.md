@@ -200,6 +200,7 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 ### TokenHarbor (provider, v0.5.75.15)
 
 - `th` alias (aliases `tokenharbor`), apikey, `https://tokenharbor.ai/v1/chat/completions`, Bearer key. Key dari `tokenharbor.ai/dashboard/api-keys`. Free models pakai suffix `:free` — pins: `deepseek-v4.1-flash:free`, `deepseek-v4-flash:free`, `mimo-v2.5:free`; paid models via passthrough.
+- **Limit handling (Cline-style park, bukan backoff)**: 429 free-allowance ("You've used this period's free allowance. Your next rolling 7-day period starts on 2 Oct 2026 at 06:22 UTC...") = quota exhaustion, bukan burst rate limit. `auth.js` `tokenharborResetMs()` parse timestamp eksak dari body → `modelLock_<model>` sampai boundary itu; fallback kalau format pesan berubah: `quotaWindows.js` `tokenharbor: WEEKLY` (Senin 00:00 UTC). Sinyal `free allowance` ada di `QUOTA_EXHAUSTED_SIGNALS`. Paid model tak kena (error hanya untuk `:free`). Test: `tests/unit/tokenharbor-quota.test.js`.
 
 
 

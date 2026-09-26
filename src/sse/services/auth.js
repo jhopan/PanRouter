@@ -13,6 +13,30 @@ let selectionMutex = Promise.resolve();
 
 const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
 
+// TokenHarbor free-allowance 429: the body states the exact reset
+// ("Your next rolling 7-day period starts on 2 Oct 2026 at 06:22 UTC").
+// Extract it so the modelLock parks until the REAL boundary, not a guess.
+const TH_RESET_RE = /(?:starts? on|next .{0,24}period starts? on)\s+(\d{1,2}\s+\w{3}\s+\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*UTC/i;
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+
+/** Exported for tests. */
+export function tokenharborResetMs(status, errorText, provider) {
+  if (resolveProviderId(provider) !== "tokenharbor" || Number(status) !== 429) return null;
+  const text = String(errorText || "");
+  if (!text.toLowerCase().includes("free allowance")) return null;
+  const m = text.match(TH_RESET_RE);
+  if (!m) return null;
+  // m[1]="2 Oct 2026", m[2]=hour, m[3]=minute (group 0 is the whole match)
+  const dateParts = m[1].match(/^(\d{1,2})\s+(\w{3})\s+(\d{4})$/);
+  if (!dateParts) return null;
+  const day = parseInt(dateParts[1], 10);
+  const mon = MONTHS[dateParts[2].toLowerCase()];
+  const year = parseInt(dateParts[3], 10);
+  if (!Number.isFinite(day) || mon === undefined || !Number.isFinite(year)) return null;
+  const ms = Date.UTC(year, mon, day, parseInt(m[2], 10), parseInt(m[3], 10), 0);
+  return ms > Date.now() ? ms : null;
+}
+
 function githubMonthlyResetMs(status, errorText, provider) {
   if (resolveProviderId(provider) !== "github" || Number(status) !== 402) return null;
   if (!String(errorText || "").toLowerCase().includes(GITHUB_MONTHLY_USAGE_LIMIT)) return null;
@@ -300,16 +324,22 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 
   // GitHub premium-request exhaustion is account-wide until the next UTC month.
   const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
+  // TokenHarbor free allowance: exact reset timestamp parsed out of the 429 body.
+  const thResetAtMs = tokenharborResetMs(status, errorText, provider);
 
   // Free-tier quota refusal (daily/weekly/monthly/session)? Decided up front
   // because it changes how a provider-supplied timestamp is bounded below.
-  const quotaExhausted = isQuotaExhaustedError(errorText);
+  const quotaExhausted = isQuotaExhaustedError(errorText) || !!thResetAtMs;
 
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   let shouldFallback, cooldownMs, newBackoffLevel;
-  if (githubResetAtMs) {
+  const preciseResetAtMs = githubResetAtMs || thResetAtMs;
+  if (preciseResetAtMs) {
     shouldFallback = true;
-    cooldownMs = githubResetAtMs - Date.now();
+    // Both are QUOTA resets (github monthly, tokenharbor weekly) — cap at the
+    // provider's quota ceiling, never the burst rate-limit ceiling (same
+    // reasoning as the resetsAtMs branch below).
+    cooldownMs = Math.min(preciseResetAtMs - Date.now(), quotaWindowFor(provider).maxCooldownMs);
     newBackoffLevel = 0;
   } else if (resetsAtMs && resetsAtMs > Date.now()) {
     shouldFallback = true;
