@@ -197,6 +197,10 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - `apinex` alias (aliases `apn`), apikey, `https://api.apinex.bond/v1/chat/completions`, Bearer key. Key dari `apinex.bond/keys`. Free models pakai prefix vendor `free/` — pin `free/glm-5.3-flash`, sisanya via passthrough.
 
+### VYCEAI (provider, v0.5.75.17)
+
+- `vy` alias (aliases `vyceai`), apikey, `https://vyceai.com/v1/chat/completions`, Bearer key. Key dari vyceai.com. Models: `qwen3.8-flash`, `deepseek-v4-flash`, `agnes-3.0-flash`, `deepseek-v4.1`, `claude-sonnet-4-6` (+ passthrough). Belum ada limit-429 spesifik — pakai backoff generik sampai diketahui bentuk errornya.
+
 ### TokenHarbor (provider, v0.5.75.15)
 
 - `th` alias (aliases `tokenharbor`), apikey, `https://tokenharbor.ai/v1/chat/completions`, Bearer key. Key dari `tokenharbor.ai/dashboard/api-keys`. Free models pakai suffix `:free` — pins: `deepseek-v4.1-flash:free`, `deepseek-v4-flash:free`, `mimo-v2.5:free`; paid models via passthrough.

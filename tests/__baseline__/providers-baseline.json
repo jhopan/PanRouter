@@ -44,6 +44,7 @@
     },
     "usage": {
       "quotaApiUrl": "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+      "quotaSummaryApiUrl": "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
       "loadProjectApiUrl": "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
       "tokenUrl": "https://oauth2.googleapis.com/token"
     },
@@ -92,7 +93,7 @@
       "Anthropic-Version": "2023-06-01",
       "Anthropic-Beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
       "Anthropic-Dangerous-Direct-Browser-Access": "true",
-      "User-Agent": "claude-cli/2.1.258 (external, sdk-cli)",
+      "User-Agent": "claude-cli/2.1.280 (external, sdk-cli)",
       "X-App": "cli",
       "X-Stainless-Helper-Method": "stream",
       "X-Stainless-Retry-Count": "0",
@@ -131,12 +132,16 @@
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline"
     },
+    "quirks": {
+      "clineEnvelope": true
+    },
     "tokenUrl": "https://api.cline.bot/api/v1/auth/token",
     "refreshUrl": "https://api.cline.bot/api/v1/auth/refresh",
     "auth": {
       "combined": true,
       "header": "Authorization",
       "scheme": "bearer",
+      "preserveHookAuth": true,
       "hooks": [
         "clineHeaders"
       ]
@@ -149,10 +154,14 @@
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline"
     },
+    "quirks": {
+      "clineEnvelope": true
+    },
     "auth": {
       "combined": true,
       "header": "Authorization",
       "scheme": "bearer",
+      "preserveHookAuth": true,
       "hooks": [
         "clineHeaders"
       ]
@@ -240,6 +249,12 @@
     "validateUrl": "https://api.deepseek.com/models",
     "reasoningInject": {
       "scope": "all"
+    },
+    "quirks": {
+      "claudeSupportedToolTypes": [
+        "web_search_20250305",
+        "web_search_20260209"
+      ]
     },
     "format": "openai",
     "transports": [
@@ -438,6 +453,9 @@
   "groq": {
     "baseUrl": "https://api.groq.com/openai/v1/chat/completions",
     "validateUrl": "https://api.groq.com/openai/v1/models",
+    "usage": {
+      "url": "https://api.groq.com/openai/v1/models"
+    },
     "format": "openai"
   },
   "hyperbolic": {
@@ -533,7 +551,7 @@
     ]
   },
   "kiro": {
-    "baseUrl": "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+    "baseUrl": "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
     "baseUrls": [
       "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
       "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
@@ -571,7 +589,8 @@
       "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
     },
     "quirks": {
-      "dropOutputConfig": true
+      "dropOutputConfig": true,
+      "requireClaudeToolType": true
     },
     "reasoningInject": {
       "scope": "all"
@@ -622,7 +641,8 @@
       "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
     },
     "quirks": {
-      "dropOutputConfig": true
+      "dropOutputConfig": true,
+      "requireClaudeToolType": true
     },
     "reasoningInject": {
       "scope": "all"
@@ -709,6 +729,9 @@
   "opencode-go": {
     "baseUrl": "https://opencode.ai/zen/go/v1/chat/completions",
     "headers": {},
+    "usage": {
+      "url": "https://opencode.ai/zen/go/v1/usage"
+    },
     "format": "openai",
     "transports": [
       {
@@ -784,7 +807,13 @@
     "headers": {
       "x-opencode-client": "desktop"
     },
+    "forceStream": true,
     "noAuth": true,
+    "quirks": {
+      "forceAutoToolChoiceModels": [
+        "muse-spark-1.3-contributor-free"
+      ]
+    },
     "format": "openai"
   },
   "openrouter": {
@@ -987,6 +1016,7 @@
       "HTTP-Referer": "https://endpoint-proxy.local",
       "X-Title": "Endpoint Proxy"
     },
+    "forceStream": true,
     "format": "openai"
   },
   "baidu": {
@@ -1045,6 +1075,112 @@
     "headers": {},
     "quirks": {
       "preserveCacheControl": true
+    },
+    "format": "openai"
+  },
+  "agentrouter": {
+    "baseUrl": "https://agentrouter.org/v1/messages",
+    "format": "claude",
+    "urlSuffix": "?beta=true",
+    "headers": {
+      "Anthropic-Version": "2023-06-01",
+      "Anthropic-Beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
+      "Anthropic-Dangerous-Direct-Browser-Access": "true",
+      "User-Agent": "claude-cli/2.1.280 (external, sdk-cli)",
+      "X-App": "cli",
+      "X-Stainless-Helper-Method": "stream",
+      "X-Stainless-Retry-Count": "0",
+      "X-Stainless-Runtime-Version": "v24.14.0",
+      "X-Stainless-Package-Version": "0.80.0",
+      "X-Stainless-Runtime": "node",
+      "X-Stainless-Lang": "js",
+      "X-Stainless-Arch": "x64",
+      "X-Stainless-Os": "Windows",
+      "X-Stainless-Timeout": "600"
+    },
+    "auth": {
+      "combined": true,
+      "header": "x-api-key",
+      "scheme": "raw"
+    }
+  },
+  "bai": {
+    "baseUrl": "https://api.b.ai/v1/chat/completions",
+    "validateUrl": "https://api.b.ai/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "format": "openai"
+  },
+  "freebuff": {
+    "baseUrl": "https://www.codebuff.com/api/v1/chat/completions",
+    "validateUrl": "https://www.codebuff.com/api/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "format": "openai"
+  },
+  "agnes": {
+    "baseUrl": "https://apihub.agnes-ai.com/v1/chat/completions",
+    "validateUrl": "https://apihub.agnes-ai.com/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "format": "openai"
+  },
+  "freemodel-dev": {
+    "baseUrl": "https://api.freemodel.dev/v1/chat/completions",
+    "validateUrl": "https://api.freemodel.dev/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "format": "openai"
+  },
+  "orcarouter": {
+    "baseUrl": "https://api.orcarouter.ai/v1/responses",
+    "validateUrl": "https://api.orcarouter.ai/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "format": "openai"
+  },
+  "apinex": {
+    "baseUrl": "https://api.apinex.bond/v1/chat/completions",
+    "validateUrl": "https://api.apinex.bond/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "format": "openai"
+  },
+  "tokenharbor": {
+    "baseUrl": "https://tokenharbor.ai/v1/chat/completions",
+    "validateUrl": "https://tokenharbor.ai/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "format": "openai"
+  },
+  "vyceai": {
+    "baseUrl": "https://vyceai.com/v1/chat/completions",
+    "validateUrl": "https://vyceai.com/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
     },
     "format": "openai"
   }
