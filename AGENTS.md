@@ -197,6 +197,10 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - `apinex` alias (aliases `apn`), apikey, `https://api.apinex.bond/v1/chat/completions`, Bearer key. Key dari `apinex.bond/keys`. Free models pakai prefix vendor `free/` — pin `free/glm-5.3-flash`, sisanya via passthrough.
 
+### JustDoWork (provider, v0.5.75.17)
+
+- `jd` alias (aliases `justdowork`, `justwoker`), apikey, **Anthropic-compatible** (`https://api.justwoker.icu/v1/messages`, format claude, auth `x-api-key`). Endpoint OpenAI `/v1/chat/completions` ada tapi Cloudflare blok POST dari sebagian IP (challenge HTML 403) — `/v1/messages` lolos, jadi registry pakai transport claude (translate `claude:claude` direct/passthrough OpenAI client). Model: `claude-opus-4-8` (verified live: 200 + jawaban "Hello."). CF kadang challenge intermittently per-IP — kalau 403 bolak-balik, tunggu 1-2 menit (PanRouter modelLock otomatis parkir 2m).
+
 ### VYCEAI (provider, v0.5.75.17)
 
 - `vy` alias (aliases `vyceai`), apikey, `https://vyceai.com/v1/chat/completions`, Bearer key. Key dari vyceai.com. Models: `qwen3.8-flash`, `deepseek-v4-flash`, `agnes-3.0-flash`, `deepseek-v4.1`, `claude-sonnet-4-6` (+ passthrough). Belum ada limit-429 spesifik — pakai backoff generik sampai diketahui bentuk errornya.

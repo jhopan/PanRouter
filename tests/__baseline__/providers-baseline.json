@@ -1183,5 +1183,18 @@
       "scheme": "bearer"
     },
     "format": "openai"
+  },
+  "justdowork": {
+    "baseUrl": "https://api.justwoker.icu/v1/messages",
+    "format": "claude",
+    "validateUrl": "https://api.justwoker.icu/v1/models",
+    "headers": {
+      "anthropic-version": "2023-06-01"
+    },
+    "auth": {
+      "combined": true,
+      "header": "x-api-key",
+      "scheme": "raw"
+    }
   }
 }
