@@ -1,18 +1,13 @@
 import { buildClineHeaders } from "../shared/clineAuth.js";
 
-// Cline exposes two catalogs on api.cline.bot:
-//   GET /api/v1/models                          → ~446 rows: the ENTIRE Cline
-//     proxy catalog (OpenRouter-style, paid pricing, `~`-prefixed aliases). This
-//     is not what a Cline account can serve — surfacing it made the provider page
-//     list 466 models, most of them unusable and needing Cline credits.
-//   GET /api/v1/ai/cline/recommended-models     → the tiered list this account
-//     actually has: { recommended[], free[], clinePass[], clineCloud[] }.
-// Only the second one is a correct source for model pickers.
+const CLINEPASS_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";
+// Cline's free tier is published here, not in /api/v1/models: the catalog
+// endpoint carries no `cline-free/*` ids at all. Cline's own SDK calls this
+// feed unauthenticated (sdk/packages/core/src/services/llms/cline-recommended-models.ts),
+// so no Authorization header is sent — adding one would only make the request
+// fail on a header the endpoint ignores.
 const CLINE_RECOMMENDED_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/ai/cline/recommended-models";
-// Cold-start cost (DNS + TLS + Cline's own auth round-trip) measured at ~5.7s on
-// the first call, so a 5s budget aborted the first request and silently returned
-// null — the free tier then vanished from the picker. Warm calls are <500ms.
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 5000;
 
 /**
  * Build request headers for Cline's model-list endpoints.
@@ -69,8 +64,43 @@ function toModels(group) {
 }
 
 /**
- * Cline free-tier catalog (`free[]` group) — the models a Cline account can
- * actually serve at $0. Falls back to null → static registry list.
+ * Fetch Cline's recommended-models feed and return only its `free[]` tier.
+ * Returns null on any failure — the free tier is additive, so a dead feed must
+ * never take the /api/v1/models catalog down with it.
+ * @param {{accessToken?: string, apiKey?: string}} credentials
+ * @returns {Promise<{id: string, name: string}[] | null>}
+ */
+async function fetchClineFreeTierModels() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(CLINE_RECOMMENDED_MODELS_ENDPOINT, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return null;
+
+    const json = await response.json();
+    const free = Array.isArray(json?.free) ? json.free : [];
+    if (!free.length) return null;
+
+    return free
+      .filter((m) => typeof m?.id === "string" && m.id.trim() !== "")
+      .map((m) => ({ id: m.id, name: m.name || m.id }));
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Fetch Cline live model catalog from Cline's /models endpoint.
+ * Unlike resolveClinepassModels, this returns ALL models (including
+ * free-tier models like z-ai/glm-5.3-flash) without the cline-pass/ prefix filter.
  *
  * @param {object} credentials - Connection credentials ({ accessToken, apiKey })
  * @returns {Promise<{ models: { id: string, name: string }[] } | null>}
@@ -81,18 +111,22 @@ export async function resolveClineModels(credentials) {
   return toModels(catalog.free);
 }
 
-/**
- * ClinePass catalog (`clinePass[]` group).
- *
- * Previously this filtered `/models` for a `cline-pass/` prefix, which the full
- * proxy catalog never contains — it always came back empty. The tiered endpoint
- * lists them explicitly.
- *
- * @param {object} credentials - Connection credentials ({ accessToken, apiKey })
- * @returns {Promise<{ models: { id: string, name: string }[] } | null>}
- */
-export async function resolveClinepassModels(credentials) {
-  const catalog = await fetchClineCatalog(credentials);
-  if (!catalog) return null;
-  return toModels(catalog.clinePass);
+  const models = rawList
+    .filter((m) => typeof m?.id === "string" && m.id.trim() !== "")
+    .map((m) => ({
+      id: m.id,
+      name: m.name || m.id,
+    }));
+
+  // Free tier: /api/v1/models lists no `cline-free/*` ids, so merge the feed's
+  // free[] in. First writer wins on a shared id, keeping the catalog's entry
+  // for anything the two sources agree on.
+  const freeTier = await fetchClineFreeTierModels();
+  const byId = new Map(models.map((m) => [m.id, m]));
+  for (const m of freeTier || []) {
+    if (!byId.has(m.id)) byId.set(m.id, m);
+  }
+  const merged = Array.from(byId.values());
+
+  return merged.length ? { models: merged } : null;
 }
