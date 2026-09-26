@@ -54,15 +54,17 @@ This repo deliberately keeps **one** agent-context file: `AGENTS.md` (+ the two 
 ```bash
 cp .env.example .env            # env contract (JWT_SECRET, INITIAL_PASSWORD, PORT=20128, …)
 npm install
-npm run dev            # next dev, port 20127 (scripts hardcode it; deploy uses PORT=20128)
-npm run build          # next build --webpack
-npm run start          # prod: node custom-server.js (port 20127; deploy sets PORT=20128 HOSTNAME=0.0.0.0)
+npm run dev            # next dev (default bundler), port 20127; `dev:webpack` forces webpack
+npm run build          # next build --webpack (+ postbuild: copy-standalone-assets.mjs)
+npm run start          # prod: node custom-server.js --port 20127 (deploy sets PORT=20128 HOSTNAME=0.0.0.0)
 npx eslint .           # lint (eslint.config.mjs, eslint-config-next)
+cd tests && npm test   # full suite (see Tests below)
 
 # Bun variants of the same three: dev:bun / build:bun / start:bun
+# Docker: start.sh (build + run, port 20128); see DOCKER.md
 ```
 
-CLI package (`cli/`, published separately as `panrouter`; installs and updates pull the tgz from GitHub Releases — see `UPDATER_CONFIG` in `src/shared/constants/config.js`): `npm run cli:pack` from root.
+CLI package (`cli/`, published separately as `panrouter`; installs and updates pull the tgz from GitHub Releases — see `UPDATER_CONFIG` in `src/shared/constants/config.js`): `npm run cli:pack` from root (`cli/package.json` versions independently but moves together with root on release).
 
 ## Tests — non-obvious
 
@@ -73,12 +75,16 @@ npm install                  # root deps FIRST (tests import src/ which needs op
 cd tests && npm install      # vitest
 npx vitest run               # all; auto-discovers tests/vitest.config.js
 npx vitest run unit/capabilities.test.js   # single file, path relative to tests/
+# no-regression gate (needs a jest-style JSON report):
+npx vitest run --reporter=json --outputFile=<abs path>/results.json
+node __baseline__/verify-no-regression.mjs <that results.json>
 ```
 
-- Ignore `tests/package.json` `test` script — hardcodes Unix `/tmp` paths, broken on Windows. Use `npx vitest` form.
-- **Suite is NOT all-green on plain checkout** (≈2450 pass, ≈48 fail). Judge regressions with `tests/__baseline__/verify-no-regression.mjs`, not a raw run. Expected red: `tests/__baseline__/known-fails.txt`, `unit/embeddings.cloud.test.js` (imports `cloud/` dir not in this repo), `unit/xai-oauth-service.test.js` (network timeout), `real/*.real.test.js` (live provider calls, need creds).
-- After touching provider registry / alias logic: run `tests/__baseline__/verify-*.mjs` (snapshots committed).
-- Translator tests calling `translateRequest`/`translateResponse` MUST `import "./registerAll.js"` — `translator/index.js` uses `require()` which silently no-ops under vitest/ESM → empty registry → false pass.
+- `tests/package.json` `test` script is plain vitest now (works on Windows; helpers use `os.tmpdir()` via `helpers/tmp.js`). `cd tests && npm test` ≡ `npx vitest run`.
+- **Suite is NOT all-green on plain checkout** (measured 2026-09-26, clean master: 277 files — ≈2590 pass, ≈66 fail, 18 expected-fail = `it.fails`, 83 skipped). Judge regressions with `verify-no-regression.mjs`, not a raw run. Expected red: `tests/__baseline__/known-fails.txt`, `unit/embeddings.cloud.test.js` (self-skips — `cloud/` dir not in this repo), `unit/xai-oauth-service.test.js` (network timeouts), `real/*.real.test.js` (live provider calls, need creds).
+- Caveat: on clean master the gate currently reports ~18 pass→fail mismatches — baseline drifted (renamed tests). Treat as stale-baseline signal, not a code regression; refresh `known-fails.txt` before trusting a red.
+- After touching provider registry / alias logic: run `tests/__baseline__/verify-*.mjs` (snapshots committed: providers, alias, oauth-urls).
+- `import "./registerAll.js"` in translator tests is now **convention, not load-bearing**: `translator/index.js` switched from `require()` to static side-effect imports, so the registry self-populates under vitest/ESM (verified empirically). Keep the import in new translator tests anyway; when adding a translator file, add it to BOTH the bottom of `open-sse/translator/index.js` AND `tests/translator/registerAll.js`.
 
 ## Request flow (understand this first)
 
@@ -98,14 +104,14 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - **Translator engine** pivots through **OpenAI as the intermediate format**. A translator registered on an exact `source:target` pair (e.g. `claude:kiro`) runs as a **direct route**, skipping the lossy double-hop — prefer one for fragile pairs (thinking blocks, tool ids, non-base64 images, `is_error`).
 - **Provider registry**: one file per provider; `providers/registry/index.js` is auto-generated (see Gotchas). Add a provider by copying `providers/REGISTRY_TEMPLATE.js` + adding models to `config/providerModels.js`; only non-OpenAI-compatible upstreams need an executor.
-- **Persistence is SQLite, not `db.json`** (ARCHITECTURE.md is stale on this). `src/lib/db/` with an adapter fallback chain (`driver.js`): `bun:sqlite` → `better-sqlite3` (optional native dep, deliberately, so install never needs build tools) → `node:sqlite` (Node ≥22.5) → `sql.js` (pure-JS, always works); `src/lib/localDb.js` is a backward-compat shim re-exporting `@/lib/db/index.js` — new code imports the latter, per-entity logic lives in `src/lib/db/repos/*`. DB path resolves via `src/lib/db/paths.js` (`DATA_DIR`, else `~/.9router/`). Usage/logs (`src/lib/usageDb.js`, `usage.json` + `log.txt`) still live under `~/.9router` and do **not** follow `DATA_DIR`.
+- **Persistence is SQLite, not `db.json`** (ARCHITECTURE.md is stale on this). `src/lib/db/` with an adapter fallback chain (`driver.js`): `bun:sqlite` → `better-sqlite3` (optional native dep, deliberately, so install never needs build tools) → `node:sqlite` (Node ≥22.5) → `sql.js` (pure-JS, always works); `src/lib/localDb.js` is a backward-compat shim re-exporting `@/lib/db/index.js` — new code imports the latter, per-entity logic lives in `src/lib/db/repos/*`. DB path resolves via `src/lib/db/paths.js`: `DATA_DIR` env, else platform default (`dataDir.js`) — `%APPDATA%\9router` on Windows, `~/.9router` elsewhere. Usage/logs now live in the same SQLite store (`src/lib/db/repos/usageRepo.js`, `requestDetailsRepo.js`); `usageDb.js` is only a shim re-exporting `@/lib/db/index.js`. Windows + Unix-style `DATA_DIR` from a Linux `.env` → warns and falls back to the platform default.
 - **RTK token saver** (`open-sse/rtk/`) compresses `tool_result` content in place to cut tokens. **Fail-open**: any error returns null and leaves the body untouched — never throw out of a hook. It skips `is_error` / `status:"error"` results to preserve traces.
 
 ## Gotchas
 
 - New translator file MUST be imported in `open-sse/translator/index.js` (self-registration via import side effect) or it never runs.
 - `open-sse/providers/registry/index.js` is **auto-generated** — regenerate with `scripts/migrate-registry.mjs` / `injectDisplayToRegistry.mjs`, never hand-edit.
-- `custom-server.js` derives client IP from TCP socket and strips untrusted `X-Forwarded-For` (trusts forwarding headers only from loopback proxy). Preserve when touching request/IP/rate-limit code.
+- `custom-server.js` derives client IP from TCP socket and strips untrusted `X-Forwarded-For` / `x-real-ip` (trusts forwarding headers only from loopback proxy, proved via per-process `NINEROUTER_PEER_TOKEN`). It also downgrades h2c upgrades to HTTP/1.1. Preserve all of this when touching request/IP/rate-limit code. Note: bare `next start`/`next dev` never loads this file — only `npm run start` gets the wrapper.
 - Binary/protobuf upstreams (kiro EventStream, cursor protobuf, commandcode NDJSON) are handled inside their executors, not the translator.
 - Security env: `JWT_SECRET`, `INITIAL_PASSWORD` (default `123456`, must override), `API_KEY_SECRET`, `MACHINE_ID_SALT`. Contract in `.env.example`.
 - **A request body must not carry a backtick-quoted `curl`/`wget` command when the upstream sits behind a WAF.** Render serves every public web service behind Cloudflare's managed web application firewall, which inspects the **body** and rejects that pattern — it reads the Markdown inline-code span as command-injection/SSRF (the block page says *"Your request was blocked by this site's web application firewall (WAF)"*). One such line anywhere in a conversation (a skill file, an `AGENTS.md`, a tool result) blocks **every** request in that session, and fixing the source file does not recover the session, because the text is already in the message history. `open-sse/config/wafGuard.js` plus one retry in `open-sse/executors/base.js` handle it, scoped to the hosts in `WAF_PROTECTED_HOSTS`. Documented for users in the README Troubleshooting section.
