@@ -197,6 +197,14 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - `apinex` alias (aliases `apn`), apikey, `https://api.apinex.bond/v1/chat/completions`, Bearer key. Key dari `apinex.bond/keys`. Free models pakai prefix vendor `free/` — pin `free/glm-5.3-flash`, sisanya via passthrough.
 
+### APIMIX.AI (provider, v0.5.75.17)
+
+- `am` alias (aliases `apmix`, `apmix-ai`), apikey, `https://api.apmix.ai/v1/chat/completions`, Bearer key. Key dari `apmix.ai/dashboard/keys`. Models: `stealth/space-bunny-free`, `deepseek/deepseek-v4-flash-free` (+ passthrough). OpenAI shape — upstream 401 tanpa key (endpoint hidup, bukan CF block).
+
+### Atria Dawn (provider, v0.5.75.17)
+
+- `at` alias (aliases `atria`, `atria-dawn`, `atria-asi`), apikey, multi-transport: `openai` → `https://api.atria-asi.ai/v1/chat/completions`, `openai-responses` → `https://api.atria-asi.ai/v1/responses` (kedua endpoint hidup, keduanya key-gated 401). Bearer key dari `api.atria-asi.ai/console`. Model: `Atria-Dawn-Preview` (+ passthrough). Client openai biasa → chat; client openai-responses → /responses langsung tanpa translate.
+
 ### JustDoWork (provider, v0.5.75.17) — WORKING
 
 - **Verified live (2026-09-26)**: chat end-to-end 200, ttft ~9s, DONE 9.3s (IN 7418/OUT 5 tokens). Test koneksi hijau setelah fix `testUtils.js` (registry-driven generic probe).
