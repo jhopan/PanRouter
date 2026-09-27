@@ -7,23 +7,28 @@ const CLINEPASS_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/models";
 // so no Authorization header is sent — adding one would only make the request
 // fail on a header the endpoint ignores.
 const CLINE_RECOMMENDED_MODELS_ENDPOINT = "https://api.cline.bot/api/v1/ai/cline/recommended-models";
-const FETCH_TIMEOUT_MS = 5000;
+const FETCH_TIMEOUT_MS = 15000;
 
 /**
- * Build request headers for Cline's model-list endpoints.
- * Auth shape lives in shared/clineAuth: API keys ride plain Bearer, OAuth
- * access tokens carry the WorkOS `workos:` prefix.
+ * Build request headers for the ClinePass /models endpoint (Cline's upstream API).
+ * - API keys are sent as plain Bearer tokens.
+ * - OAuth access tokens must carry the WorkOS `workos:` prefix (handled by buildClineHeaders).
  */
 function buildModelListHeaders(token, isApiKey) {
-  return buildClineHeaders(token, { Accept: "application/json" }, { isApiKey });
+  if (isApiKey) {
+    return {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+  }
+  return buildClineHeaders(token, { Accept: "application/json" });
 }
 
 /**
- * Internal: fetch the tiered model catalog. Returns the parsed object
- * (`{ recommended, free, clinePass, clineCloud }`) or null on any failure.
- * @returns {Promise<{recommended?: object[], free?: object[], clinePass?: object[], clineCloud?: object[]} | null>}
+ * Internal: fetch the raw model list from Cline's /models endpoint.
+ * Returns the parsed array or null on any failure.
  */
-async function fetchClineCatalog(credentials) {
+async function fetchClineRawModels(credentials) {
   const isApiKey = Boolean(credentials?.apiKey);
   const token = isApiKey ? credentials.apiKey : credentials?.accessToken;
   if (!token) return null;
@@ -34,7 +39,7 @@ async function fetchClineCatalog(credentials) {
   try {
     const headers = buildModelListHeaders(token, isApiKey);
 
-    const response = await fetch(CLINE_RECOMMENDED_MODELS_ENDPOINT, {
+    const response = await fetch(CLINEPASS_MODELS_ENDPOINT, {
       method: "GET",
       headers,
       signal: controller.signal,
@@ -43,7 +48,8 @@ async function fetchClineCatalog(credentials) {
     if (!response.ok) return null;
 
     const json = await response.json();
-    return json && typeof json === "object" ? json : null;
+    const rawList = Array.isArray(json) ? json : json?.data;
+    return Array.isArray(rawList) ? rawList : null;
   } catch {
     return null;
   } finally {
@@ -52,14 +58,23 @@ async function fetchClineCatalog(credentials) {
 }
 
 /**
- * Normalize one catalog group into `{ models: [{ id, name }] }`, or null when
- * the group is missing/empty (caller then falls back to the static registry).
+ * Fetch ClinePass live model catalog from Cline's /models endpoint.
+ * Returns only models with the cline-pass/ prefix.
+ *
+ * @param {object} credentials - Connection credentials ({ accessToken, apiKey })
+ * @returns {Promise<{ models: { id: string, name: string }[] } | null>}
  */
-function toModels(group) {
-  if (!Array.isArray(group)) return null;
-  const models = group
-    .filter((m) => typeof m?.id === "string" && m.id.trim() !== "")
-    .map((m) => ({ id: m.id, name: m.name || m.id }));
+export async function resolveClinepassModels(credentials) {
+  const rawList = await fetchClineRawModels(credentials);
+  if (!rawList) return null;
+
+  const models = rawList
+    .filter((m) => typeof m?.id === "string" && m.id.startsWith("cline-pass/"))
+    .map((m) => ({
+      id: m.id,
+      name: m.name || m.id,
+    }));
+
   return models.length ? { models } : null;
 }
 
@@ -106,10 +121,8 @@ async function fetchClineFreeTierModels() {
  * @returns {Promise<{ models: { id: string, name: string }[] } | null>}
  */
 export async function resolveClineModels(credentials) {
-  const catalog = await fetchClineCatalog(credentials);
-  if (!catalog) return null;
-  return toModels(catalog.free);
-}
+  const rawList = await fetchClineRawModels(credentials);
+  if (!rawList) return null;
 
   const models = rawList
     .filter((m) => typeof m?.id === "string" && m.id.trim() !== "")
