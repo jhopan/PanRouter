@@ -516,6 +516,28 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
     }
   }
 
+  // Registry-driven generic probe: any apikey provider that declares
+  // transport.validateUrl (e.g. tokenharbor, vyceai, justdowork) gets tested
+  // against its own /v1/models endpoint with its own auth scheme — instead of
+  // falling into the switch and reporting "Provider test not supported".
+  // PROVIDERS[id] IS the flattened transport (baseUrl/format/validateUrl/auth).
+  const transport = PROVIDERS[connection.provider];
+  if (transport?.validateUrl && transport?.auth) {
+    try {
+      const headers = { "Content-Type": "application/json" };
+      const scheme = transport.auth.scheme;
+      const value = scheme === "bearer" ? `Bearer ${connection.apiKey}` : connection.apiKey;
+      headers[transport.auth.header] = value;
+      if (transport.format === "claude") headers["anthropic-version"] = "2023-06-01";
+      const res = await fetchWithConnectionProxy(transport.validateUrl, { headers }, effectiveProxy);
+      // 401/403 = bad key; anything else (200/4xx-shape) means the endpoint accepted auth
+      const valid = res.status !== 401 && res.status !== 403;
+      return { valid, error: valid ? null : `Invalid API key (HTTP ${res.status})` };
+    } catch (err) {
+      return { valid: false, error: err.message };
+    }
+  }
+
   try {
     switch (connection.provider) {
       case "cloudflare-ai": {
