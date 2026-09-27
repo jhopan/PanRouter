@@ -1,3 +1,27 @@
+# v0.5.75.17 (2026-09-27)
+
+## Upstream port v0.5.86 → v0.5.91 (12 cherry-picks) + provider baru
+
+- Thinking display: Claude thinking text kembali ke client OpenAI
+  (`reasoning_effort`/`reasoning.summary` → `thinking.display: "summarized"`),
+  redact-thinking filter saat client minta summary, merge anthropic-beta
+  client flags, forward rate-limit headers.
+- Tool-result images di-forward ke OpenAI/Kiro/CommandCode upstream
+  (bukan "[image omitted]"); Kiro tool names di-restore via _toolNameMap.
+- Responses API: output items + usage carried di response.completed.
+- commandcode: replay raw byte chunks (NDJSON lines utuh), image native block.
+- decloak tool names saat toolNameMap miss; spoofed CLI version 2.1.280 (Opus 5.5).
+- Cline: cline-free/* tier gratis di-expose; resolveClinepassModels kembali
+  (filter cline-pass/), catalog merge additive, timeout 15s (cold start ~5.7s).
+- gemini: guard terminal turns + functionCalls tanpa respon.
+- Connection test: generic registry-driven probe (validateUrl + auth scheme)
+  untuk provider tanpa case khusus — fix "invalid" di dashboard.
+- Provider baru: VYCEAI (`vy`), JustDoWork (`jd`, Anthropic-compatible),
+  APIMIX.AI (`am`), Atria Dawn (`at`, multi-transport chat+responses).
+- TokenHarbor: 429 free-allowance diparkir sampai reset eksak (parse timestamp
+  dari body), bukan backoff — Cline-style.
+- Tests: flip it.fails→it untuk 3 bug yang difix port ini; flip sesuai §6.
+
 # v0.5.75.16 (2026-09-24)
 
 ## FreeBuff sync + tool-map v2.2
