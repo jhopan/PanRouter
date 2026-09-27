@@ -1513,6 +1513,7 @@ Thanks to all contributors who helped make PanRouter better!
 
 Built on the shoulders of giants:
 
+- **[decolua/9router](https://github.com/decolua/9router)** — upstream project and original JavaScript routing engine. PanRouter is an independently versioned MIT fork that ports selected upstream fixes while adding its own providers, quota handling, account pools, tests, and release pipeline. Copyright and license notices remain in [LICENSE](LICENSE).
 - **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired this JavaScript port.
 - **[RTK](https://github.com/rtk-ai/rtk)** ![Stars](https://img.shields.io/github/stars/rtk-ai/rtk?style=flat&color=yellow) — Rust token-saver. PanRouter ports its compression pipeline to JS → **−20-40% input tokens** on every request.
 - **[Caveman](https://github.com/JuliusBrussee/caveman)** ![Stars](https://img.shields.io/github/stars/JuliusBrussee/caveman?style=flat&color=yellow) by **[@JuliusBrussee](https://github.com/JuliusBrussee)** — viral _"why use many token when few token do trick"_. PanRouter adapts its prompt → **−65% output tokens**.
