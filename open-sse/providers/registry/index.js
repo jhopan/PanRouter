@@ -78,6 +78,8 @@ import p131 from "./apinex.js";
 import p132 from "./tokenharbor.js";
 import p133 from "./vyceai.js";
 import p134 from "./justdowork.js";
+import p135 from "./apmix.js";
+import p136 from "./atria.js";
 import p70 from "./openrouter.js";
 import p71 from "./perplexity-web.js";
 import p72 from "./perplexity.js";
@@ -269,4 +271,6 @@ export default [
   p132,
   p133,
   p134,
+  p135,
+  p136,
 ];
