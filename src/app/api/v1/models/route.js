@@ -11,7 +11,7 @@ import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
 import { resolveQoderModels, routableQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
-import { resolveClinepassModels, resolveClineModels } from "open-sse/services/clinepassModels.js";
+import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
@@ -79,13 +79,9 @@ const LIVE_MODEL_RESOLVERS = {
     });
     return result?.models?.length ? { models: result.models } : null;
   },
-  cline: async (conn) => {
-    const result = await resolveClineModels({
-      accessToken: conn.accessToken,
-      apiKey: conn.apiKey,
-    });
-    return result?.models?.length ? { models: result.models } : null;
-  },
+  // Never surface Cline's live proxy marketplace here. Only registry-pinned
+  // models are routable/visible; this keeps `cl/` concise and intentional.
+  cline: async () => ({ models: getStaticProviderModels("cline") }),
   "grok-cli": async (conn) => {
     const proxy = await resolveConnectionProxyConfig(conn.providerSpecificData || {});
     const result = await resolveGrokCliModels({

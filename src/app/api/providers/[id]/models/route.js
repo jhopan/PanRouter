@@ -11,7 +11,7 @@ import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
-import { resolveClineModels, resolveClinepassModels } from "open-sse/services/clinepassModels.js";
+import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -294,18 +294,10 @@ const PROVIDER_MODELS_CONFIG = {
   // and swallows failures into null, so these follow the cursor direct pattern
   // (no refreshFn) and only differ in which group they take: cline → free[],
   // clinepass → clinePass[].
+  // Cline's `/models` endpoint exposes its whole proxy marketplace (hundreds
+  // of paid/foreign models). PanRouter deliberately advertises only registry pins.
   cline: {
-    customResolver: async (connection) => {
-      const result = await resolveClineModels({
-        accessToken: connection.accessToken,
-        apiKey: connection.apiKey,
-      });
-      if (result?.models?.length) return { models: result.models };
-      return {
-        models: getStaticProviderModels("cline"),
-        warning: "Cline returned no live models; falling back to static catalog.",
-      };
-    },
+    customResolver: async () => ({ models: getStaticProviderModels("cline") }),
   },
   clinepass: {
     customResolver: async (connection) => {
