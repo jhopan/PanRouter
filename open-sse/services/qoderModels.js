@@ -71,7 +71,7 @@ async function exchangeJobToken(pat, proxyOptions = null, signal = null) {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        "User-Agent": "qodercli/1.0.0",
+        "User-Agent": `qodercli/${QODER_IDE_VERSION}`,
         "Cosy-Version": QODER_IDE_VERSION,
         "Cosy-ClientType": QODER_CLIENT_TYPE,
       },
@@ -110,7 +110,7 @@ async function fetchUserIdForJobToken(jobToken, proxyOptions = null, signal = nu
         headers: {
           Authorization: `Bearer ${jobToken}`,
           Accept: "application/json",
-          "User-Agent": "qodercli/1.0.0",
+          "User-Agent": `qodercli/${QODER_IDE_VERSION}`,
         },
         signal,
       },

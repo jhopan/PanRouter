@@ -69,7 +69,8 @@ export function qoderInferenceBase(credentials) {
 
 // COSY header constants. These are not arbitrary — the upstream signature
 // validation matches them against the values used at signing time.
-export const QODER_IDE_VERSION = "1.0.0";
+// Verified from the installed Windows qodercli (`qoder --version`): 1.1.64.
+export const QODER_IDE_VERSION = "1.1.64";
 export const QODER_CLIENT_TYPE = "5";
 export const QODER_DATA_POLICY = "disagree";
 export const QODER_LOGIN_VERSION = "v2";
