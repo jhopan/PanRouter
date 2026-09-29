@@ -1,3 +1,12 @@
+# v0.5.75.19 (2026-09-29)
+
+## Qoder free model pin + CodeBuddy monthly parking
+
+- Qoder is now intentionally limited to `qd/qfmodel` — **Qwen3.8-Flash (Free)**. Dynamic signed catalog fetches remain internal for `model_config` only and no longer flood dashboard or `/v1/models`.
+- Updated Qoder CLI/COSY fingerprint to the locally verified qodercli `1.1.64`; catalog envelope drift does not create a false 30-second account lock.
+- CodeBuddy Intl error `14018` / `Credits exhausted` now parks at the recurring Monthly `CycleEndTime`, never generic backoff or a one-shot Bonus Pack expiry.
+- Cline `/models` marketplace is no longer exposed; only curated registry pins appear under `cl/`.
+
 # v0.5.75.18 (2026-09-28)
 
 ## Codex quota tracker reset
