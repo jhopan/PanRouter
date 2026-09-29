@@ -151,6 +151,10 @@ export const QUOTA_EXHAUSTED_SIGNALS = [
   "quota will reset",
   "quota exhausted",
   "free limit reached",
+  // Codex 429 can be a bare `The usage limit has been reached` without the
+  // structured `usage_limit_reached` payload. Classify it as a quota refusal
+  // so auth.js reads the live Codex quota tracker reset instead of backoff.
+  "usage limit has been reached",
   // TokenHarbor free-tier rolling window: "You've used this period's free
   // allowance. Your next rolling 7-day period starts on <date> at <hh:mm> UTC."
   "free allowance",

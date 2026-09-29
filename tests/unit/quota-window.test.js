@@ -138,6 +138,10 @@ describe("isQuotaExhaustedError", () => {
     expect(isQuotaExhaustedError("monthly quota exceeded")).toBe(true);
   });
 
+  it("classifies Codex bare usage-limit 429 as quota exhaustion", () => {
+    expect(isQuotaExhaustedError("[429]: The usage limit has been reached")).toBe(true);
+  });
+
   it("does not match plain burst rate limits", () => {
     expect(isQuotaExhaustedError("too many requests")).toBe(false);
     expect(isQuotaExhaustedError("rate limit exceeded")).toBe(false);

@@ -159,6 +159,10 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 - **AgentRouter rejects synthetic `type:"custom"` tool objects** — `chatCore.js` skips `defaultClaudeToolType` for this provider; `default.js` also strips first-party Claude-CLI beta headers for it (see skill 9router-development for the full story).
 - Streaming gate: body MUST carry `stream:true` or the upstream answers `text/plain` non-SSE and PanRouter blocks it (`upstream non-SSE: 200`).
 
+### Codex (quota parking)
+
+- Bare upstream `429` body `[429]: The usage limit has been reached` is **quota exhaustion**, not burst traffic. It enters `QUOTA_EXHAUSTED_SIGNALS`, so `markAccountUnavailable()` probes the live Codex quota tracker and parks `modelLock_<model>` until its `session.resetAt` instead of the generic backoff ladder. Structured `usage_limit_reached` with `resets_at` still wins directly. Do not replace this with a fixed 10-minute cooldown.
+
 ### FreeBuff (native provider — Codebuff free-tier models)
 
 - Provider: `freebuff` — aliases `fb`/`FB`/`freebuff`. baseUrl `https://www.codebuff.com/api/v1/chat/completions` (OpenAI shape). Models: `deepseek/deepseek-v4-flash`, `z-ai/glm-5.3-flash`, `mimo/mimo-v2.5`, `openai/gpt-5.6-luna`, `minimax/minimax-m3` (+ passthrough). Full detail: `docs/plans/2026-09-04-freebuff-provider.md` and skill `9router-development`.
