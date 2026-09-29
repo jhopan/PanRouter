@@ -1,3 +1,11 @@
+# v0.5.75.18 (2026-09-28)
+
+## Codex quota tracker reset
+
+- Bare Codex `429` (`The usage limit has been reached`) now classifies as quota exhaustion rather than a burst limit.
+- Router probes the live Codex quota tracker and parks `modelLock_<model>` until `session.resetAt`; structured `usage_limit_reached` + `resets_at` still takes priority.
+- No fixed 10-minute retry loop against an exhausted Codex account.
+
 # v0.5.75.17 (2026-09-27)
 
 ## Upstream port v0.5.86 → v0.5.91 (12 cherry-picks) + provider baru
