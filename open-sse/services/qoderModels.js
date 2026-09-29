@@ -242,21 +242,30 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null) {
   if (!response.ok) return null;
 
   const body = await response.json().catch(() => null);
-  if (!body || !Array.isArray(body.chat)) return null;
+  // Qoder has shipped both a top-level `{ chat: [] }` body and gateway-wrapped
+  // `{ data: { chat: [] } }` / `{ data: { models: [] } }` variants. The COSY
+  // model config is authoritative, so tolerate envelope drift instead of
+  // declaring every registry alias unknown and locking the account.
+  const entries = Array.isArray(body?.chat) ? body.chat
+    : Array.isArray(body?.data?.chat) ? body.data.chat
+      : Array.isArray(body?.models) ? body.models
+        : Array.isArray(body?.data?.models) ? body.data.models
+          : null;
+  if (!entries) return null;
 
   const models = [];
   const rawConfigs = new Map();
-  for (const entry of body.chat) {
+  for (const entry of entries) {
     if (!entry || typeof entry !== "object") continue;
-    const key = entry.key;
+    const key = entry.key || entry.model_key || entry.modelKey || entry.id || entry.model;
     if (!key) continue;
 
     // Always cache the config — chat needs model_config even for UI-hidden
     // models (enable:false). Upstream still accepts chat for these keys.
-    rawConfigs.set(key, entry);
+    rawConfigs.set(key, { ...entry, key });
     if (entry.enable === false) continue;
 
-    const display = entry.display_name || key;
+    const display = entry.display_name || entry.displayName || entry.name || key;
     const ctx = Number(entry.max_input_tokens) || 131_072;
     models.push({
       id: key,

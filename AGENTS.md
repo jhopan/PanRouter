@@ -183,6 +183,10 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - Provider `codebuddy-intl` (`cbai`) has recurring Monthly and one-shot Bonus Pack rows. Upstream `429` code `14018` / `Credits exhausted` is quota exhaustion: park the model until the tracker’s **Monthly** `CycleEndTime`, not generic backoff and not Bonus Pack expiry. A bonus pack never refills; monthly allowance does.
 
+### Qoder (live model_config)
+
+- `qd/qfmodel` is the canonical Qoder key for **Qwen3.8-Flash**. Every Qoder chat needs its authenticated COSY catalog `model_config`; catalog envelope variants (`chat`, `data.chat`, `models`, `data.models`) are accepted. A catalog miss skips only the current connection/request — **never** persist a 30-second `modelLock`, since it is connectivity/envelope drift, not quota or an invalid model. Do not rename `qfmodel` without a live catalog proving the key changed.
+
 ### Kiro (token import + suspension triage)
 
 - Token sources: Kiro IDE → `~/.aws/sso/cache/kiro-auth-token.json` (auto-imported by `KiroAuthModal`); Kiro CLI → `%LOCALAPPDATA%/Kiro-Cli/data.sqlite3` → `auth_kv["kirocli:social:token"]` (snake_case fields). Grabber: `scripts/kiro-token-grab.mjs` (`--print` pipes the refresh token; CLI first via builtin `node:sqlite`, better-sqlite3 fallback, IDE last).

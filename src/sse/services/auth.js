@@ -322,6 +322,17 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const conn = connections.find(c => c.id === connectionId);
   const backoffLevel = conn?.backoffLevel || 0;
 
+  // A Qoder model config miss means the authenticated COSY catalog could not
+  // be read or changed shape. It is neither account quota nor a bad model key:
+  // exclude this connection for the current request so another account may work,
+  // but never persist a 30-second modelLock that hides the account from later
+  // requests after the catalog recovers.
+  if (resolveProviderId(provider) === "qoder"
+      && /model_config for .+ not yet known/i.test(String(errorText || ""))) {
+    log.warn("AUTH", `${conn?.displayName || conn?.name || connectionId.slice(0, 8)} Qoder catalog unavailable; skip current request only`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
+
   // GitHub premium-request exhaustion is account-wide until the next UTC month.
   const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
   // TokenHarbor free allowance: exact reset timestamp parsed out of the 429 body.
