@@ -19,6 +19,8 @@ describe("quotaWindowFor", () => {
     expect(quotaWindowFor("antigravity").scope).toBe(QUOTA_SCOPES.WEEKLY);
     expect(quotaWindowFor("kiro").scope).toBe(QUOTA_SCOPES.MONTHLY);
     expect(quotaWindowFor("codex").scope).toBe(QUOTA_SCOPES.SESSION);
+    expect(quotaWindowFor("codebuddy-intl").scope).toBe(QUOTA_SCOPES.MONTHLY);
+    expect(quotaWindowFor("codebuddy-intl").usageKey).toBe("Monthly");
   });
 
   it("falls back to the default entry for unknown providers", () => {
@@ -140,6 +142,11 @@ describe("isQuotaExhaustedError", () => {
 
   it("classifies Codex bare usage-limit 429 as quota exhaustion", () => {
     expect(isQuotaExhaustedError("[429]: The usage limit has been reached")).toBe(true);
+  });
+
+  it("classifies CodeBuddy credits-exhausted 14018 as quota exhaustion", () => {
+    const body = '[429]: {"error":{"data":{"code":14018,"msg":"Credits exhausted. Please visit the link below to purchase"}}}';
+    expect(isQuotaExhaustedError(body)).toBe(true);
   });
 
   it("does not match plain burst rate limits", () => {

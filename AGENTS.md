@@ -175,6 +175,10 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 - **Region reality**: Indonesian egress = `accessTier: limited` — `glm-5.3-flash`/`luna` are coerced/blocked (`country_not_allowed`), but **`deepseek-v4-flash` + `mimo-v2.5` serve 200** with 6 quota sessions/day each (reset Pacific midnight = 07:00 WIB). 1 quota session = a 1-hour admission block (all chats inside it share the claim) — session pooling is what keeps usage inside one claim.
 - Old chat payload from a previous model can poison the session — if a request 409s twice in a row, wait for the server-side instance to expire (~1h) or re-login.
 
+### CodeBuddy Intl (monthly quota parking)
+
+- Provider `codebuddy-intl` (`cbai`) has recurring Monthly and one-shot Bonus Pack rows. Upstream `429` code `14018` / `Credits exhausted` is quota exhaustion: park the model until the tracker’s **Monthly** `CycleEndTime`, not generic backoff and not Bonus Pack expiry. A bonus pack never refills; monthly allowance does.
+
 ### Kiro (token import + suspension triage)
 
 - Token sources: Kiro IDE → `~/.aws/sso/cache/kiro-auth-token.json` (auto-imported by `KiroAuthModal`); Kiro CLI → `%LOCALAPPDATA%/Kiro-Cli/data.sqlite3` → `auth_kv["kirocli:social:token"]` (snake_case fields). Grabber: `scripts/kiro-token-grab.mjs` (`--print` pipes the refresh token; CLI first via builtin `node:sqlite`, better-sqlite3 fallback, IDE last).

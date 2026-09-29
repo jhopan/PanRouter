@@ -49,8 +49,10 @@ export const QUOTA_WINDOWS = {
     kimi: { scope: QUOTA_SCOPES.WEEKLY, usageKey: "Weekly" },
     // Refill packs labelled Daily/Weekly/Monthly by cycle length + Bonus Pack N.
     // CycleEndTime is usually a monthly subscription cycle.
-    "codebuddy-cn": { scope: QUOTA_SCOPES.MONTHLY, usageKey: null },
-    "codebuddy-intl": { scope: QUOTA_SCOPES.MONTHLY, usageKey: null },
+    "codebuddy-cn": { scope: QUOTA_SCOPES.MONTHLY, usageKey: "Monthly" },
+    // Credits exhausted must wait for the recurring refill window, never a
+    // one-shot Bonus Pack expiry. `Monthly` maps to CycleEndTime in the tracker.
+    "codebuddy-intl": { scope: QUOTA_SCOPES.MONTHLY, usageKey: "Monthly" },
     // Monthly premium-request quotas (no per-quota resetAt — calendar only).
     github: { scope: QUOTA_SCOPES.MONTHLY, usageKey: null },
     // Billing-cycle reset (subscription_period.ended_at).
@@ -155,6 +157,8 @@ export const QUOTA_EXHAUSTED_SIGNALS = [
   // structured `usage_limit_reached` payload. Classify it as a quota refusal
   // so auth.js reads the live Codex quota tracker reset instead of backoff.
   "usage limit has been reached",
+  // CodeBuddy code 14018: `Credits exhausted. Please visit ...`.
+  "credits exhausted",
   // TokenHarbor free-tier rolling window: "You've used this period's free
   // allowance. Your next rolling 7-day period starts on <date> at <hh:mm> UTC."
   "free allowance",
