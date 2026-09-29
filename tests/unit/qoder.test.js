@@ -42,8 +42,8 @@ describe("QODER_MODEL_MAP", () => {
     expect(QODER_MODEL_MAP.qmodel_latest).toBe("qmodel_latest");
   });
 
-  it("exposes Qoder's latest model in the static provider catalog", () => {
-    expect(PROVIDER_MODELS.qd.some((model) => model.id === "qmodel_latest")).toBe(true);
+  it("exposes only the verified free Qwen3.8-Flash pin in the static provider catalog", () => {
+    expect(PROVIDER_MODELS.qd.map((model) => model.id)).toEqual(["qfmodel"]);
   });
 });
 

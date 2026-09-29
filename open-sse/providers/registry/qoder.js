@@ -25,23 +25,10 @@ export default {
       url: "https://openapi.qoder.sh/api/v2/quota/usage",
     },
   },
+  // Deliberately pin only the verified free model. Qoder's signed live
+  // catalog remains internal for model_config, never a UI/API model source.
   models: [
-    { id: "ultimate", name: "Ultimate" },
-    { id: "auto", name: "Auto" },
-    { id: "performance", name: "Performance" },
-    { id: "efficient", name: "Efficient" },
-    { id: "lite", name: "Lite" },
-    { id: "qmodel_38max", name: "Qwen3.8-Max" },
-    { id: "qmodel_latest", name: "Qwen3.7-Max" },
-    { id: "qmodel", name: "Qwen3.7-Plus" },
     { id: "qfmodel", name: "Qwen3.8-Flash (Free)" },
-    { id: "kmodel_latest", name: "Kimi-K3" },
-    { id: "kmodel", name: "Kimi-K2.8-Preview" },
-    { id: "gmodel", name: "GLM-5.3" },
-    { id: "gfmodel", name: "GLM-5.3-Flash" },
-    { id: "dmodel", name: "DeepSeek-V4-Pro" },
-    { id: "dfmodel", name: "DeepSeek-Flash" },
-    { id: "mmodel", name: "MiniMax-M3" },
   ],
   oauth: {
     openApiBaseUrl: "https://openapi.qoder.sh",

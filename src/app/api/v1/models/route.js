@@ -9,7 +9,6 @@ import { getProviderConnections, getCombos, getCustomModels, getModelAliases } f
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
-import { resolveQoderModels, routableQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveCopilotModels } from "open-sse/services/copilotModels.js";
 import { resolveClinepassModels } from "open-sse/services/clinepassModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
@@ -31,22 +30,9 @@ const LIVE_MODEL_RESOLVERS = {
     }, { log: console });
     return result?.models?.length ? { models: result.models } : null;
   },
-  qoder: async (conn) => {
-    const result = await resolveQoderModels({
-      accessToken: conn.accessToken,
-      // PAT (pt-...) connections keep the token in apiKey; without it the live
-      // catalog silently fails and /v1/models falls back to the static list.
-      apiKey: conn.apiKey,
-      refreshToken: conn.refreshToken,
-      email: conn.email,
-      displayName: conn.displayName,
-      providerSpecificData: conn.providerSpecificData || {}
-    });
-    // Visible + hidden (enable:false) catalog keys — chat routes all of them.
-    const models = routableQoderModels(result);
-    if (!models.length) return null;
-    return { models: models.map((m) => ({ id: m.id, name: m.name })) };
-  },
+  // Keep Qoder's signed model catalog internal for model_config. Only the
+  // curated registry pin is public/routable through `/v1/models`.
+  qoder: async () => ({ models: getStaticProviderModels("qoder") }),
   kimchi: async (conn) => {
     const result = await resolveKimchiModels({
       accessToken: conn.accessToken,

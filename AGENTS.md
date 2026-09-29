@@ -183,9 +183,9 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - Provider `codebuddy-intl` (`cbai`) has recurring Monthly and one-shot Bonus Pack rows. Upstream `429` code `14018` / `Credits exhausted` is quota exhaustion: park the model until the tracker’s **Monthly** `CycleEndTime`, not generic backoff and not Bonus Pack expiry. A bonus pack never refills; monthly allowance does.
 
-### Qoder (live model_config)
+### Qoder (Qwen3.8-Flash Free only)
 
-- Local Windows `qoder --version` verified **1.1.64**; signed catalog/PAT traffic fingerprints `qodercli/1.1.64` + COSY version `1.1.64`. `qd/qfmodel` is the canonical Qoder key for **Qwen3.8-Flash (Free)** (verified by local `qoder --list-models`). Every Qoder chat needs its authenticated COSY catalog `model_config`; catalog envelope variants (`chat`, `data.chat`, `models`, `data.models`) are accepted. A catalog miss skips only the current connection/request — **never** persist a 30-second `modelLock`, since it is connectivity/envelope drift, not quota or an invalid model. Do not rename `qfmodel` without a live catalog proving the key changed.
+- Local Windows `qoder --version` verified **1.1.64**; signed catalog/PAT traffic fingerprints `qodercli/1.1.64` + COSY version `1.1.64`. `qd/qfmodel` is the canonical Qoder key for **Qwen3.8-Flash (Free)** (verified by local `qoder --list-models`). It is the **only visible/routable Qoder registry model**: do not fetch or expose the Qoder live catalog in dashboard or `/v1/models`. The authenticated COSY catalog remains an internal `model_config` source needed by chat. Catalog envelope variants (`chat`, `data.chat`, `models`, `data.models`) are accepted. A catalog miss skips only the current connection/request — **never** persist a 30-second `modelLock`, since it is connectivity/envelope drift, not quota or an invalid model. Do not rename `qfmodel` without a live catalog proving the key changed.
 
 ### Kiro (token import + suspension triage)
 
