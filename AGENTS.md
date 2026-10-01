@@ -179,10 +179,11 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - Never fetch and display Cline `/api/v1/models`: it is a huge proxy marketplace, not our curated catalog. Both dashboard provider models and public `/v1/models` return **registry-pinned Cline models only**. Keep `clinepass` resolver separate; it may fetch its own allowed `cline-pass/` rows.
 
-### CodeBuddy Intl (CLI 2.160.0 + monthly quota parking)
+### CodeBuddy Intl (CLI 2.160.0 + monthly quota parking + auto-ping)
 
 - Installed `codebuddy --version` verified **2.160.0**. Intl chat/OAuth fingerprint uses `IDE/2.160.0 CodeBuddy/2.160.0`; registry models match exact `codebuddy --help` supported model IDs (including `gpt-6-*`, `gemini-3.5-flash`, `kimi-k2.8-preview`). Keep CN registry separate until its own CLI is verified.
 - Provider `codebuddy-intl` (`cbai`) has recurring Monthly and one-shot Bonus Pack rows. Upstream `429` code `14018` / `Credits exhausted` is quota exhaustion: park the model until the tracker’s **Monthly** `CycleEndTime`, not generic backoff and not Bonus Pack expiry. A bonus pack never refills; monthly allowance does.
+- **Auto-ping / Daily check-in**: Toggleable per-connection on dashboard (`codebuddyIntlAutoPing`). Once a day on a randomized daylight slot (08:00–20:00 WIB), sends a single tiny chat using the cheapest model (`fast-model`, 1 token) via the official Intl transport to trigger daily active activity without spamming.
 
 ### Qoder (Qwen3.8-Flash Free only)
 

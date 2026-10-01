@@ -108,6 +108,14 @@ export async function PATCH(request) {
         .catch((error) => console.warn("[AutoPing] settings update failed:", error.message));
     }
 
+    if (Object.prototype.hasOwnProperty.call(body, "codebuddyIntlAutoPing")) {
+      import("@/shared/services/codebuddyAutoPing.js")
+        .then(({ configureCodebuddyAutoPing }) => {
+          configureCodebuddyAutoPing(settings);
+        })
+        .catch((error) => console.warn("[CB_PING] settings update failed:", error.message));
+    }
+
     const { password, oidcClientSecret, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });

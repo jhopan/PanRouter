@@ -40,7 +40,9 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     ? "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota."
     : autoPing?.provider === "freebuff"
       ? "Daily streak: once a day, sends one tiny chat on the cheapest model if the account has not been used. Turn off if you plan to use it yourself."
-      : "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.";
+      : autoPing?.provider === "codebuddy-intl"
+        ? "Auto-ping (Check-in harian): Sekali sehari mengirim chat kecil dengan model termurah (fast-model) pada jam acak untuk memicu aktivitas harian."
+        : "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.";
 
   let maskedProxyUrl = "";
   if (boundProxyPool?.proxyUrl || connection.providerSpecificData?.connectionProxyUrl) {
@@ -347,7 +349,7 @@ useEffect(() => {
                 onClick={() => autoPing.onToggle(!autoPing.on)}
                 className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${autoPing.on ? "text-primary" : "text-text-muted hover:text-primary"}`}
               >
-                <span className="material-symbols-outlined text-[18px]">{autoPing?.provider === "freebuff" ? "local_fire_department" : "bolt"}</span>
+                <span className="material-symbols-outlined text-[18px]">{autoPing?.provider === "freebuff" ? "local_fire_department" : autoPing?.provider === "codebuddy-intl" ? "schedule" : "bolt"}</span>
                 <span className="text-[10px] leading-tight">{autoPing?.provider === "freebuff" ? "Streak" : "Auto-ping"}</span>
               </button>
             </Tooltip>

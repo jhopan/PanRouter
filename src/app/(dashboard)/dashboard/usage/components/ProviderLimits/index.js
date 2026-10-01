@@ -58,11 +58,13 @@ const KIRO_METHOD_LABELS = {
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
+  "codebuddy-intl": "codebuddyIntlAutoPing",
 };
 
 const AUTO_PING_TOOLTIPS = {
   claude: "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.",
   codex: "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota.",
+  "codebuddy-intl": "Auto-ping (Check-in harian): Sekali sehari mengirim chat kecil dengan model termurah (fast-model) pada jam acak untuk memicu aktivitas harian.",
 };
 
 function kiroMethodLabel(conn) {
@@ -1179,7 +1181,7 @@ export default function ProviderLimits() {
                         </Tooltip>
                       </>
                     )}
-                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && conn.authType === "oauth" && (
+                    {AUTO_PING_SETTINGS_KEYS[conn.provider] && (conn.authType === "oauth" || conn.provider === "codebuddy-intl") && (
                       <Tooltip text={AUTO_PING_TOOLTIPS[conn.provider]}>
                         <button
                           type="button"
