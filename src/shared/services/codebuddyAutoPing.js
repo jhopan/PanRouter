@@ -114,6 +114,12 @@ async function runPingForConnection(conn, proxyOptions) {
   return { skipped: false, model };
 }
 
+/** Minutes-of-day in WIB (UTC+7) for a given timestamp. */
+function wibMinuteOfDay(nowMs = Date.now()) {
+  const wib = new Date(nowMs + 7 * 3600 * 1000); // shift to UTC+7
+  return wib.getUTCHours() * 60 + wib.getUTCMinutes();
+}
+
 async function processConnections(now = new Date()) {
   const settings = await getSettings();
   const cfg = settings?.codebuddyIntlAutoPing || {};
@@ -126,7 +132,7 @@ async function processConnections(now = new Date()) {
   if (enabledIds.length === 0) return;
 
   const dKey = dailySlotKey(now.getTime());
-  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  const minutesNow = wibMinuteOfDay(now.getTime()); // WIB, not UTC
   const startMin = (Number(cfg.windowStartHour) || C.windowStartHour) * 60;
   const endMin = (Number(cfg.windowEndHour) || C.windowEndHour) * 60;
 
