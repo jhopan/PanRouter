@@ -5,7 +5,9 @@
   
   **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
   
-  **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
+  **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 20+ AI Providers & 100+ Models.**
+  
+  *Maintained by [jhopanstore](https://github.com/jhopan)*
   
   [![Release](https://img.shields.io/github/v/release/jhopan/PanRouter?logo=github)](https://github.com/jhopan/PanRouter/releases/latest)
   [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -79,7 +81,7 @@ panrouter
 **Or install a specific version** (e.g. `v0.5.59.1`):
 
 ```bash
-npm install -g https://github.com/jhopan/PanRouter/releases/download/v0.5.75.4/panrouter.tgz
+npm install -g https://github.com/jhopan/PanRouter/releases/latest/download/panrouter.tgz
 panrouter
 ```
 
@@ -486,7 +488,7 @@ PanRouter works seamlessly with all major AI coding tools:
       </td>
     </tr>
   </table>
-  <p><i>...and 30+ more providers including Nebius, Chutes, Hyperbolic, **Agnes AI**, **FreeModel.dev**, **OrcaRouter** (Responses), **APInex**, **TokenHarbor**, and custom OpenAI/Anthropic compatible endpoints</i></p>
+  <p><i>...and 30+ more providers including Nebius, Chutes, Hyperbolic, **Agnes AI**, **FreeModel.dev**, **OrcaRouter** (Responses), **APInex**, **TokenHarbor**, **VYCEAI**, **APIMIX.AI**, **Atria Dawn**, **JustDoWork**, and custom OpenAI/Anthropic compatible endpoints</i></p>
 </div>
 
 ### 🏠 Self-hosted Providers
@@ -1495,17 +1497,18 @@ Authorization: Bearer your-api-key
 
 ## 👥 Contributors
 
-Thanks to all contributors who helped make PanRouter better!
-
+Maintained and developed by **[jhopanstore](https://github.com/jhopan)**.
 
 ---
 
 ## 📊 Star Chart
 
 
-## 🔀 Forks
+## 🔀 Related Projects
 
-**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — A full-featured TypeScript fork of PanRouter. Adds 36+ providers, 4-tier auto-fallback, multi-modal APIs (images, embeddings, audio, TTS), circuit breaker, semantic cache, LLM evaluations, and a polished dashboard. 368+ unit tests. Available via npm and Docker.
+**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — A full-featured TypeScript router with similar goals. Adds 36+ providers, multi-modal APIs (images, embeddings, audio, TTS), circuit breaker, and semantic cache.
+
+**[decolua/9router](https://github.com/decolua/9router)** — The upstream reference project that inspired PanRouter's engine architecture.
 
 ---
 
@@ -1513,7 +1516,7 @@ Thanks to all contributors who helped make PanRouter better!
 
 Built on the shoulders of giants:
 
-- **[decolua/9router](https://github.com/decolua/9router)** — upstream project and original JavaScript routing engine. PanRouter is an independently versioned MIT fork that ports selected upstream fixes while adding its own providers, quota handling, account pools, tests, and release pipeline. Copyright and license notices remain in [LICENSE](LICENSE).
+- **[decolua/9router](https://github.com/decolua/9router)** — reference project whose engine architecture, translator pipeline, and provider registry conventions inspired PanRouter. PanRouter is an independent standalone project (not a fork) that borrows patterns and selectively ports fixes while adding its own providers, quota handling, account pools, auto-ping schedulers, and release pipeline.
 - **[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)** — original Go implementation that inspired this JavaScript port.
 - **[RTK](https://github.com/rtk-ai/rtk)** ![Stars](https://img.shields.io/github/stars/rtk-ai/rtk?style=flat&color=yellow) — Rust token-saver. PanRouter ports its compression pipeline to JS → **−20-40% input tokens** on every request.
 - **[Caveman](https://github.com/JuliusBrussee/caveman)** ![Stars](https://img.shields.io/github/stars/JuliusBrussee/caveman?style=flat&color=yellow) by **[@JuliusBrussee](https://github.com/JuliusBrussee)** — viral _"why use many token when few token do trick"_. PanRouter adapts its prompt → **−65% output tokens**.
@@ -1530,5 +1533,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-  <sub>Built with ❤️ for developers who code 24/7</sub>
+  <sub>Built with ❤️ for developers who code 24/7 &nbsp;•&nbsp; Maintained by <a href="https://github.com/jhopan">jhopanstore</a></sub>
 </div>
