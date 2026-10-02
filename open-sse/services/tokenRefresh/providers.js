@@ -56,13 +56,11 @@ const REFRESH_PROFILES = {
     dedupKey: "kimi",
     extraHeaders: (creds) => buildKimiHeaders(creds?.providerSpecificData?.deviceId),
   },
-  qoder: {
-    // refreshUrl lives under registry oauth block, not top-level transport.
-    // resolveRefreshUrl falls back here so token refresh is not skipped silently.
-    url: () => PROVIDERS["qoder"]?.oauth?.refreshUrl,
-    bodyFormat: "json",
-    dedupKey: "qoder",
-  },
+  // qoder: omitted intentionally.
+  // Qoder dt-... tokens live ~30 days and the upstream refresh endpoint returns
+  // 403 for our device-token flow. Token refresh is a no-op — users re-login
+  // when expired. Keeping qoder out of REFRESH_PROFILES suppresses the warning
+  // without attempting a call that always fails.
 };
 
 function resolveRefreshUrl(provider, config, profile) {
@@ -89,7 +87,17 @@ function buildRefreshBody(profile, config, refreshToken) {
   return { format: "form", body: new URLSearchParams(payload) };
 }
 
+// Providers whose upstream refresh endpoint is unavailable for our auth flow.
+// refreshAccessToken returns null silently for these — no warning logged.
+const NO_REFRESH_PROVIDERS = new Set([
+  // Qoder dt-... tokens live ~30 days; the refresh endpoint returns 403 for
+  // our device-token flow. Users re-login when expired.
+  "qoder",
+]);
+
 export async function refreshAccessToken(provider, refreshToken, credentials, log) {
+  if (NO_REFRESH_PROVIDERS.has(provider)) return null;
+
   const config = PROVIDERS[provider];
   const profile = REFRESH_PROFILES[provider] || {};
   const url = resolveRefreshUrl(provider, config, profile);
