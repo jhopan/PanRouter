@@ -144,7 +144,7 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 - **Always make commits through the `git-commit` skill** (`skill_view(name='git-commit')`) — do not hand-roll the message. It dictates the analysis step (read the actual diff, not the intent), Conventional Commits formatting, the type/scope table, and the git safety protocol. Every commit in this repo follows Conventional Commits (`fix(translator): …`); the skill is how that stays true.
 - Convention follows from the above: `<type>[scope]: <description>`, imperative mood, description under 72 chars, one logical change per commit, body explains *why*. Never commit secrets (`.env`, credential files) and never commit build artifacts (`*.tgz` is gitignored for this reason — CI builds the release package).
 - Before a risky change: make sure working tree is clean so a broken edit can be rolled back with `git checkout .`.
-- Push to **our** repo `jhopan/PanRouter` — the primary project. Never push to upstream `decolua/9router`; it is a read-only reference (see Project identity above).
+- Push to **our** repo `jhopan/PanRouter` (standalone, bukan fork) — the primary project. Never push to upstream `decolua/9router`; it is a read-only reference (see Project identity above).
 
 ### Remote servers (mandatory)
 
