@@ -1,0 +1,504 @@
+import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
+import { isQuotaExhaustedError, resolveQuotaResetAt } from "open-sse/services/quotaWindow.js";
+import { quotaWindowFor } from "open-sse/config/quotaWindows.js";
+import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
+import { getAntigravityQuotaCache } from "./antigravityQuota.js";
+import * as log from "../utils/logger.js";
+
+// Mutex to prevent race conditions during account selection
+let selectionMutex = Promise.resolve();
+
+const GITHUB_MONTHLY_USAGE_LIMIT = "you've reached your additional usage limit for your plan";
+
+// TokenHarbor free-allowance 429: the body states the exact reset
+// ("Your next rolling 7-day period starts on 2 Oct 2026 at 06:22 UTC").
+// Extract it so the modelLock parks until the REAL boundary, not a guess.
+const TH_RESET_RE = /(?:starts? on|next .{0,24}period starts? on)\s+(\d{1,2}\s+\w{3}\s+\d{4})\s+at\s+(\d{1,2}):(\d{2})\s*UTC/i;
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+
+/** Exported for tests. */
+export function tokenharborResetMs(status, errorText, provider) {
+  if (resolveProviderId(provider) !== "tokenharbor" || Number(status) !== 429) return null;
+  const text = String(errorText || "");
+  if (!text.toLowerCase().includes("free allowance")) return null;
+  const m = text.match(TH_RESET_RE);
+  if (!m) return null;
+  // m[1]="2 Oct 2026", m[2]=hour, m[3]=minute (group 0 is the whole match)
+  const dateParts = m[1].match(/^(\d{1,2})\s+(\w{3})\s+(\d{4})$/);
+  if (!dateParts) return null;
+  const day = parseInt(dateParts[1], 10);
+  const mon = MONTHS[dateParts[2].toLowerCase()];
+  const year = parseInt(dateParts[3], 10);
+  if (!Number.isFinite(day) || mon === undefined || !Number.isFinite(year)) return null;
+  const ms = Date.UTC(year, mon, day, parseInt(m[2], 10), parseInt(m[3], 10), 0);
+  return ms > Date.now() ? ms : null;
+}
+
+function githubMonthlyResetMs(status, errorText, provider) {
+  if (resolveProviderId(provider) !== "github" || Number(status) !== 402) return null;
+  if (!String(errorText || "").toLowerCase().includes(GITHUB_MONTHLY_USAGE_LIMIT)) return null;
+  const now = new Date();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+}
+
+/**
+ * Get provider credentials from localDb
+ * Filters out unavailable accounts and returns the selected account based on strategy
+ * @param {string} provider - Provider name
+ * @param {Set<string>|string|null} excludeConnectionIds - Connection ID(s) to exclude (for retry with next account)
+ * @param {string|null} model - Model name for per-model rate limit filtering
+ */
+export async function getProviderCredentials(provider, excludeConnectionIds = null, model = null, options = {}) {
+  // Normalize to Set for consistent handling
+  const excludeSet = excludeConnectionIds instanceof Set
+    ? excludeConnectionIds
+    : (excludeConnectionIds ? new Set([excludeConnectionIds]) : new Set());
+  const preferredConnectionId = options?.preferredConnectionId || null;
+  // Acquire mutex to prevent race conditions
+  const currentMutex = selectionMutex;
+  let resolveMutex;
+  selectionMutex = new Promise(resolve => { resolveMutex = resolve; });
+
+  try {
+    await currentMutex;
+
+    // Resolve alias to provider ID (e.g., "kc" -> "kilocode")
+    const providerId = resolveProviderId(provider);
+
+    // Inject a virtual connection for no-auth free providers (with optional proxy pool from settings).
+    // Manual accounts: if the operator added explicit connections for this free
+    // provider, iterate THOSE first (drain, per-connection identity → per-connection
+    // stable upstream session and per-connection proxy). The virtual "Public"
+    // identity is the fallback when no manual connection exists or all are
+    // excluded by fallback. This is what makes multi-account free tier possible
+    // without any real credential — each connection is just an identity bucket.
+    if (FREE_PROVIDERS[providerId]?.noAuth) {
+      const manualConnections = await getProviderConnections({ provider: providerId, isActive: true });
+      const usable = manualConnections.filter(c => !excludeSet.has(c.id));
+      if (usable.length > 0) {
+        const settings = await getSettings();
+        const override = (settings.providerStrategies || {})[providerId] || {};
+        const strategy = override.rotateStrategy || "none";
+        let pickedId = override.proxyPoolId || null;
+        if (strategy !== "none") {
+          const allPools = await getProxyPools({ isActive: true });
+          const poolIds = allPools.filter(p => p.proxyUrl).map(p => p.id);
+          pickedId = pickProxyPoolId(poolIds, strategy, providerId);
+        }
+        const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
+        const conn = usable[0]; // drain: first active manual account
+        return {
+          id: conn.id,
+          connectionName: conn.name || "Manual account",
+          isActive: true,
+          accessToken: "public",
+          providerSpecificData: {
+            ...(conn.providerSpecificData || {}),
+            connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
+            connectionProxyUrl: resolvedProxy.connectionProxyUrl,
+            connectionNoProxy: resolvedProxy.connectionNoProxy,
+            connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
+            vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+          },
+        };
+      }
+      const settings = await getSettings();
+      const override = (settings.providerStrategies || {})[providerId] || {};
+      const strategy = override.rotateStrategy || "none";
+      let pickedId = override.proxyPoolId || null;
+      if (strategy !== "none") {
+        const allPools = await getProxyPools({ isActive: true });
+        const poolIds = allPools.filter(p => p.proxyUrl).map(p => p.id);
+        pickedId = pickProxyPoolId(poolIds, strategy, providerId);
+      }
+      const resolvedProxy = await resolveConnectionProxyConfig({ proxyPoolId: pickedId || "" });
+      return {
+        id: "noauth",
+        connectionName: "Public",
+        isActive: true,
+        accessToken: "public",
+        providerSpecificData: {
+          connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
+          connectionProxyUrl: resolvedProxy.connectionProxyUrl,
+          connectionNoProxy: resolvedProxy.connectionNoProxy,
+          connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
+          vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+        },
+      };
+    }
+
+    const connections = await getProviderConnections({ provider: providerId, isActive: true });
+    log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
+
+    if (connections.length === 0) {
+      log.warn("AUTH", `No credentials for ${provider}`);
+      return null;
+    }
+
+    // Antigravity quota cache is lazy: only populated after that account returns 409/429.
+    const isAntigravity = providerId === "antigravity";
+    const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
+
+    // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
+    const pinSkipped = [];
+    const availableConnections = connections.filter(c => {
+      if (excludeSet.has(c.id)) return false;
+      if (isModelLockActive(c, model)) return false;
+      // FreeBuff pinned model (MODEL_LOCKS parity): a connection pinned to a
+      // specific model only serves that model. Prevents cross-model fallback
+      // from ever forcing a model switch on a live upstream instance (409
+      // model-bound churn = the farm-pattern that got two accounts swept).
+      if (providerId === "freebuff" && model) {
+        const pinned = c.providerSpecificData?.pinnedModel;
+        if (pinned && model !== pinned) {
+          log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | pinned to ${pinned}, skip (requested ${model})`);
+          pinSkipped.push({ id: c.id?.slice(0, 8), pinned });
+          return false;
+        }
+      }
+      // Antigravity: skip if live quota exhausted for this model or its weekly bucket
+      if (isAntigravity && model && antigravityQuotaCache) {
+        const cache = antigravityQuotaCache.get(c.id);
+        if (cache) {
+          const account = c.id?.slice(0, 8) || "unknown";
+          const now = Date.now();
+          // 1. Per-model key (fine-grained, from per-model quota API)
+          const perModel = cache[model];
+          if (perModel && perModel.remainingPercentage <= 0 && perModel.resetAt && new Date(perModel.resetAt).getTime() > now) {
+            log.info("AG_QUOTA", `${account} | CACHE_BLOCK ${model} — skip upstream until ${perModel.resetAt}`);
+            return false;
+          }
+          // 2. Weekly bucket (gemini_weekly / claude_gpt_weekly)
+          const bucketKey = /^gemini/i.test(model) ? "gemini_weekly"
+            : /^claude|^gpt/i.test(model) ? "claude_gpt_weekly"
+            : null;
+          if (bucketKey) {
+            const bucket = cache[bucketKey];
+            if (bucket && bucket.remainingPercentage <= 0 && bucket.resetAt && new Date(bucket.resetAt).getTime() > now) {
+              log.info("AG_QUOTA", `${account} | BUCKET_BLOCK ${model} (${bucketKey}) — skip upstream until ${bucket.resetAt}`);
+              return false;
+            }
+          }
+        }
+      }
+      return true;
+    });
+
+    log.debug("AUTH", `${provider} | available: ${availableConnections.length}/${connections.length}`);
+    connections.forEach(c => {
+      const excluded = excludeSet.has(c.id);
+      const locked = isModelLockActive(c, model);
+      if (excluded || locked) {
+        const lockUntil = getEarliestModelLockUntil(c);
+        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | ${excluded ? "excluded" : ""} ${locked ? `modelLocked(${model}) until ${lockUntil}` : ""}`);
+      }
+    });
+
+    if (availableConnections.length === 0) {
+      // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing.
+      const lockedConns = connections.filter(c => isModelLockActive(c, model));
+      const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
+      if (isAntigravity && model && antigravityQuotaCache) {
+        connections.forEach((c) => {
+          const resetAt = antigravityQuotaCache.get(c.id)?.[model]?.resetAt;
+          if (resetAt && new Date(resetAt).getTime() > Date.now()) expiries.push(resetAt);
+        });
+      }
+      const earliest = expiries.sort()[0] || null;
+      if (earliest) {
+        const earliestConn = lockedConns[0];
+        log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
+        return {
+          allRateLimited: true,
+          retryAfter: earliest,
+          retryAfterHuman: formatRetryAfter(earliest),
+          lastError: earliestConn?.lastError || null,
+          lastErrorCode: earliestConn?.errorCode || null
+        };
+      }
+      if (pinSkipped.length > 0 && pinSkipped.length === connections.length) {
+        const pinList = pinSkipped.map((p) => `${p.id}→${p.pinned}`).join(", ");
+        const msg = `All freebuff accounts are pinned to other models (${pinList}); nothing serves ${model}. Unpin one or add an account pinned to ${model}.`;
+        log.warn("AUTH", `${provider} | ${msg}`);
+        return { __authError: msg };
+      }
+      log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable${pinSkipped.length ? ` (${pinSkipped.length} skipped by model pin)` : ""}`);
+      return null;
+    }
+
+    const settings = await getSettings();
+    // Per-provider strategy overrides global setting
+    const providerOverride = (settings.providerStrategies || {})[providerId] || {};
+    const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
+
+    let connection;
+    // Pin to preferred connection if specified and available
+    if (preferredConnectionId) {
+      connection = availableConnections.find((c) => c.id === preferredConnectionId);
+      if (connection) {
+        log.info("AUTH", `${provider} | pinned to ${connection.id?.slice(0, 8)} (${connection.name || connection.email || "unnamed"})`);
+      }
+    }
+    if (connection) {
+      // skip strategy
+    } else if (strategy === "round-robin") {
+      const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
+
+      // Sort by lastUsed (most recent first) to find current candidate
+      const byRecency = [...availableConnections].sort((a, b) => {
+        if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
+        if (!a.lastUsedAt) return 1;
+        if (!b.lastUsedAt) return -1;
+        return new Date(b.lastUsedAt) - new Date(a.lastUsedAt);
+      });
+
+      const current = byRecency[0];
+      const currentCount = current?.consecutiveUseCount || 0;
+
+      if (current && current.lastUsedAt && currentCount < stickyLimit) {
+        // Stay with current account
+        connection = current;
+        // Update lastUsedAt and increment count (await to ensure persistence)
+        await updateProviderConnection(connection.id, {
+          lastUsedAt: new Date().toISOString(),
+          consecutiveUseCount: (connection.consecutiveUseCount || 0) + 1
+        });
+      } else {
+        // Pick the least recently used (excluding current if possible)
+        const sortedByOldest = [...availableConnections].sort((a, b) => {
+          if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
+          if (!a.lastUsedAt) return -1;
+          if (!b.lastUsedAt) return 1;
+          return new Date(a.lastUsedAt) - new Date(b.lastUsedAt);
+        });
+
+        connection = sortedByOldest[0];
+
+        // Update lastUsedAt and reset count to 1 (await to ensure persistence)
+        await updateProviderConnection(connection.id, {
+          lastUsedAt: new Date().toISOString(),
+          consecutiveUseCount: 1
+        });
+      }
+    } else {
+      // Default: fill-first (already sorted by priority in getProviderConnections)
+      connection = availableConnections[0];
+    }
+
+    const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
+
+    return {
+      authType: connection.authType,
+      apiKey: connection.apiKey,
+      accessToken: connection.accessToken,
+      refreshToken: connection.refreshToken,
+      idToken: connection.idToken,
+      expiresAt: connection.expiresAt,
+      expiresIn: connection.expiresIn,
+      lastRefreshAt: connection.lastRefreshAt,
+      projectId: connection.projectId,
+      connectionName: connection.displayName || connection.name || connection.email || connection.id,
+      copilotToken: connection.providerSpecificData?.copilotToken,
+      providerSpecificData: {
+        ...(connection.providerSpecificData || {}),
+        connectionProxyEnabled: resolvedProxy.connectionProxyEnabled,
+        connectionProxyUrl: resolvedProxy.connectionProxyUrl,
+        connectionNoProxy: resolvedProxy.connectionNoProxy,
+        connectionProxyPoolId: resolvedProxy.proxyPoolId || null,
+        vercelRelayUrl: resolvedProxy.vercelRelayUrl || "",
+      },
+      connectionId: connection.id,
+      // Include current status for optimization check
+      testStatus: connection.testStatus,
+      lastError: connection.lastError,
+      // Pass full connection for clearAccountError to read modelLock_* keys
+      _connection: connection
+    };
+  } finally {
+    if (resolveMutex) resolveMutex();
+  }
+}
+
+/**
+ * Mark account+model as unavailable — locks modelLock_${model} in DB.
+ * All errors (429, 401, 5xx, etc.) lock per model, not per account.
+ * @param {string} connectionId
+ * @param {number} status - HTTP status code from upstream
+ * @param {string} errorText
+ * @param {string|null} provider
+ * @param {string|null} model - The specific model that triggered the error
+ * @returns {{ shouldFallback: boolean, cooldownMs: number }}
+ */
+export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null) {
+  if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
+  const connections = await getProviderConnections({ provider });
+  const conn = connections.find(c => c.id === connectionId);
+  const backoffLevel = conn?.backoffLevel || 0;
+
+  // A Qoder model config miss means the authenticated COSY catalog could not
+  // be read or changed shape. It is neither account quota nor a bad model key:
+  // exclude this connection for the current request so another account may work,
+  // but never persist a 30-second modelLock that hides the account from later
+  // requests after the catalog recovers.
+  if (resolveProviderId(provider) === "qoder"
+      && /model_config for .+ not yet known/i.test(String(errorText || ""))) {
+    log.warn("AUTH", `${conn?.displayName || conn?.name || connectionId.slice(0, 8)} Qoder catalog unavailable; skip current request only`);
+    return { shouldFallback: true, cooldownMs: 0 };
+  }
+
+  // GitHub premium-request exhaustion is account-wide until the next UTC month.
+  const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
+  // TokenHarbor free allowance: exact reset timestamp parsed out of the 429 body.
+  const thResetAtMs = tokenharborResetMs(status, errorText, provider);
+
+  // Free-tier quota refusal (daily/weekly/monthly/session)? Decided up front
+  // because it changes how a provider-supplied timestamp is bounded below.
+  const quotaExhausted = isQuotaExhaustedError(errorText) || !!thResetAtMs;
+
+  // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
+  let shouldFallback, cooldownMs, newBackoffLevel;
+  const preciseResetAtMs = githubResetAtMs || thResetAtMs;
+  if (preciseResetAtMs) {
+    shouldFallback = true;
+    // Both are QUOTA resets (github monthly, tokenharbor weekly) — cap at the
+    // provider's quota ceiling, never the burst rate-limit ceiling (same
+    // reasoning as the resetsAtMs branch below).
+    cooldownMs = Math.min(preciseResetAtMs - Date.now(), quotaWindowFor(provider).maxCooldownMs);
+    newBackoffLevel = 0;
+  } else if (resetsAtMs && resetsAtMs > Date.now()) {
+    shouldFallback = true;
+    // Burst rate limits are capped at MAX_RATE_LIMIT_COOLDOWN_MS, but a QUOTA
+    // reset must not be: truncating a weekly/monthly reset to 30 minutes made the
+    // router re-select an account that was empty for days. Quota-class errors are
+    // bounded by the provider's own quota ceiling instead (antigravity keeps its
+    // exact per-model resetAt for the same reason).
+    const isQuotaClass = quotaExhausted || resolveProviderId(provider) === "antigravity";
+    const ceiling = isQuotaClass
+      ? quotaWindowFor(provider).maxCooldownMs
+      : MAX_RATE_LIMIT_COOLDOWN_MS;
+    cooldownMs = Math.min(resetsAtMs - Date.now(), ceiling);
+    newBackoffLevel = 0;
+  } else {
+    ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel, provider));
+  }
+  if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
+
+  // No provider-supplied reset: resolve the window ourselves (usage API first,
+  // calendar fallback) — see open-sse/services/quotaWindow.js.
+  let quotaResetSource = null;
+  if (quotaExhausted && !resetsAtMs) {
+    const resolved = await resolveQuotaResetAt({
+      provider,
+      connection: conn,
+      now: Date.now(),
+    });
+    cooldownMs = resolved.cooldownMs;
+    quotaResetSource = resolved.source;
+  }
+
+  const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
+  const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
+
+  await updateProviderConnection(connectionId, {
+    ...lockUpdate,
+    testStatus: "unavailable",
+    lastError: quotaExhausted
+      ? `Quota exhausted — resets ${new Date(Date.now() + cooldownMs).toISOString()}`
+      : reason,
+    errorCode: status,
+    lastErrorAt: new Date().toISOString(),
+    ...(quotaExhausted && { quotaExhaustedUntil: new Date(Date.now() + cooldownMs).toISOString() }),
+    backoffLevel: newBackoffLevel ?? backoffLevel
+  });
+
+  const lockKey = Object.keys(lockUpdate)[0];
+  const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
+  log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
+
+  if (provider && status && reason) {
+    console.error(`❌ ${provider} [${status}]: ${reason}`);
+  }
+
+  return { shouldFallback: true, cooldownMs };
+}
+
+/**
+ * Clear account error status on successful request.
+ * - Clears modelLock_${model} (the model that just succeeded)
+ * - Lazy-cleans any other expired modelLock_* keys
+ * - Resets error state only if no active locks remain
+ * @param {string} connectionId
+ * @param {object} currentConnection - credentials object (has _connection) or raw connection
+ * @param {string|null} model - model that succeeded
+ */
+export async function clearAccountError(connectionId, currentConnection, model = null) {
+  if (!connectionId || connectionId === "noauth") return;
+  const conn = currentConnection._connection || currentConnection;
+  const now = Date.now();
+  const allLockKeys = Object.keys(conn).filter(k => k.startsWith("modelLock_"));
+
+  if (!conn.testStatus && !conn.lastError && allLockKeys.length === 0) return;
+
+  // Keys to clear: current model's lock + all expired locks
+  const keysToClear = allLockKeys.filter(k => {
+    if (model && k === `modelLock_${model}`) return true; // succeeded model
+    if (model && k === "modelLock___all") return true;    // account-level lock
+    const expiry = conn[k];
+    return expiry && new Date(expiry).getTime() <= now;   // expired
+  });
+
+  if (keysToClear.length === 0 && conn.testStatus !== "unavailable" && !conn.lastError) return;
+
+  // Check if any active locks remain after clearing
+  const remainingActiveLocks = allLockKeys.filter(k => {
+    if (keysToClear.includes(k)) return false;
+    const expiry = conn[k];
+    return expiry && new Date(expiry).getTime() > now;
+  });
+
+  const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
+
+  // Only reset error state if no active locks remain
+  if (remainingActiveLocks.length === 0) {
+    Object.assign(clearObj, {
+      testStatus: "active",
+      lastError: null,
+      errorCode: null,
+      lastErrorAt: null,
+      quotaExhaustedUntil: null,
+      backoffLevel: 0
+    });
+  }
+
+  await updateProviderConnection(connectionId, clearObj);
+}
+
+/**
+ * Extract API key from request headers
+ */
+export function extractApiKey(request) {
+  // Check Authorization header first
+  const authHeader = request.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+
+  // Check Anthropic x-api-key header
+  const xApiKey = request.headers.get("x-api-key");
+  if (xApiKey) {
+    return xApiKey;
+  }
+
+  return null;
+}
+
+/**
+ * Validate API key (optional - for local use can skip)
+ */
+export async function isValidApiKey(apiKey) {
+  if (!apiKey) return false;
+  return await validateApiKey(apiKey);
+}

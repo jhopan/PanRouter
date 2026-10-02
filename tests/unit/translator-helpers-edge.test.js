@@ -1,0 +1,68 @@
+// Locks edge cases flagged in docs 11 §1/§4 that were only covered indirectly.
+import { describe, it, expect } from "vitest";
+import { normalizeClaudePassthrough } from "../../open-sse/translator/formats/claude.js";
+import { parseDataUri, encodeDataUri } from "../../open-sse/translator/concerns/image.js";
+
+describe("normalizeClaudePassthrough — haiku adaptive thinking (docs 11 §1)", () => {
+  it("downgrades adaptive thinking to enabled+budget for haiku models", () => {
+    const out = normalizeClaudePassthrough({ thinking: { type: "adaptive" } }, "claude-haiku-4-5");
+    expect(out.thinking).toEqual({ type: "enabled", budget_tokens: 10000 });
+  });
+
+  it("keeps adaptive thinking for sonnet/opus", () => {
+    const out = normalizeClaudePassthrough({ thinking: { type: "adaptive" } }, "claude-sonnet-4-6");
+    expect(out.thinking).toEqual({ type: "adaptive" });
+  });
+
+  it("folds mid-conversation system messages into the neighbouring turn (never hoists)", () => {
+    // open-sse/translator/formats/claude.js step 4 folds in place on purpose:
+    // "Hoisting them into body.system would insert volatile content (token
+    // counters, reminders) ahead of the whole conversation and invalidate the
+    // prefix cache on every request. Folding in place keeps the cached prefix
+    // stable." The assertions below lock that contract: nothing keeps role
+    // "system", the text survives, and body.system is left alone.
+    const out = normalizeClaudePassthrough({
+      messages: [
+        { role: "user", content: "hi" },
+        { role: "system", content: "be brief" },
+      ],
+    });
+    expect(out.messages.every((m) => m.role !== "system")).toBe(true);
+    expect(out.system).toBeUndefined(); // not hoisted
+    // Folded into the preceding user turn, in order.
+    expect(out.messages).toHaveLength(1);
+    expect(out.messages[0].content).toEqual([
+      { type: "text", text: "hi" },
+      { type: "text", text: "be brief" },
+    ]);
+  });
+
+  it("folds a leading system message into its own user turn", () => {
+    const out = normalizeClaudePassthrough({
+      messages: [{ role: "system", content: "be brief" }],
+    });
+    expect(out.messages).toEqual([
+      { role: "user", content: [{ type: "text", text: "be brief" }] },
+    ]);
+  });
+});
+
+describe("parseDataUri / encodeDataUri (docs 11 §4)", () => {
+  it("parses a base64 data uri", () => {
+    expect(parseDataUri("data:image/png;base64,AAAB")).toEqual({ mimeType: "image/png", base64: "AAAB" });
+  });
+
+  it("tolerates newlines inside base64 payload", () => {
+    expect(parseDataUri("data:image/jpeg;base64,AA\nBB")?.base64).toBe("AA\nBB");
+  });
+
+  it("returns null for http urls and non-strings", () => {
+    expect(parseDataUri("https://x/y.png")).toBeNull();
+    expect(parseDataUri(null)).toBeNull();
+  });
+
+  it("encode/parse roundtrip", () => {
+    const uri = encodeDataUri("image/webp", "ZZZ");
+    expect(parseDataUri(uri)).toEqual({ mimeType: "image/webp", base64: "ZZZ" });
+  });
+});

@@ -1,0 +1,450 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import PropTypes from "prop-types";
+import { Badge, Toggle, Tooltip } from "@/shared/components";
+import CooldownTimer from "./CooldownTimer";
+
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, modelPin = null }) {
+  const [showProxyDropdown, setShowProxyDropdown] = useState(false);
+  const [updatingProxy, setUpdatingProxy] = useState(false);
+  const proxyDropdownRef = useRef(null); // button wrapper
+  const proxyMenuRef = useRef(null); // portal menu (outside this DOM subtree)
+  // Model pin dropdown (freebuff) — mirrors the proxy dropdown interaction
+  const [showPinDropdown, setShowPinDropdown] = useState(false);
+  const [pinMenuPos, setPinMenuPos] = useState(null);
+  const pinDropdownRef = useRef(null);
+  const pinMenuRef = useRef(null);
+  // Portal-anchored dropdown: the connection list is a max-h/overflow-y-auto
+  // container, so an absolutely-positioned dropdown inside it gets clipped and
+  // the browser force-scrolls the container (the "page jumps/scrolls" bug on
+  // providers with short lists like B.AI/AgentRouter). Rendering fixed via a
+  // body portal escapes the overflow clip entirely.
+  const [proxyMenuPos, setProxyMenuPos] = useState(null);
+
+  const proxyPoolMap = new Map((proxyPools || []).map((pool) => [pool.id, pool]));
+  const boundProxyPoolId = connection.providerSpecificData?.proxyPoolId || null;
+  const boundProxyPool = boundProxyPoolId ? proxyPoolMap.get(boundProxyPoolId) : null;
+  const hasLegacyProxy = connection.providerSpecificData?.connectionProxyEnabled === true && !!connection.providerSpecificData?.connectionProxyUrl;
+  const hasAnyProxy = !!boundProxyPoolId || hasLegacyProxy;
+  const proxyDisplayText = boundProxyPool
+    ? `Pool: ${boundProxyPool.name}`
+    : boundProxyPoolId
+      ? `Pool: ${boundProxyPoolId} (inactive/missing)`
+      : hasLegacyProxy
+        ? `Legacy: ${connection.providerSpecificData?.connectionProxyUrl}`
+        : "";
+  const autoPingTooltip = autoPing?.provider === "codex"
+    ? "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota."
+    : autoPing?.provider === "freebuff"
+      ? "Daily streak: once a day, sends one tiny chat on the cheapest model if the account has not been used. Turn off if you plan to use it yourself."
+      : autoPing?.provider === "codebuddy-intl"
+        ? "Auto-ping (Check-in harian): Sekali sehari mengirim chat kecil dengan model termurah (fast-model) pada jam acak untuk memicu aktivitas harian."
+        : "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.";
+
+  let maskedProxyUrl = "";
+  if (boundProxyPool?.proxyUrl || connection.providerSpecificData?.connectionProxyUrl) {
+    const rawProxyUrl = boundProxyPool?.proxyUrl || connection.providerSpecificData?.connectionProxyUrl;
+    try {
+      const parsed = new URL(rawProxyUrl);
+      maskedProxyUrl = `${parsed.protocol}//${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`;
+    } catch {
+      maskedProxyUrl = rawProxyUrl;
+    }
+  }
+
+  const noProxyText = boundProxyPool?.noProxy || connection.providerSpecificData?.connectionNoProxy || "";
+
+  let proxyBadgeVariant = "default";
+  if (boundProxyPool?.isActive === true) {
+    proxyBadgeVariant = "success";
+  } else if (boundProxyPoolId || hasLegacyProxy) {
+    proxyBadgeVariant = "error";
+  }
+
+  // Close dropdown when clicking outside or on scroll/resize (portal menu lives
+  // outside the button wrapper, so check both refs).
+  useEffect(() => {
+    if (!showProxyDropdown) return;
+    const handler = (e) => {
+      const inBtn = proxyDropdownRef.current?.contains(e.target);
+      const inMenu = proxyMenuRef.current?.contains(e.target);
+      if (!inBtn && !inMenu) setShowProxyDropdown(false);
+    };
+    // Close on page scroll/resize, but keep the menu open when the scroll event
+    // originates INSIDE the menu itself (the list is scrollable when tall).
+    const close = (e) => {
+      if (proxyMenuRef.current && e?.target && proxyMenuRef.current.contains(e.target)) return;
+      setShowProxyDropdown(false);
+    };
+    document.addEventListener("mousedown", handler);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [showProxyDropdown]);
+
+  // Open the menu anchored to the button: measure the button rect and remember
+  // it — the menu itself renders fixed-positioned in a body portal so it escapes
+  // the connection list's overflow-y-auto clip (the page-scrolls bug on
+  // providers whose connection list is short, e.g. a single connection).
+  const toggleProxyDropdown = () => {
+    if (showProxyDropdown) {
+      setShowProxyDropdown(false);
+      return;
+    }
+    const rect = proxyDropdownRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const MENU_H = 288; // matches max-h; estimate for flip decision
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top = spaceBelow >= MENU_H + 8
+      ? rect.bottom + 6   // natural: below the control, small breathing gap
+      : Math.max(8, rect.top - MENU_H - 6); // flip above when cramped at viewport bottom
+    setProxyMenuPos({ right: window.innerWidth - rect.right, top });
+    setShowProxyDropdown(true);
+  };
+
+  const handleSelectProxy = async (poolId) => {
+    setUpdatingProxy(true);
+    try {
+      await onUpdateProxy(poolId === "__none__" ? null : poolId);
+    } finally {
+      setUpdatingProxy(false);
+      setShowProxyDropdown(false);
+    }
+  };
+useEffect(() => {
+    if (!showPinDropdown) return;
+    const handler = (e) => {
+      const inBtn = pinDropdownRef.current?.contains(e.target);
+      const inMenu = pinMenuRef.current?.contains(e.target);
+      if (!inBtn && !inMenu) setShowPinDropdown(false);
+    };
+    const close = (e) => {
+      if (pinMenuRef.current && e?.target && pinMenuRef.current.contains(e.target)) return;
+      setShowPinDropdown(false);
+    };
+    document.addEventListener("mousedown", handler);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [showPinDropdown]);
+
+
+  const togglePinDropdown = () => {
+    if (showPinDropdown) {
+      setShowPinDropdown(false);
+      return;
+    }
+    const rect = pinDropdownRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const MENU_H = 288;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top = spaceBelow >= MENU_H + 8
+      ? rect.bottom + 6
+      : Math.max(8, rect.top - MENU_H - 6);
+    setPinMenuPos({ right: window.innerWidth - rect.right, top });
+    setShowPinDropdown(true);
+  };
+
+  const handleSelectPin = async (modelId) => {
+    await modelPin.onSelect(modelId === "__none__" ? null : modelId);
+    setShowPinDropdown(false);
+  };
+
+  const rowAuthType = connection.authType || (isOAuth ? "oauth" : "apikey");
+  const isOAuthConnection = rowAuthType === "oauth";
+  const isCookieConnection = rowAuthType === "cookie";
+  const authIcon = isCookieConnection ? "cookie" : isOAuthConnection ? "lock" : "key";
+  const authLabel = isOAuthConnection ? "OAuth" : isCookieConnection ? "Cookie" : "API Key";
+  const displayName = connection.name?.trim()
+    || connection.email?.trim()
+    || connection.displayName?.trim()
+    || (isOAuthConnection ? "OAuth Account" : isCookieConnection ? "Cookie Account" : "API Key");
+  const secondaryDisplayName = connection.name?.trim() && connection.email?.trim() && connection.name.trim() !== connection.email.trim()
+    ? connection.email.trim()
+    : connection.name?.trim() && connection.displayName?.trim() && connection.name.trim() !== connection.displayName.trim()
+      ? connection.displayName.trim()
+      : null;
+
+  // Use useState + useEffect for impure Date.now() to avoid calling during render
+  const [isCooldown, setIsCooldown] = useState(false);
+
+  // Get earliest model lock timestamp (useEffect handles the Date.now() comparison)
+  const modelLockUntil = Object.entries(connection)
+    .filter(([k]) => k.startsWith("modelLock_"))
+    .map(([, v]) => v)
+    .filter(v => !!v)
+    .sort()[0] || null;
+
+  useEffect(() => {
+    const checkCooldown = () => {
+      const until = Object.entries(connection)
+        .filter(([k]) => k.startsWith("modelLock_"))
+        .map(([, v]) => v)
+        .filter(v => v && new Date(v).getTime() > Date.now())
+        .sort()[0] || null;
+      setIsCooldown(!!until);
+    };
+
+    checkCooldown();
+    const interval = modelLockUntil ? setInterval(checkCooldown, 1000) : null;
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [modelLockUntil]);
+
+  // Determine effective status (override unavailable if cooldown expired)
+  const effectiveStatus = (connection.testStatus === "unavailable" && !isCooldown)
+    ? "active"  // Cooldown expired u2192 treat as active
+    : connection.testStatus;
+
+  const getStatusVariant = () => getConnectionStatusVariant(connection.isActive, effectiveStatus);
+
+  const getOneByOneVariant = () => {
+    if (!oneByOneStatus) return "default";
+    if (oneByOneStatus.state === "success") return "success";
+    if (oneByOneStatus.state === "failed") return "error";
+    if (oneByOneStatus.state === "testing") return "primary";
+    return "default";
+  };
+
+  const getOneByOneLabel = () => {
+    if (!oneByOneStatus) return null;
+    if (oneByOneStatus.state === "queued") return "queued";
+    if (oneByOneStatus.state === "testing") return "testing";
+    if (oneByOneStatus.state === "success") return "success";
+    if (oneByOneStatus.state === "failed") return oneByOneStatus.error ? `failed: ${oneByOneStatus.error}` : "failed";
+    return null;
+  };
+
+  return (
+    <div className={`group flex min-w-0 flex-col gap-3 rounded-lg p-2 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between ${connection.isActive === false ? "opacity-60" : ""}`}>
+      <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
+        {/* Priority arrows */}
+        <div className="flex shrink-0 flex-col">
+          <button
+            onClick={onMoveUp}
+            disabled={isFirst}
+            className={`p-0.5 rounded ${isFirst ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}
+          >
+            <span className="material-symbols-outlined text-sm">keyboard_arrow_up</span>
+          </button>
+          <button
+            onClick={onMoveDown}
+            disabled={isLast}
+            className={`p-0.5 rounded ${isLast ? "text-text-muted/30 cursor-not-allowed" : "hover:bg-sidebar text-text-muted hover:text-primary"}`}
+          >
+            <span className="material-symbols-outlined text-sm">keyboard_arrow_down</span>
+          </button>
+        </div>
+        <span className="material-symbols-outlined shrink-0 text-base text-text-muted">
+          {authIcon}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{displayName}</p>
+          {secondaryDisplayName && (
+            <p className="text-xs text-text-muted truncate">{secondaryDisplayName}</p>
+          )}
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
+            <Badge variant={getStatusVariant()} size="sm" dot>
+              {connection.isActive === false ? "disabled" : (effectiveStatus || "Unknown")}
+            </Badge>
+            <Badge variant="default" size="sm">
+              {authLabel}
+            </Badge>
+            {hasAnyProxy && (
+              <Badge variant={proxyBadgeVariant} size="sm">
+                Proxy
+              </Badge>
+            )}
+            {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
+            {connection.lastError && connection.isActive !== false && (
+              <span className="max-w-full truncate text-xs text-red-500 sm:max-w-[300px]" title={connection.lastError}>
+                {connection.lastError}
+              </span>
+            )}
+            <span className="text-xs text-text-muted">#{connection.priority}</span>
+            {connection.globalPriority && (
+              <span className="text-xs text-text-muted">Auto: {connection.globalPriority}</span>
+            )}
+            {getOneByOneLabel() && (
+              <Badge variant={getOneByOneVariant()} size="sm">
+                {getOneByOneLabel()}
+              </Badge>
+            )}
+          </div>
+          {hasAnyProxy && (
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              <span className="max-w-full truncate text-[11px] text-text-muted sm:max-w-[420px]" title={proxyDisplayText}>
+                {proxyDisplayText}
+              </span>
+              {maskedProxyUrl && (
+                <code className="max-w-full truncate rounded bg-black/5 px-1 py-0.5 font-mono text-[10px] text-text-muted dark:bg-white/5 sm:max-w-[260px]">
+                  {maskedProxyUrl}
+                </code>
+              )}
+              {noProxyText && (
+                <span className="max-w-full truncate text-[11px] text-text-muted sm:max-w-[320px]" title={noProxyText}>
+                  no_proxy: {noProxyText}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
+        <div className="grid flex-1 grid-cols-3 gap-1 sm:flex sm:flex-none">
+          {/* Proxy button with inline dropdown */}
+          {(proxyPools || []).length > 0 && (
+            <div className="relative" ref={proxyDropdownRef}>
+              <button
+                onClick={toggleProxyDropdown}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${hasAnyProxy ? "text-primary" : "text-text-muted hover:text-primary"}`}
+                disabled={updatingProxy}
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {updatingProxy ? "progress_activity" : "lan"}
+                </span>
+                <span className="text-[10px] leading-tight">Proxy</span>
+              </button>
+              {showProxyDropdown && proxyMenuPos && typeof document !== "undefined" && createPortal(
+                <div
+                  ref={proxyMenuRef}
+                  style={{ position: "fixed", right: proxyMenuPos.right, top: proxyMenuPos.top, width: "max-content" }}
+                  className="z-[9999] max-w-[78vw] max-h-[288px] overflow-y-auto overscroll-contain rounded-lg border border-border bg-bg py-1 shadow-lg"
+                >
+                  <button
+                    onClick={() => handleSelectProxy("__none__")}
+                    className={`block w-full whitespace-nowrap px-3 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5 ${!boundProxyPoolId ? "text-primary font-medium" : "text-text-main"}`}
+                  >
+                    None
+                  </button>
+                  {(proxyPools || []).map((pool) => (
+                    <button
+                      key={pool.id}
+                      onClick={() => handleSelectProxy(pool.id)}
+                      className={`block w-full whitespace-nowrap px-3 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5 ${boundProxyPoolId === pool.id ? "text-primary font-medium" : "text-text-main"}`}
+                    >
+                      {pool.name}
+                    </button>
+                  ))}
+                </div>,
+                document.body
+              )}
+            </div>
+          )}
+          {autoPing && (
+            <Tooltip text={autoPingTooltip} position="bottom">
+              <button
+                onClick={() => autoPing.onToggle(!autoPing.on)}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${autoPing.on ? "text-primary" : "text-text-muted hover:text-primary"}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">{autoPing?.provider === "freebuff" ? "local_fire_department" : autoPing?.provider === "codebuddy-intl" ? "schedule" : "bolt"}</span>
+                <span className="text-[10px] leading-tight">{autoPing?.provider === "freebuff" ? "Streak" : "Auto-ping"}</span>
+              </button>
+            </Tooltip>
+          )}
+          {modelPin && (
+            <div className="relative" ref={pinDropdownRef}>
+              <button
+                onClick={togglePinDropdown}
+                className={`flex w-full flex-col items-center rounded px-2 py-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 ${modelPin.pinnedModel ? "text-primary" : "text-text-muted hover:text-primary"}`}
+              >
+                <span className="material-symbols-outlined text-[18px]">push_pin</span>
+                <span className="max-w-[64px] truncate text-[10px] leading-tight">{modelPin.pinnedModel ? modelPin.pinnedModel.split("/").pop() : "Pin"}</span>
+              </button>
+              {showPinDropdown && pinMenuPos && typeof document !== "undefined" && createPortal(
+                <div
+                  ref={pinMenuRef}
+                  style={{ position: "fixed", right: pinMenuPos.right, top: pinMenuPos.top, width: "max-content" }}
+                  className="z-[9999] max-w-[78vw] max-h-[288px] overflow-y-auto overscroll-contain rounded-lg border border-border bg-bg py-1 shadow-lg"
+                >
+                  <button
+                    onClick={() => handleSelectPin("__none__")}
+                    className={`block w-full whitespace-nowrap px-3 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5 ${!modelPin.pinnedModel ? "text-primary font-medium" : "text-text-main"}`}
+                  >
+                    None
+                  </button>
+                  {(modelPin.models || []).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => handleSelectPin(m)}
+                      className={`block w-full whitespace-nowrap px-3 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5 ${modelPin.pinnedModel === m ? "text-primary font-medium" : "text-text-main"}`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>,
+                document.body
+              )}
+            </div>
+          )}
+          <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5">
+            <span className="material-symbols-outlined text-[18px]">edit</span>
+            <span className="text-[10px] leading-tight">Edit</span>
+          </button>
+          <button onClick={onDelete} className="flex flex-col items-center rounded px-2 py-1 text-red-500 hover:bg-red-500/10">
+            <span className="material-symbols-outlined text-[18px]">delete</span>
+            <span className="text-[10px] leading-tight">Delete</span>
+          </button>
+        </div>
+        <Toggle
+          size="sm"
+          checked={connection.isActive ?? true}
+          onChange={onToggleActive}
+          title={(connection.isActive ?? true) ? "Disable connection" : "Enable connection"}
+        />
+      </div>
+    </div>
+  );
+}
+
+ConnectionRow.propTypes = {
+  connection: PropTypes.shape({
+    id: PropTypes.string,
+    name: PropTypes.string,
+    email: PropTypes.string,
+    displayName: PropTypes.string,
+    modelLockUntil: PropTypes.string,
+    testStatus: PropTypes.string,
+    isActive: PropTypes.bool,
+    lastError: PropTypes.string,
+    priority: PropTypes.number,
+    globalPriority: PropTypes.number,
+  }).isRequired,
+  proxyPools: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string,
+    name: PropTypes.string,
+    proxyUrl: PropTypes.string,
+    noProxy: PropTypes.string,
+    isActive: PropTypes.bool,
+  })),
+  isOAuth: PropTypes.bool.isRequired,
+  isFirst: PropTypes.bool.isRequired,
+  isLast: PropTypes.bool.isRequired,
+  onMoveUp: PropTypes.func.isRequired,
+  onMoveDown: PropTypes.func.isRequired,
+  onToggleActive: PropTypes.func.isRequired,
+  onUpdateProxy: PropTypes.func,
+  onEdit: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  oneByOneStatus: PropTypes.shape({
+    state: PropTypes.string,
+    error: PropTypes.string,
+  }),
+  autoPing: PropTypes.shape({
+    on: PropTypes.bool,
+    onToggle: PropTypes.func,
+    provider: PropTypes.string,
+  }),
+};

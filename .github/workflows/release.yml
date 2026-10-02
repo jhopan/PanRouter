@@ -1,0 +1,127 @@
+name: Release
+
+# Trigger: push a version tag (git tag v0.5.60 && git push origin v0.5.60)
+# Creates TWO releases:
+#   1. Versioned release (v0.5.60) — with auto-generated notes from commits
+#   2. "latest" release — always points to the newest build, stable panrouter.tgz URL
+# README install command uses releases/latest/download/panrouter.tgz
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # full history for release notes
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install root deps
+        run: npm install
+
+      - name: Install cli deps
+        run: npm --prefix cli install
+
+      - name: Build + pack CLI
+        run: npm run cli:pack
+
+      - name: Prepare tgz files
+        run: |
+          find .. -maxdepth 1 -name "panrouter-*.tgz" -exec mv {} . \;
+          cp panrouter-*.tgz panrouter.tgz
+          cp panrouter.tgz panrouter-latest.tgz
+          ls -la *.tgz
+
+      - name: Resolve version
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Resolved version: $VERSION"
+
+      - name: Generate release notes from commits
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PREV=$(git describe --tags --abbrev=0 "HEAD^" 2>/dev/null | grep -E '^v[0-9]' || echo "")
+          if [ -z "$PREV" ]; then
+            # fall back: highest semver tag before HEAD
+            PREV=$(git tag --list 'v*' --sort=-v:refname | head -2 | tail -1)
+          fi
+          {
+            echo "# PanRouter v${VERSION}"
+            echo ""
+            echo "> **By Jhopanstore** — [PanRouter repo](https://github.com/jhopan/PanRouter) · [Issues](https://github.com/jhopan/PanRouter/issues)"
+            echo ""
+            echo "## 📋 Changes"
+            echo ""
+            if [ -n "$PREV" ]; then
+              git log --pretty=format:"- %s" "$PREV..HEAD"
+            else
+              git log --pretty=format:"- %s" HEAD~20..HEAD
+            fi
+            echo ""
+            echo ""
+            echo "## 📦 Install / Update"
+            echo ""
+            echo '```bash'
+            echo "npm i -g https://github.com/jhopan/PanRouter/releases/latest/download/panrouter-latest.tgz"
+            echo '```'
+            echo ""
+            echo "Command: \`panrouter\` — dashboard at \`http://localhost:20128\`"
+            echo ""
+            echo "## 🔒 Internal (unchanged)"
+            echo ""
+            echo "DB path, machineId salts, FreeBuff trust — preserved across this release."
+          } > /tmp/release-notes.md
+          echo "Notes generated:"
+          cat /tmp/release-notes.md | head -14
+
+      - name: Create versioned release (v${{ steps.ver.outputs.VERSION }})
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.ver.outputs.VERSION }}"
+          NOTES=$(cat /tmp/release-notes.md)
+
+          gh release create "v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "PanRouter v${VERSION}" \
+            --notes "$NOTES" \
+            panrouter.tgz "panrouter-${VERSION}.tgz"
+
+      - name: Move 'latest' tag to this commit
+        run: |
+          git tag -f latest
+          git push origin latest --force
+
+      - name: Update 'latest' release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.ver.outputs.VERSION }}"
+
+          # Delete old latest release (tag stays, will be reused)
+          gh release delete latest --yes --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+
+          # Create fresh latest release on the moved tag
+          gh release create latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Latest CLI Release" \
+            --notes "Automated build of the latest PanRouter CLI package (by Jhopanstore).
+
+          Currently pointing to **v${VERSION}**.
+
+          For a specific version, see the [releases page](https://github.com/jhopan/PanRouter/releases)." \
+            --latest \
+            panrouter.tgz "panrouter-${VERSION}.tgz" "panrouter-latest.tgz"
