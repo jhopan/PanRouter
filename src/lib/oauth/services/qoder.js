@@ -191,6 +191,72 @@ export class QoderService {
    *
    * Static so callers (and tests) can use it without instantiating.
    */
+
+  /**
+   * Refresh a device token (dt-...) using the CLI's /api/v1/deviceToken/refresh endpoint.
+   * Wire-verified from qodercli 1.1.64 binary:
+   *   POST openapi.qoder.sh/api/v1/deviceToken/refresh
+   *   Body: { refresh_token, machine_id? }
+   *   Response: { device_token|token|access_token, refresh_token, expires_at, refresh_token_expires_at }
+   *
+   * Returns null when the refresh token is missing, expired, or the upstream rejects it —
+   * caller should surface "re-login" to the user.
+   */
+  async refreshDeviceToken({ refreshToken, machineId } = {}) {
+    if (!refreshToken) {
+      return null;
+    }
+
+    const body = {
+      refresh_token: refreshToken,
+      ...(machineId ? { machine_id: machineId } : {}),
+    };
+
+    let response;
+    try {
+      response = await fetchWithTimeout(
+        "https://openapi.qoder.sh/api/v1/deviceToken/refresh",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "User-Agent": "Go-http-client/2.0",
+          },
+          body: JSON.stringify(body),
+        }
+      );
+    } catch (err) {
+      return null; // network failure — keep existing token
+    }
+
+    if (!response.ok) {
+      // 401/403 = refresh token expired or rejected → re-login required
+      return null;
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      return null;
+    }
+
+    const newAccessToken = data.device_token || data.token || data.access_token;
+    if (!newAccessToken) return null;
+
+    const newRefreshToken = data.refresh_token || data.refreshToken || refreshToken;
+    const expiresAt = data.expires_at || data.expiresAt || null;
+    const expireMs = QoderService.parseExpiry(expiresAt, null);
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      expireTime: expireMs,
+      refreshTokenExpiresAt: data.refresh_token_expires_at || data.refreshTokenExpiresAt || null,
+    };
+  }
+
   static parseExpiry(expiresAt, expiresInSeconds) {
     if (typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt > 0) {
       return expiresAt;

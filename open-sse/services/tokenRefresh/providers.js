@@ -87,16 +87,33 @@ function buildRefreshBody(profile, config, refreshToken) {
   return { format: "form", body: new URLSearchParams(payload) };
 }
 
-// Providers whose upstream refresh endpoint is unavailable for our auth flow.
-// refreshAccessToken returns null silently for these — no warning logged.
-const NO_REFRESH_PROVIDERS = new Set([
-  // Qoder dt-... tokens live ~30 days; the refresh endpoint returns 403 for
-  // our device-token flow. Users re-login when expired.
-  "qoder",
-]);
+// Qoder device-token refresh — wire-verified from qodercli 1.1.64 binary.
+// POST openapi.qoder.sh/api/v1/deviceToken/refresh
+// { refresh_token, machine_id? } → { device_token, refresh_token, expires_at }
+async function refreshQoderToken(refreshToken, credentials) {
+  const { QoderService } = await import("@/lib/oauth/services/qoder.js");
+  const machineId = credentials?.providerSpecificData?.machineId || null;
+  return new QoderService().refreshDeviceToken({ refreshToken, machineId });
+}
 
 export async function refreshAccessToken(provider, refreshToken, credentials, log) {
-  if (NO_REFRESH_PROVIDERS.has(provider)) return null;
+  // Qoder uses its own device-token refresh endpoint — not the generic OAuth flow.
+  if (provider === "qoder") {
+    if (!refreshToken) {
+      log?.warn?.("TOKEN_REFRESH", "No refresh token available for provider: qoder");
+      return null;
+    }
+    const result = await refreshQoderToken(refreshToken, credentials).catch((e) => {
+      log?.warn?.("TOKEN_REFRESH", `Qoder device-token refresh failed: ${e.message}`);
+      return null;
+    });
+    if (!result) return null;
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresAt: result.expireTime ? new Date(result.expireTime).toISOString() : null,
+    };
+  }
 
   const config = PROVIDERS[provider];
   const profile = REFRESH_PROFILES[provider] || {};

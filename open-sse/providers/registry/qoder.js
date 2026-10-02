@@ -13,6 +13,7 @@ export default {
     },
   },
   category: "oauth",
+  refreshLeadMs: 259200000, // 3 days — refresh dt-... token before 30-day expiry
   authModes: ["oauth", "apikey"],
   hasOAuth: true,
   authHint: "Personal Access Token (pt-...) từ https://qoder.com/account/integrations",
