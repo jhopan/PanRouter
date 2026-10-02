@@ -98,7 +98,7 @@ export const CODEBUDDY_AUTOPING_CONFIG = {
   tickIntervalMs: 300000,        // check every 5 minutes
   windowStartHour: 8,            // 08:00 WIB window start
   windowEndHour: 20,             // 20:00 WIB window end
-  pingModel: "fast-model",
+  pingModel: "gpt-5.6-luna",
   pingText: "hi",
   pingMaxTokens: 1,
   failureCooldownMs: 3600000,    // 1h cooldown after a failure
