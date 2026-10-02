@@ -112,10 +112,10 @@ const OAUTH_TEST_CONFIG = {
     extraHeaders: {
       Accept: "application/json",
       ...(PROVIDERS["grok-cli"]?.headers || {
-        "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        "User-Agent": "grok-pager/1.0.13 grok-shell/1.0.13 (linux; x86_64)",
         "x-xai-token-auth": "xai-grok-cli",
         "x-grok-client-identifier": "grok-pager",
-        "x-grok-client-version": "0.2.93",
+        "x-grok-client-version": "1.0.13",
       }),
     },
     refreshable: true,
