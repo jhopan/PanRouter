@@ -133,7 +133,7 @@ export default function ProviderLimits() {
   const [loading, setLoading] = useState({});
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {} });
+  const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {}, "codebuddy-intl": {} });
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -547,6 +547,7 @@ export default function ProviderLimits() {
         setAutoPingMaps({
           claude: s?.claudeAutoPing?.connections || {},
           codex: s?.codexAutoPing?.connections || {},
+          "codebuddy-intl": s?.codebuddyIntlAutoPing?.connections || {},
         });
         setQuotaVisibility(s?.quotaVisibility || {});
       })
@@ -558,13 +559,20 @@ export default function ProviderLimits() {
     if (!settingsKey) return;
 
     const previous = autoPingMaps;
+    // Optimistic update using local state
     const nextProviderMap = { ...(autoPingMaps[provider] || {}), [connectionId]: on };
     const nextMaps = { ...autoPingMaps, [provider]: nextProviderMap };
     setAutoPingMaps(nextMaps);
     try {
+      // Always read fresh server state before writing — prevents overwriting
+      // other connections that were toggled in a different tab or session.
       const r = await fetch("/api/settings", { cache: "no-store" });
       const s = r.ok ? await r.json() : {};
-      const cfg = { ...(s[settingsKey] || {}), connections: nextProviderMap };
+      const serverConnections = s[settingsKey]?.connections || {};
+      const mergedConnections = { ...serverConnections, [connectionId]: on };
+      const cfg = { ...(s[settingsKey] || {}), connections: mergedConnections };
+      // Sync local state with merged result
+      setAutoPingMaps((prev) => ({ ...prev, [provider]: mergedConnections }));
       await fetch("/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
