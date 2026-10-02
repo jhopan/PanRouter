@@ -159,13 +159,29 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           return false;
         }
       }
-      // Antigravity: skip if live quota exhausted for this model
+      // Antigravity: skip if live quota exhausted for this model or its weekly bucket
       if (isAntigravity && model && antigravityQuotaCache) {
-        const quota = antigravityQuotaCache.get(c.id)?.[model];
-        if (quota && quota.remainingPercentage <= 0 && quota.resetAt && new Date(quota.resetAt).getTime() > Date.now()) {
+        const cache = antigravityQuotaCache.get(c.id);
+        if (cache) {
           const account = c.id?.slice(0, 8) || "unknown";
-          log.info("AG_QUOTA", `${account} | CACHE_BLOCK ${model} — skip upstream until ${quota.resetAt}`);
-          return false;
+          const now = Date.now();
+          // 1. Per-model key (fine-grained, from per-model quota API)
+          const perModel = cache[model];
+          if (perModel && perModel.remainingPercentage <= 0 && perModel.resetAt && new Date(perModel.resetAt).getTime() > now) {
+            log.info("AG_QUOTA", `${account} | CACHE_BLOCK ${model} — skip upstream until ${perModel.resetAt}`);
+            return false;
+          }
+          // 2. Weekly bucket (gemini_weekly / claude_gpt_weekly)
+          const bucketKey = /^gemini/i.test(model) ? "gemini_weekly"
+            : /^claude|^gpt/i.test(model) ? "claude_gpt_weekly"
+            : null;
+          if (bucketKey) {
+            const bucket = cache[bucketKey];
+            if (bucket && bucket.remainingPercentage <= 0 && bucket.resetAt && new Date(bucket.resetAt).getTime() > now) {
+              log.info("AG_QUOTA", `${account} | BUCKET_BLOCK ${model} (${bucketKey}) — skip upstream until ${bucket.resetAt}`);
+              return false;
+            }
+          }
         }
       }
       return true;
