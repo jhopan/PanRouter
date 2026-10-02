@@ -56,6 +56,13 @@ const REFRESH_PROFILES = {
     dedupKey: "kimi",
     extraHeaders: (creds) => buildKimiHeaders(creds?.providerSpecificData?.deviceId),
   },
+  qoder: {
+    // refreshUrl lives under registry oauth block, not top-level transport.
+    // resolveRefreshUrl falls back here so token refresh is not skipped silently.
+    url: () => PROVIDERS["qoder"]?.oauth?.refreshUrl,
+    bodyFormat: "json",
+    dedupKey: "qoder",
+  },
 };
 
 function resolveRefreshUrl(provider, config, profile) {
