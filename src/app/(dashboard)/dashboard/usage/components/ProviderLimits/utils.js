@@ -549,6 +549,7 @@ export function parseQuotaData(provider, data) {
         }
         break;
 
+      case "codebuddy-intl":
       case "codebuddy-cn":
         // CodeBuddy CN mixes recurring refill packs ("Monthly"/"Weekly"/...)
         // with one-shot bonus packs ("Bonus Pack N"). Forward `recurring`
