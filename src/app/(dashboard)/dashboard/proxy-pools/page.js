@@ -1154,27 +1154,55 @@ export default function ProxyPoolsPage() {
               <p className="mb-1 text-xs font-medium text-text-main">URL Relay:</p>
               <div className="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 p-2 font-mono text-xs dark:border-white/10 dark:bg-white/5">
                 <span className="break-all flex-1 select-all">{netlifyDeployResult.deployUrl}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof navigator !== "undefined" && navigator.clipboard) {
+                      navigator.clipboard.writeText(netlifyDeployResult.deployUrl);
+                      notify.success("URL Relay disalin ke clipboard!");
+                    }
+                  }}
+                  className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-text-muted hover:text-primary shrink-0"
+                  title="Salin URL Relay"
+                >
+                  <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                </button>
               </div>
             </div>
 
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 flex flex-col gap-2">
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 flex flex-col gap-2.5">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[20px] text-amber-500">lock_open</span>
                 <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                  Langkah Terakhir: Buka Akses Publik (Make Public)
+                  Pengaturan Akses Netlify (Make Public)
                 </p>
               </div>
               <p className="text-xs text-text-muted leading-relaxed">
-                Jika akun Netlify kamu mengunci situs baru secara default (muncul Login Redirect saat diuji), klik tombol di bawah untuk langsung menuju halaman pengaturan akses Netlify dan ubah proteksi ke <b>Public</b>:
+                Jika situs Netlify kamu terkunci (muncul Login Redirect saat diuji), ubah proteksi situs ke <b>Public</b>:
               </p>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="open_in_new"
-                onClick={() => window.open(netlifyDeployResult.accessUrl, "_blank", "noopener,noreferrer")}
-              >
-                Buka Pengaturan Akses Netlify (Make Public) ↗
-              </Button>
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="content_copy"
+                  onClick={() => {
+                    if (typeof navigator !== "undefined" && navigator.clipboard) {
+                      navigator.clipboard.writeText(netlifyDeployResult.accessUrl);
+                      notify.success("Link pengaturan Netlify disalin!");
+                    }
+                  }}
+                >
+                  Salin Link Pengaturan
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon="open_in_new"
+                  onClick={() => window.open(netlifyDeployResult.accessUrl, "_blank", "noopener,noreferrer")}
+                >
+                  Buka di Tab Baru ↗
+                </Button>
+              </div>
             </div>
 
             <Button fullWidth onClick={closeNetlifyModal}>
