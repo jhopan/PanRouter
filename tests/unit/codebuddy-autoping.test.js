@@ -3,25 +3,25 @@ import { describe, it, expect } from "vitest";
 const mod = await import("../../src/shared/services/codebuddyAutoPing.js");
 const { dailySlotKey, slotMinuteOfDay, cycleMinuteElapsed } = mod;
 
-describe("codebuddyAutoPing dailySlotKey (08:00 WIB boundary)", () => {
-  it("aligns to 08:00 WIB reset boundary", () => {
-    // 2026-09-29T01:05:00Z = 08:05 WIB (new cycle 2026-09-29)
-    expect(dailySlotKey(Date.parse("2026-09-29T01:05:00Z"))).toBe("2026-09-29");
-    // 2026-09-30T00:58:00Z = 07:58 WIB next morning (still cycle 2026-09-29)
-    expect(dailySlotKey(Date.parse("2026-09-30T00:58:00Z"))).toBe("2026-09-29");
-    // 2026-09-30T01:01:00Z = 08:01 WIB next morning (new cycle 2026-09-30)
-    expect(dailySlotKey(Date.parse("2026-09-30T01:01:00Z"))).toBe("2026-09-30");
+describe("codebuddyAutoPing dailySlotKey (07:00 WIB boundary)", () => {
+  it("aligns to 07:00 WIB reset boundary (00:00 UTC)", () => {
+    // 2026-09-29T00:05:00Z = 07:05 WIB (new cycle 2026-09-29)
+    expect(dailySlotKey(Date.parse("2026-09-29T00:05:00Z"))).toBe("2026-09-29");
+    // 2026-09-29T23:58:00Z = 06:58 WIB next morning (still cycle 2026-09-29)
+    expect(dailySlotKey(Date.parse("2026-09-29T23:58:00Z"))).toBe("2026-09-29");
+    // 2026-09-30T00:01:00Z = 07:01 WIB next morning (new cycle 2026-09-30)
+    expect(dailySlotKey(Date.parse("2026-09-30T00:01:00Z"))).toBe("2026-09-30");
   });
 });
 
 describe("codebuddyAutoPing cycleMinuteElapsed", () => {
-  it("calculates minutes elapsed since 08:00 WIB", () => {
-    // 08:00 WIB -> 0
-    expect(cycleMinuteElapsed(Date.parse("2026-09-29T01:00:00Z"))).toBe(0);
-    // 08:01 WIB -> 1
-    expect(cycleMinuteElapsed(Date.parse("2026-09-29T01:01:00Z"))).toBe(1);
-    // 07:58 WIB next morning -> 1438
-    expect(cycleMinuteElapsed(Date.parse("2026-09-30T00:58:00Z"))).toBe(1438);
+  it("calculates minutes elapsed since 07:00 WIB", () => {
+    // 07:00 WIB (00:00 UTC) -> 0
+    expect(cycleMinuteElapsed(Date.parse("2026-09-29T00:00:00Z"))).toBe(0);
+    // 07:01 WIB (00:01 UTC) -> 1
+    expect(cycleMinuteElapsed(Date.parse("2026-09-29T00:01:00Z"))).toBe(1);
+    // 06:58 WIB next morning (23:58 UTC) -> 1438
+    expect(cycleMinuteElapsed(Date.parse("2026-09-29T23:58:00Z"))).toBe(1438);
   });
 });
 

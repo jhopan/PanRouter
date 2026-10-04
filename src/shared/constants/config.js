@@ -94,12 +94,12 @@ export const QUOTA_AUTOPING_CONFIG = {
 };
 
 // CodeBuddy Intl daily check-in / auto-ping: once a day on gpt-5.6-luna (cheapest 0.14x multiplier)
-// Cycle resets at 08:00 WIB. Random slot spreads across 08:01 WIB - 07:58 WIB next day (24h).
+// Cycle resets at 07:00 WIB (00:00 UTC). Random slot spreads across 07:01 WIB - 06:58 WIB next day (24h).
 export const CODEBUDDY_AUTOPING_CONFIG = {
   tickIntervalMs: 300000,        // check every 5 minutes
-  resetHourWIB: 8,               // 08:00 WIB daily reset boundary
-  slotStartMin: 1,               // 08:01 WIB (1 min after reset)
-  slotEndMin: 1438,              // 07:58 WIB next day (2 min before next reset)
+  resetHourWIB: 7,               // 07:00 WIB daily reset boundary (00:00 UTC)
+  slotStartMin: 1,               // 07:01 WIB (1 min after reset)
+  slotEndMin: 1438,              // 06:58 WIB next day (2 min before next reset)
   pingModel: "gpt-5.6-luna",
   pingText: "hi",
   pingMaxTokens: 16,             // upstream CodeBuddy GPT-family requires min 16 tokens

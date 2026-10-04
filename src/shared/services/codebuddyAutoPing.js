@@ -19,10 +19,10 @@ const g = (global.__codebuddyAutoPing ??= {
 });
 
 /**
- * Day key (Asia/Jakarta / WIB) for a timestamp, aligned to 08:00 WIB daily reset boundary.
- * 08:01 WIB today to 07:58 WIB tomorrow belong to the same cycle key.
+ * Day key (Asia/Jakarta / WIB) for a timestamp, aligned to 07:00 WIB (00:00 UTC) daily reset boundary.
+ * 07:01 WIB today to 06:58 WIB tomorrow belong to the same cycle key.
  */
-export function dailySlotKey(nowMs = Date.now(), resetHour = C.resetHourWIB ?? 8) {
+export function dailySlotKey(nowMs = Date.now(), resetHour = C.resetHourWIB ?? 7) {
   const shiftedMs = nowMs - (resetHour * 3600 * 1000);
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
@@ -34,7 +34,7 @@ export function dailySlotKey(nowMs = Date.now(), resetHour = C.resetHourWIB ?? 8
 
 /**
  * Deterministic-but-daily slot in the 24-hour cycle.
- * Randomly spreads connections across 08:01 WIB (min 1) to 07:58 WIB next day (min 1438).
+ * Randomly spreads connections across 07:01 WIB (min 1) to 06:58 WIB next day (min 1438).
  */
 export function slotMinuteOfDay(connectionId, dKey, startArg = C.slotStartMin ?? 1, endArg = C.slotEndMin ?? 1438) {
   const s = `${connectionId}::${dKey}`;
@@ -47,8 +47,8 @@ export function slotMinuteOfDay(connectionId, dKey, startArg = C.slotStartMin ??
   return startMin + (h % span);
 }
 
-/** Minutes elapsed in current 08:00 WIB cycle (0..1439). */
-export function cycleMinuteElapsed(nowMs = Date.now(), resetHour = C.resetHourWIB ?? 8) {
+/** Minutes elapsed in current 07:00 WIB cycle (0..1439). */
+export function cycleMinuteElapsed(nowMs = Date.now(), resetHour = C.resetHourWIB ?? 7) {
   const wib = new Date(nowMs + 7 * 3600 * 1000); // shift to UTC+7 (WIB)
   const minuteOfDay = wib.getUTCHours() * 60 + wib.getUTCMinutes();
   return (minuteOfDay - resetHour * 60 + 1440) % 1440;
