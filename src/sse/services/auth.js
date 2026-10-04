@@ -168,7 +168,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           // 1. Per-model key (fine-grained, from per-model quota API)
           const perModel = cache[model];
           if (perModel && perModel.remainingPercentage <= 0 && perModel.resetAt && new Date(perModel.resetAt).getTime() > now) {
-            log.info("AG_QUOTA", `${account} | CACHE_BLOCK ${model} — skip upstream until ${perModel.resetAt}`);
+            log.debug("AG_QUOTA", `${account} | CACHE_BLOCK ${model} — skip upstream until ${perModel.resetAt}`);
             return false;
           }
           // 2. Weekly bucket (gemini_weekly / claude_gpt_weekly)
@@ -178,7 +178,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           if (bucketKey) {
             const bucket = cache[bucketKey];
             if (bucket && bucket.remainingPercentage <= 0 && bucket.resetAt && new Date(bucket.resetAt).getTime() > now) {
-              log.info("AG_QUOTA", `${account} | BUCKET_BLOCK ${model} (${bucketKey}) — skip upstream until ${bucket.resetAt}`);
+              log.debug("AG_QUOTA", `${account} | BUCKET_BLOCK ${model} (${bucketKey}) — skip upstream until ${bucket.resetAt}`);
               return false;
             }
           }

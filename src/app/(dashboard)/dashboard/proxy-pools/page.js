@@ -35,12 +35,16 @@ export default function ProxyPoolsPage() {
   const [showVercelModal, setShowVercelModal] = useState(false);
   const [showCloudflareModal, setShowCloudflareModal] = useState(false);
   const [showDenoModal, setShowDenoModal] = useState(false);
+  const [showNetlifyModal, setShowNetlifyModal] = useState(false);
+  const [platformFilter, setPlatformFilter] = useState(null);
   const [showRelayMenu, setShowRelayMenu] = useState(false);
   const [editingProxyPool, setEditingProxyPool] = useState(null);
   const [formData, setFormData] = useState(normalizeFormData());
   const [batchImportText, setBatchImportText] = useState("");
   const [vercelForm, setVercelForm] = useState({ vercelToken: "", projectName: "vercel-relay" });
   const [cloudflareForm, setCloudflareForm] = useState({ accountId: "", apiToken: "", projectName: "cloudflare-relay" });
+  const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay" });
+  const [netlifyProgress, setNetlifyProgress] = useState(null); // null | { step, msg }
   const [denoForm, setDenoForm] = useState({ denoToken: "", orgDomain: "", projectName: "" });
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -372,6 +376,52 @@ export default function ProxyPoolsPage() {
     setShowDenoModal(false);
   };
 
+  const handleNetlifyDeploy = async () => {
+    if (!netlifyForm.netlifyToken.trim()) return;
+    setDeploying(true);
+    setNetlifyProgress({ step: "starting", msg: "Starting deploy..." });
+    try {
+      const res = await fetch("/api/proxy-pools/netlify-deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(netlifyForm),
+      });
+
+      // Read SSE stream
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            setNetlifyProgress({ step: evt.step, msg: evt.msg });
+            if (evt.step === "done") {
+              await fetchProxyPools();
+              setShowNetlifyModal(false);
+              setNetlifyProgress(null);
+              notify.success(`Deployed: ${evt.deployUrl}`);
+            } else if (evt.step === "error") {
+              notify.error(evt.msg || "Deploy failed");
+              setNetlifyProgress(null);
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+    } catch (error) {
+      notify.error(error.message || "Deploy failed");
+      setNetlifyProgress(null);
+    } finally {
+      setDeploying(false);
+    }
+  };
+
   const handleVercelDeploy = async () => {
     if (!vercelForm.vercelToken.trim()) return;
     setDeploying(true);
@@ -567,6 +617,35 @@ export default function ProxyPoolsPage() {
     [proxyPools]
   );
 
+  function getPoolPlatform(pool) {
+    if (pool.type === "cloudflare") return "cloudflare";
+    if (pool.type === "vercel") return "vercel";
+    if (pool.type === "deno") return "deno";
+    const url = pool.proxyUrl || "";
+    if (url.includes("netlify.app") || url.includes("netlify.com")) return "netlify";
+    if (url.includes("workers.dev")) return "cloudflare";
+    if (url.includes("vercel.app")) return "vercel";
+    if (url.includes("deno.dev") || url.includes("deno.net")) return "deno";
+    return "custom";
+  }
+
+  const filteredPools = useMemo(() => {
+    if (!platformFilter) return proxyPools;
+    return proxyPools.filter((p) => getPoolPlatform(p) === platformFilter);
+  }, [proxyPools, platformFilter]);
+
+  const handleTestAll = async () => {
+    const targets = filteredPools.filter((p) => p.id);
+    for (const pool of targets) {
+      try {
+        await fetch(`/api/proxy-pools/${pool.id}/test`, { method: "POST" });
+        setProxyPools((prev) => prev.map((p) => p.id === pool.id ? { ...p, testStatus: "active" } : p));
+      } catch { /* skip */ }
+    }
+    const res = await fetch("/api/proxy-pools");
+    if (res.ok) { const d = await res.json(); setProxyPools(d.proxyPools || []); }
+  };
+
   if (loading) {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-1 sm:gap-6 sm:px-0">
@@ -629,6 +708,16 @@ export default function ProxyPoolsPage() {
                   <span className="material-symbols-outlined text-[20px] text-green-500">terminal</span>
                   Deno Relay
                 </button>
+                <button
+                  onClick={() => {
+                    setShowNetlifyModal(true);
+                    setShowRelayMenu(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <span className="material-symbols-outlined text-[20px] text-teal-500">cloud_done</span>
+                  Netlify Relay
+                </button>
               </div>
             )}
           </div>
@@ -655,6 +744,23 @@ export default function ProxyPoolsPage() {
           )}
           <Badge variant="default">Total: {proxyPools.length}</Badge>
           <Badge variant="success">Active: {activeCount}</Badge>
+          {["cloudflare","vercel","netlify","custom"].map(p => (
+            <button
+              key={p}
+              onClick={() => setPlatformFilter(f => f === p ? null : p)}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${
+                platformFilter === p
+                  ? "bg-brand-500/20 text-brand-600 dark:text-brand-300 ring-1 ring-brand-500/40"
+                  : "bg-surface-2 text-text-muted hover:bg-black/10 dark:hover:bg-white/10"
+              }`}
+            >
+              {p === "cloudflare" && "☁ "}
+              {p === "vercel" && "▲ "}
+              {p === "netlify" && "◆ "}
+              {p === "custom" && "⊕ "}
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
         </div>
 
         {(selectedIds.length > 0 || healthChecking) && (
@@ -671,6 +777,9 @@ export default function ProxyPoolsPage() {
                 disabled={healthChecking || bulkBusy || proxyPools.length === 0}
               >
                 {healthChecking ? `Checking ${healthProgress.current}/${healthProgress.total}` : "Health Check"}
+              </Button>
+              <Button size="sm" variant="secondary" icon="network_check" onClick={handleTestAll} disabled={healthChecking || bulkBusy}>
+                Test All {platformFilter ? `(${platformFilter})` : ""}
               </Button>
               {selectedIds.length > 0 && (
                 <>
@@ -702,7 +811,7 @@ export default function ProxyPoolsPage() {
           </div>
         ) : (
           <div className="flex flex-col divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-            {proxyPools.map((pool) => (
+            {filteredPools.map((pool) => (
               <div key={pool.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <input
@@ -726,11 +835,28 @@ export default function ProxyPoolsPage() {
                     {pool.type === "cloudflare" && (
                       <Badge variant="default" size="sm">cloudflare relay</Badge>
                     )}
+                    {pool.type === "deno" && (
+                      <Badge variant="default" size="sm">deno relay</Badge>
+                    )}
+                    {!pool.type && pool.proxyUrl?.includes("netlify.app") && (
+                      <Badge variant="default" size="sm">netlify relay</Badge>
+                    )}
+                    {!pool.type && pool.proxyUrl?.includes("koyeb.app") && (
+                      <Badge variant="default" size="sm">koyeb relay</Badge>
+                    )}
+                    {!pool.type && pool.proxyUrl?.includes("fly.dev") && (
+                      <Badge variant="default" size="sm">fly.io relay</Badge>
+                    )}
                     <Badge variant="default" size="sm">
                       {pool.boundConnectionCount || 0} bound
                     </Badge>
                   </div>
                   <p className="text-xs text-text-muted truncate mt-1">{pool.proxyUrl}</p>
+                  {pool.egressIp && (
+                    <p className="text-xs text-text-muted mt-0.5 font-mono">
+                      IP: {pool.egressIp}
+                    </p>
+                  )}
                   {pool.noProxy ? (
                     <p className="text-xs text-text-muted truncate">No proxy: {pool.noProxy}</p>
                   ) : null}
@@ -986,6 +1112,66 @@ export default function ProxyPoolsPage() {
               Cancel
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showNetlifyModal}
+        title="Deploy Netlify Relay"
+        onClose={() => { if (!deploying) setShowNetlifyModal(false); }}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 p-3 flex flex-col gap-1.5">
+            <p className="text-sm text-text-main font-medium">What is Netlify Relay?</p>
+            <p className="text-xs text-text-muted">
+              Serverless relay on Netlify Functions — egress from AWS Lambda pool, different IP from Cloudflare Workers.
+            </p>
+            <ul className="text-xs text-text-muted list-disc pl-4 space-y-0.5">
+              <li>Free: 125K req/month, 100 GB bandwidth</li>
+              <li>IP from AWS Lambda — different from Cloudflare Workers</li>
+              <li>Deploy multiple sites for IP diversity</li>
+            </ul>
+            <div className="mt-2 pt-2 border-t border-black/10 dark:border-white/10 text-xs text-text-muted">
+              <p className="font-medium text-text-main mb-1">Get Personal Access Token:</p>
+              <ol className="list-decimal pl-4 space-y-0.5">
+                <li>Go to <b>app.netlify.com</b> → User Settings → Applications</li>
+                <li>New Access Token → copy token</li>
+              </ol>
+            </div>
+          </div>
+          <Input
+            label="Netlify Personal Access Token"
+            value={netlifyForm.netlifyToken}
+            onChange={(e) => setNetlifyForm((prev) => ({ ...prev, netlifyToken: e.target.value }))}
+            placeholder="nfp_xxxxxxxxxxxxxxxx"
+            type="password"
+            hint="Token used once for deployment, not stored."
+          />
+          <Input
+            label="Site Name"
+            value={netlifyForm.projectName}
+            onChange={(e) => setNetlifyForm((prev) => ({ ...prev, projectName: e.target.value }))}
+            placeholder="panrouter-relay"
+            hint="Unique site name. Relay URL: https://<name>.netlify.app/.netlify/functions/relay"
+          />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Button
+              fullWidth
+              onClick={handleNetlifyDeploy}
+              disabled={!netlifyForm.netlifyToken.trim() || deploying}
+            >
+              {deploying ? "Deploying..." : "Deploy Relay"}
+            </Button>
+            <Button fullWidth variant="ghost" onClick={() => setShowNetlifyModal(false)} disabled={deploying}>
+              Cancel
+            </Button>
+          </div>
+          {netlifyProgress && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px] text-primary animate-spin">progress_activity</span>
+              <span className="text-xs text-primary font-medium">{netlifyProgress.msg}</span>
+            </div>
+          )}
         </div>
       </Modal>
 

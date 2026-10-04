@@ -88,6 +88,14 @@ const COOLDOWN = {
  */
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
+  // Cloudflare error 1015 — "You are being rate limited" — IP-level CF block.
+  // Distinct from a generic HTML cold-start page: CF 1015 will not self-heal in
+  // seconds; the IP (relay egress) is blocked for minutes-to-hours. Lock the
+  // account for 1 hour so the request falls to the next account (different relay,
+  // different egress IP) instead of hammering the same blocked IP every 5s.
+  // Must come BEFORE the generic "<!doctype html" rule below.
+  { text: "you are being rate limited", cooldownMs: 60 * 60 * 1000 },
+  { text: "error 1015",                 cooldownMs: 60 * 60 * 1000 },
   // HTML error page (e.g. Render cold-start 403 HTML, Cloudflare challenge) —
   // infra-level transient, not an account/permission problem. Short cooldown so
   // the retry succeeds once the origin is awake.

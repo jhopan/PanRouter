@@ -136,6 +136,8 @@ import p122 from "./xquik.js";
 import p124 from "./agentrouter.js";
 import p125 from "./bai.js";
 import p126 from "./freebuff.js";
+import p127 from "./freeai.js";
+import p137 from "./freeai-vl.js";
 
 export default [
   p0,
@@ -273,4 +275,6 @@ export default [
   p134,
   p135,
   p136,
+  p127,
+  p137,
 ];

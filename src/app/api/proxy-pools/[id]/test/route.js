@@ -7,6 +7,20 @@ async function testVercelRelay(relayUrl, timeoutMs = 10000) {
   const controller = new AbortController();
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Also fetch egress IP via icanhazip.com through the relay
+  let egressIp = null;
+  try {
+    const ipRes = await undiciFetch(relayUrl, {
+      method: "GET",
+      headers: { "x-relay-target": "https://icanhazip.com" },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (ipRes.ok) {
+      egressIp = (await ipRes.text()).trim().replace(/[^0-9a-f:.]/gi, "") || null;
+    }
+  } catch { /* non-fatal */ }
+
   try {
     const res = await undiciFetch(relayUrl, {
       method: "GET",
@@ -21,12 +35,14 @@ async function testVercelRelay(relayUrl, timeoutMs = 10000) {
       status: res.status,
       statusText: res.statusText,
       elapsedMs: Date.now() - startedAt,
+      egressIp,
     };
   } catch (err) {
     return {
       ok: false,
       status: 500,
       error: err?.name === "AbortError" ? "Relay test timed out" : (err?.message || String(err)),
+      egressIp,
     };
   } finally {
     clearTimeout(timer);
@@ -53,6 +69,7 @@ export async function POST(request, { params }) {
       lastTestedAt: now,
       lastError: result.ok ? null : (result.error || `Proxy test failed with status ${result.status}`),
       isActive: result.ok,
+      ...(result.egressIp ? { egressIp: result.egressIp } : {}),
     });
 
     return NextResponse.json({
