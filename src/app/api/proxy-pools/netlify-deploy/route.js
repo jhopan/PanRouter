@@ -215,15 +215,42 @@ export async function POST(request) {
         ];
 
         const isWin = process.platform === "win32";
-        const cmd = isWin ? "netlify.cmd" : "netlify";
+        const cmdName = isWin ? "netlify.cmd" : "netlify";
+
+        // Collect extra candidate directories where netlify-cli might reside
+        const searchDirs = [
+          path.join(process.env.APPDATA || "", "npm"),
+          path.join(process.env.LOCALAPPDATA || "", "hermes", "tools", "node-26.7.0-win32-x64"),
+          process.cwd(),
+          path.join(process.cwd(), "node_modules", ".bin"),
+        ];
+
+        let resolvedCmd = cmdName;
+        const finalArgs = args;
+
+        for (const dir of searchDirs) {
+          const candidate = path.join(dir, cmdName);
+          if (candidate && fs.existsSync(candidate)) {
+            resolvedCmd = candidate;
+            break;
+          }
+        }
+
+        // Prepend search dirs to PATH so node and other sub-executables are always found
+        const extraPath = searchDirs.filter((d) => d && fs.existsSync(d)).join(path.delimiter);
+        const childEnv = {
+          ...process.env,
+          PATH: extraPath ? `${extraPath}${path.delimiter}${process.env.PATH || ""}` : process.env.PATH,
+          NETLIFY_AUTH_TOKEN: netlifyToken.trim(),
+        };
 
         let stdout = "";
         let stderr = "";
 
         await new Promise((resolve, reject) => {
-          const child = spawn(cmd, args, {
+          const child = spawn(resolvedCmd, finalArgs, {
             cwd: tmplDir,
-            env: { ...process.env, NETLIFY_AUTH_TOKEN: netlifyToken.trim() },
+            env: childEnv,
             shell: isWin,
           });
 
