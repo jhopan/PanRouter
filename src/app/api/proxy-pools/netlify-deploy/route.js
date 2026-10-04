@@ -29,7 +29,9 @@ const RELAY_CODE = `exports.handler = async function(event) {
 
   let targetUrl;
   try {
-    targetUrl = new URL(relayPath ? target.replace(/\/$/, "") + relayPath : target);
+    const cleanTarget = target.endsWith("/") ? target.slice(0, -1) : target;
+    const cleanPath = relayPath ? (relayPath.startsWith("/") ? relayPath : "/" + relayPath) : "";
+    targetUrl = new URL(cleanTarget + cleanPath);
   } catch(e) {
     return {
       statusCode: 400,
