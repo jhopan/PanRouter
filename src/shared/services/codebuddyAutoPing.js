@@ -15,28 +15,43 @@ const g = (global.__codebuddyAutoPing ??= {
   failureCache: {},
   slots: {},
   lastTouch: {},
+  immediateNextTick: false,
 });
 
-/** Day key (Asia/Jakarta / WIB) for a timestamp. */
-export function dailySlotKey(nowMs = Date.now()) {
+/**
+ * Day key (Asia/Jakarta / WIB) for a timestamp, aligned to 08:00 WIB daily reset boundary.
+ * 08:01 WIB today to 07:58 WIB tomorrow belong to the same cycle key.
+ */
+export function dailySlotKey(nowMs = Date.now(), resetHour = C.resetHourWIB ?? 8) {
+  const shiftedMs = nowMs - (resetHour * 3600 * 1000);
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date(nowMs));
+  }).format(new Date(shiftedMs));
 }
 
 /**
- * Deterministic-but-daily slot: the minute-of-day this connection fires.
- * Hash(connId + dayKey) — changes every day and per account so no fixed-hour pattern exists.
+ * Deterministic-but-daily slot in the 24-hour cycle.
+ * Randomly spreads connections across 08:01 WIB (min 1) to 07:58 WIB next day (min 1438).
  */
-export function slotMinuteOfDay(connectionId, dKey, startHour = C.windowStartHour, endHour = C.windowEndHour) {
+export function slotMinuteOfDay(connectionId, dKey, startArg = C.slotStartMin ?? 1, endArg = C.slotEndMin ?? 1438) {
   const s = `${connectionId}::${dKey}`;
   let h = 0;
   for (let i = 0; i < s.length; i++) h = ((h * 131) + s.charCodeAt(i)) >>> 0;
-  const windowMinutes = Math.max(60, (endHour - startHour) * 60);
-  return startHour * 60 + (h % windowMinutes);
+  // If arguments <= 24, treat as hours for backward compatibility
+  const startMin = startArg <= 24 && endArg <= 24 ? startArg * 60 : startArg;
+  const endMin = startArg <= 24 && endArg <= 24 ? endArg * 60 : endArg;
+  const span = Math.max(1, endMin - startMin);
+  return startMin + (h % span);
+}
+
+/** Minutes elapsed in current 08:00 WIB cycle (0..1439). */
+export function cycleMinuteElapsed(nowMs = Date.now(), resetHour = C.resetHourWIB ?? 8) {
+  const wib = new Date(nowMs + 7 * 3600 * 1000); // shift to UTC+7 (WIB)
+  const minuteOfDay = wib.getUTCHours() * 60 + wib.getUTCMinutes();
+  return (minuteOfDay - resetHour * 60 + 1440) % 1440;
 }
 
 function shouldSkipAfterFailure(connectionId, nowMs = Date.now()) {
@@ -69,7 +84,7 @@ async function runPingForConnection(conn, proxyOptions) {
   }
 
   const executor = getExecutor("codebuddy-intl");
-  const model = C.pingModel || "fast-model";
+  const model = C.pingModel || "gpt-5.6-luna";
 
   const { response } = await executor.execute({
     model,
@@ -85,7 +100,7 @@ async function runPingForConnection(conn, proxyOptions) {
     body: {
       model,
       stream: true,
-      max_tokens: C.pingMaxTokens || 1,
+      max_tokens: C.pingMaxTokens || 16,
       messages: [{ role: "user", content: C.pingText || "hi" }],
     },
   });
@@ -131,10 +146,11 @@ async function processConnections(now = new Date()) {
     .map(([id]) => id);
   if (enabledIds.length === 0) return;
 
+  const isImmediate = g.immediateNextTick;
+  g.immediateNextTick = false;
+
   const dKey = dailySlotKey(now.getTime());
-  const minutesNow = wibMinuteOfDay(now.getTime()); // WIB, not UTC
-  const startMin = (Number(cfg.windowStartHour) || C.windowStartHour) * 60;
-  const endMin = (Number(cfg.windowEndHour) || C.windowEndHour) * 60;
+  const minutesInCycle = cycleMinuteElapsed(now.getTime());
 
   for (const conn of conns) {
     if (!enabledIds.includes(conn.id)) continue;
@@ -143,8 +159,11 @@ async function processConnections(now = new Date()) {
     const lastMs = g.lastTouch[conn.id] || (conn.lastAutoPingAt ? new Date(conn.lastAutoPingAt).getTime() : 0);
     if (lastMs && now.getTime() - lastMs < C.touchThrottleMs) continue;
 
-    const slot = slotMinuteOfDay(conn.id, dKey, startMin / 60, endMin / 60);
-    if (minutesNow < slot) continue; // slot not reached yet today
+    const slot = slotMinuteOfDay(conn.id, dKey);
+    // When freshly enabled, or if connection has never been pinged before: fire immediately!
+    // Otherwise, wait until its randomized slot in the 08:01 - 07:58 WIB cycle is reached.
+    const isNew = !conn.lastAutoPingAt;
+    if (!isImmediate && !isNew && minutesInCycle < slot) continue;
 
     const proxyCfg = await resolveConnectionProxyConfig(conn.providerSpecificData).catch(() => ({}));
     const proxyOptions = {
@@ -185,6 +204,7 @@ export async function runCodebuddyAutoPingTick() {
 export function startCodebuddyAutoPing() {
   if (g.interval) return;
   console.log("[CB_PING] scheduler started");
+  g.immediateNextTick = true;
   runCodebuddyAutoPingTick().catch(() => {});
   g.interval = setInterval(() => runCodebuddyAutoPingTick().catch(() => {}), C.tickIntervalMs);
   if (g.interval.unref) g.interval.unref();
@@ -200,6 +220,13 @@ export function stopCodebuddyAutoPing() {
 export async function configureCodebuddyAutoPing(settings) {
   const cfg = settings?.codebuddyIntlAutoPing || {};
   const enabled = cfg.enabled === true || Object.values(cfg.connections || {}).some(Boolean);
-  if (enabled) startCodebuddyAutoPing();
-  else stopCodebuddyAutoPing();
+  if (enabled) {
+    g.immediateNextTick = true;
+    startCodebuddyAutoPing();
+    if (g.interval) {
+      runCodebuddyAutoPingTick().catch(() => {});
+    }
+  } else {
+    stopCodebuddyAutoPing();
+  }
 }
