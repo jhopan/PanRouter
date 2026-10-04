@@ -1,3 +1,18 @@
+# v0.5.75.24 (2026-10-05)
+
+## Netlify Headless CLI Deploy + CodeBuddy Intl Auto-Ping Upgrade
+
+- **Netlify Relay Deploy Engine**:
+  - Self-contained headless Netlify CLI runner inside backend (auto-resolved executable, `--auth` headless deploy without terminal login).
+  - Real-time line-by-line streaming progress to modal.
+  - Fixed template literal regex escape collision in relay function (`target.endsWith('/') ? target.slice(0, -1) : target`).
+  - Auto-subdomain conflict retry, 180s timeout headroom, and direct 1-click Netlify Overview links.
+- **CodeBuddy Intl Auto-Ping Upgrade**:
+  - Model set to `gpt-5.6-luna` (0.14x multiplier, 38% cheaper than fast-model).
+  - `pingMaxTokens: 16` to satisfy upstream minimum parameter requirements.
+  - Aligned daily cycle boundary to 07:00 WIB (00:00 UTC), covering 07:01 WIB today to 06:58 WIB next morning.
+  - Immediate ping on first activation, followed by full 24-hour randomized slot distribution (07:01–06:58 WIB) with zero missed pings.
+
 # v0.5.75.19 (2026-09-29)
 
 ## Qoder free model pin + CodeBuddy monthly parking
