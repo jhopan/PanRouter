@@ -15,6 +15,7 @@ const RELAY_CODE = `exports.handler = async function(event) {
   }
 
   const target = (event.headers || {})["x-relay-target"];
+  const relayPath = (event.headers || {})["x-relay-path"] || "";
   if (!target) {
     return {
       statusCode: 400,
@@ -25,7 +26,7 @@ const RELAY_CODE = `exports.handler = async function(event) {
 
   let targetUrl;
   try {
-    targetUrl = new URL(target);
+    targetUrl = new URL(relayPath ? target.replace(/\/$/, "") + relayPath : target);
   } catch(e) {
     return {
       statusCode: 400,
