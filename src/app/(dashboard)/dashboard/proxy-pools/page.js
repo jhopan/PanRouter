@@ -46,6 +46,7 @@ export default function ProxyPoolsPage() {
   const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay" });
   const [netlifyProgress, setNetlifyProgress] = useState(null); // null | { step, msg }
   const [netlifyDeployResult, setNetlifyDeployResult] = useState(null); // null | { deployUrl, siteName, accessUrl, adminUrl }
+  const [activeLockMenuId, setActiveLockMenuId] = useState(null);
   const [denoForm, setDenoForm] = useState({ denoToken: "", orgDomain: "", projectName: "" });
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -64,12 +65,13 @@ export default function ProxyPoolsPage() {
       if (relayMenuRef.current && !relayMenuRef.current.contains(e.target)) {
         setShowRelayMenu(false);
       }
+      if (!e.target.closest?.(".lock-menu-container")) {
+        setActiveLockMenuId(null);
+      }
     };
-    if (showRelayMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
+    document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showRelayMenu]);
+  }, []);
 
   const fetchProxyPools = useCallback(async () => {
     try {
@@ -877,17 +879,54 @@ export default function ProxyPoolsPage() {
                 </div>
 
                 <div className="flex items-center justify-end gap-1">
-                  {pool.proxyUrl?.match(/https:\/\/([a-z0-9-]+)\.netlify\.app/i) && (
-                    <a
-                      href={`https://app.netlify.com/sites/${pool.proxyUrl.match(/https:\/\/([a-z0-9-]+)\.netlify\.app/i)[1]}/configuration/access`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 rounded hover:bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                      title="Buka Pengaturan Akses Netlify (Make Public)"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">lock_open</span>
-                    </a>
-                  )}
+                  {pool.proxyUrl?.match(/https:\/\/([a-z0-9-]+)\.netlify\.app/i) && (() => {
+                    const siteMatch = pool.proxyUrl.match(/https:\/\/([a-z0-9-]+)\.netlify\.app/i);
+                    const siteName = siteMatch ? siteMatch[1] : "";
+                    const accessUrl = `https://app.netlify.com/sites/${siteName}/configuration/access`;
+                    const isOpen = activeLockMenuId === pool.id;
+                    return (
+                      <div className="relative lock-menu-container">
+                        <button
+                          type="button"
+                          onClick={() => setActiveLockMenuId(isOpen ? null : pool.id)}
+                          className="p-2 rounded hover:bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          title="Pengaturan Akses Netlify (Make Public)"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">lock_open</span>
+                        </button>
+
+                        {isOpen && (
+                          <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-black/10 bg-white p-1 shadow-xl dark:border-white/10 dark:bg-zinc-900">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (typeof navigator !== "undefined" && navigator.clipboard) {
+                                  navigator.clipboard.writeText(accessUrl);
+                                  notify.success("Link pengaturan Netlify disalin!");
+                                }
+                                setActiveLockMenuId(null);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                              Salin Link Akses
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                window.open(accessUrl, "_blank", "noopener,noreferrer");
+                                setActiveLockMenuId(null);
+                              }}
+                              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                              Buka di Tab Baru ↗
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <Toggle
                     size="sm"
                     checked={pool.isActive === true}
