@@ -882,7 +882,7 @@ export default function ProxyPoolsPage() {
                   {pool.proxyUrl?.match(/https:\/\/([a-z0-9-]+)\.netlify\.app/i) && (() => {
                     const siteMatch = pool.proxyUrl.match(/https:\/\/([a-z0-9-]+)\.netlify\.app/i);
                     const siteName = siteMatch ? siteMatch[1] : "";
-                    const accessUrl = `https://app.netlify.com/sites/${siteName}/configuration/access`;
+                    const accessUrl = `https://app.netlify.com/projects/${siteName}/overview`;
                     const isOpen = activeLockMenuId === pool.id;
                     return (
                       <div className="relative lock-menu-container">

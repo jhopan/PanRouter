@@ -338,8 +338,8 @@ export async function POST(request) {
           strictProxy: false,
         });
 
-        const adminUrl = site?.admin_url || `https://app.netlify.com/sites/${siteName}`;
-        const accessUrl = `https://app.netlify.com/sites/${siteName}/configuration/access`;
+        const adminUrl = site?.admin_url || `https://app.netlify.com/projects/${siteName}`;
+        const accessUrl = `https://app.netlify.com/projects/${siteName}/overview`;
 
         send({
           step: "done",
