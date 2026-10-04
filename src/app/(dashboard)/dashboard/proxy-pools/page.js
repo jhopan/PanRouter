@@ -45,6 +45,7 @@ export default function ProxyPoolsPage() {
   const [cloudflareForm, setCloudflareForm] = useState({ accountId: "", apiToken: "", projectName: "cloudflare-relay" });
   const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay" });
   const [netlifyProgress, setNetlifyProgress] = useState(null); // null | { step, msg }
+  const [netlifyDeployResult, setNetlifyDeployResult] = useState(null); // null | { deployUrl, siteName, accessUrl, adminUrl }
   const [denoForm, setDenoForm] = useState({ denoToken: "", orgDomain: "", projectName: "" });
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -376,10 +377,18 @@ export default function ProxyPoolsPage() {
     setShowDenoModal(false);
   };
 
+  const closeNetlifyModal = () => {
+    if (deploying) return;
+    setShowNetlifyModal(false);
+    setNetlifyProgress(null);
+    setNetlifyDeployResult(null);
+  };
+
   const handleNetlifyDeploy = async () => {
     if (!netlifyForm.netlifyToken.trim()) return;
     setDeploying(true);
     setNetlifyProgress({ step: "starting", msg: "Starting deploy..." });
+    setNetlifyDeployResult(null);
     try {
       const res = await fetch("/api/proxy-pools/netlify-deploy", {
         method: "POST",
@@ -404,7 +413,7 @@ export default function ProxyPoolsPage() {
             setNetlifyProgress({ step: evt.step, msg: evt.msg });
             if (evt.step === "done") {
               await fetchProxyPools();
-              setShowNetlifyModal(false);
+              setNetlifyDeployResult(evt);
               setNetlifyProgress(null);
               notify.success(`Deployed: ${evt.deployUrl}`);
             } else if (evt.step === "error") {
@@ -838,7 +847,7 @@ export default function ProxyPoolsPage() {
                     {pool.type === "deno" && (
                       <Badge variant="default" size="sm">deno relay</Badge>
                     )}
-                    {!pool.type && pool.proxyUrl?.includes("netlify.app") && (
+                    {(pool.type === "netlify" || (!pool.type && pool.proxyUrl?.includes("netlify.app"))) && (
                       <Badge variant="default" size="sm">netlify relay</Badge>
                     )}
                     {!pool.type && pool.proxyUrl?.includes("koyeb.app") && (
@@ -868,6 +877,17 @@ export default function ProxyPoolsPage() {
                 </div>
 
                 <div className="flex items-center justify-end gap-1">
+                  {pool.proxyUrl?.match(/https:\/\/([a-z0-9-]+)\.netlify\.app/i) && (
+                    <a
+                      href={`https://app.netlify.com/sites/${pool.proxyUrl.match(/https:\/\/([a-z0-9-]+)\.netlify\.app/i)[1]}/configuration/access`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded hover:bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      title="Buka Pengaturan Akses Netlify (Make Public)"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">lock_open</span>
+                    </a>
+                  )}
                   <Toggle
                     size="sm"
                     checked={pool.isActive === true}
@@ -1117,9 +1137,51 @@ export default function ProxyPoolsPage() {
 
       <Modal
         isOpen={showNetlifyModal}
-        title="Deploy Netlify Relay"
-        onClose={() => { if (!deploying) setShowNetlifyModal(false); }}
+        title={netlifyDeployResult ? "Netlify Relay Ready" : "Deploy Netlify Relay"}
+        onClose={closeNetlifyModal}
       >
+        {netlifyDeployResult ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3 rounded-lg border border-green-500/20 bg-green-500/10 p-3">
+              <span className="material-symbols-outlined text-[24px] text-green-500">check_circle</span>
+              <div>
+                <p className="text-sm font-medium text-text-main">Relay Berhasil Dideploy!</p>
+                <p className="text-xs text-text-muted">Relay sudah aktif dan tersimpan ke daftar Proxy Pools.</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1 text-xs font-medium text-text-main">URL Relay:</p>
+              <div className="flex items-center gap-2 rounded-lg border border-black/10 bg-black/5 p-2 font-mono text-xs dark:border-white/10 dark:bg-white/5">
+                <span className="break-all flex-1 select-all">{netlifyDeployResult.deployUrl}</span>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[20px] text-amber-500">lock_open</span>
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                  Langkah Terakhir: Buka Akses Publik (Make Public)
+                </p>
+              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Jika akun Netlify kamu mengunci situs baru secara default (muncul Login Redirect saat diuji), klik tombol di bawah untuk langsung menuju halaman pengaturan akses Netlify dan ubah proteksi ke <b>Public</b>:
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="open_in_new"
+                onClick={() => window.open(netlifyDeployResult.accessUrl, "_blank", "noopener,noreferrer")}
+              >
+                Buka Pengaturan Akses Netlify (Make Public) ↗
+              </Button>
+            </div>
+
+            <Button fullWidth onClick={closeNetlifyModal}>
+              Selesai
+            </Button>
+          </div>
+        ) : (
         <div className="flex flex-col gap-4">
           <div className="rounded-lg bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 p-3 flex flex-col gap-1.5">
             <p className="text-sm text-text-main font-medium">What is Netlify Relay?</p>
@@ -1162,7 +1224,7 @@ export default function ProxyPoolsPage() {
             >
               {deploying ? "Deploying..." : "Deploy Relay"}
             </Button>
-            <Button fullWidth variant="ghost" onClick={() => setShowNetlifyModal(false)} disabled={deploying}>
+            <Button fullWidth variant="ghost" onClick={closeNetlifyModal} disabled={deploying}>
               Cancel
             </Button>
           </div>
@@ -1173,6 +1235,7 @@ export default function ProxyPoolsPage() {
             </div>
           )}
         </div>
+        )}
       </Modal>
 
       <Modal

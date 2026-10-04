@@ -332,15 +332,22 @@ export async function POST(request) {
         const proxyPool = await createProxyPool({
           name: siteName,
           proxyUrl: finalProxyUrl,
+          type: "netlify",
           noProxy: "",
           isActive: true,
           strictProxy: false,
         });
 
+        const adminUrl = site?.admin_url || `https://app.netlify.com/sites/${siteName}`;
+        const accessUrl = `https://app.netlify.com/sites/${siteName}/configuration/access`;
+
         send({
           step: "done",
           msg: "Relay successfully deployed!",
           deployUrl: finalProxyUrl,
+          siteName,
+          adminUrl,
+          accessUrl,
           proxyPool
         });
       } catch (err) {
