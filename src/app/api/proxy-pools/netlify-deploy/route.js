@@ -2,8 +2,111 @@ import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
 import { spawn } from "node:child_process";
 import path from "node:path";
+import os from "node:os";
+import fs from "node:fs";
 
 const NETLIFY_API = "https://api.netlify.com/api/v1";
+
+// Standalone relay function code (CommonJS handler, native Netlify Functions runtime)
+const RELAY_CODE = `exports.handler = async function(event) {
+  if (event.httpMethod === "OPTIONS") {
+    return {
+      statusCode: 200,
+      headers: corsHeaders(),
+      body: ""
+    };
+  }
+
+  const target = (event.headers || {})["x-relay-target"];
+  const relayPath = (event.headers || {})["x-relay-path"] || "";
+  if (!target) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders(),
+      body: JSON.stringify({ error: "Missing x-relay-target header" })
+    };
+  }
+
+  let targetUrl;
+  try {
+    targetUrl = new URL(relayPath ? target.replace(/\/$/, "") + relayPath : target);
+  } catch(e) {
+    return {
+      statusCode: 400,
+      headers: corsHeaders(),
+      body: JSON.stringify({ error: "Invalid URL: " + e.message })
+    };
+  }
+
+  const skip = new Set([
+    "x-relay-target",
+    "x-relay-path",
+    "host",
+    "connection",
+    "content-length",
+    "transfer-encoding",
+    "x-forwarded-for",
+    "x-forwarded-proto",
+    "x-forwarded-host",
+    "x-nf-request-id",
+    "cdn-loop"
+  ]);
+
+  const fwd = {};
+  for (const [k, v] of Object.entries(event.headers || {})) {
+    if (!skip.has(k.toLowerCase())) fwd[k] = v;
+  }
+
+  let res;
+  try {
+    res = await fetch(targetUrl.toString(), {
+      method: event.httpMethod,
+      headers: fwd,
+      body: event.body && event.httpMethod !== "GET" && event.httpMethod !== "HEAD"
+        ? (event.isBase64Encoded ? Buffer.from(event.body, "base64") : event.body)
+        : undefined,
+      signal: AbortSignal.timeout(9000),
+    });
+  } catch(e) {
+    return {
+      statusCode: 502,
+      headers: corsHeaders(),
+      body: JSON.stringify({ error: "Upstream fetch failed: " + e.message })
+    };
+  }
+
+  const rh = corsHeaders();
+  const skipR = new Set(["transfer-encoding", "connection", "keep-alive", "content-encoding"]);
+  for (const [k, v] of res.headers.entries()) {
+    if (!skipR.has(k.toLowerCase())) rh[k] = v;
+  }
+
+  const body = await res.text();
+  return {
+    statusCode: res.status,
+    headers: rh,
+    body
+  };
+};
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+    "Access-Control-Allow-Headers": "*"
+  };
+}
+`;
+
+const NETLIFY_TOML = `[build]
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/relay"
+  status = 200
+  force = true
+`;
 
 export async function POST(request) {
   const body = await request.json().catch(() => ({}));
@@ -46,7 +149,7 @@ export async function POST(request) {
         for (let attempt = 0; attempt < 5; attempt++) {
           const siteRes = await fetch(`${NETLIFY_API}/sites`, {
             method: "POST",
-            headers: { Authorization: `Bearer ${netlifyToken}`, "Content-Type": "application/json" },
+            headers: { Authorization: `Bearer ${netlifyToken.trim()}`, "Content-Type": "application/json" },
             body: JSON.stringify({ name: siteName }),
             signal: AbortSignal.timeout(10000),
           });
@@ -87,11 +190,18 @@ export async function POST(request) {
         const siteUrl = site.ssl_url || site.url || `https://${siteName}.netlify.app`;
         send({ step: "created", msg: `Site created: ${siteName}` });
 
-        // Step 2: Deploy function via Netlify CLI engine
-        send({ step: "building", msg: "Bundling & deploying function via Netlify engine..." });
+        // Step 2: Prepare self-contained relay bundle in temp dir
+        send({ step: "building", msg: "Preparing relay function bundle..." });
 
-        const tmplDir = path.resolve(process.cwd(), "src/lib/templates/netlify-relay");
+        const tmplDir = path.join(os.tmpdir(), `panrouter-netlify-${siteName}`);
         const fnDir = path.join(tmplDir, "netlify", "functions");
+        fs.mkdirSync(fnDir, { recursive: true });
+        fs.writeFileSync(path.join(fnDir, "relay.js"), RELAY_CODE, "utf-8");
+        fs.writeFileSync(path.join(tmplDir, "netlify.toml"), NETLIFY_TOML, "utf-8");
+        fs.writeFileSync(path.join(tmplDir, "package.json"), JSON.stringify({ name: "netlify-relay", version: "1.0.0", private: true }, null, 2), "utf-8");
+
+        // Step 3: Run Netlify CLI deploy engine
+        send({ step: "uploading", msg: "Deploying function via Netlify CLI engine..." });
 
         const args = [
           "deploy",
@@ -140,12 +250,15 @@ export async function POST(request) {
 
           child.on("close", (code) => {
             clearTimeout(timer);
+            // Clean up temp dir
+            try { fs.rmSync(tmplDir, { recursive: true, force: true }); } catch {}
             if (code === 0) resolve();
             else reject(new Error(`Deploy failed (exit code ${code}): ${stderr || stdout}`));
           });
 
           child.on("error", (err) => {
             clearTimeout(timer);
+            try { fs.rmSync(tmplDir, { recursive: true, force: true }); } catch {}
             reject(err);
           });
         });
@@ -161,15 +274,15 @@ export async function POST(request) {
         const finalProxyUrl = `${deployUrl}/.netlify/functions/relay`;
         send({ step: "ready", msg: "Deploy live!" });
 
-        // Step 3: Ensure site is public
+        // Step 4: Ensure site is public
         await fetch(`${NETLIFY_API}/sites/${siteId}`, {
           method: "PATCH",
-          headers: { Authorization: `Bearer ${netlifyToken}`, "Content-Type": "application/json" },
+          headers: { Authorization: `Bearer ${netlifyToken.trim()}`, "Content-Type": "application/json" },
           body: JSON.stringify({ password: null, force_ssl: true }),
           signal: AbortSignal.timeout(10000),
         }).catch(() => {});
 
-        // Step 4: Save to Proxy Pools
+        // Step 5: Save to Proxy Pools
         send({ step: "saving", msg: "Saving to PanRouter Proxy Pools..." });
         const proxyPool = await createProxyPool({
           name: siteName,

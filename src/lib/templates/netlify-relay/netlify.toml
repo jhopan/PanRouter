@@ -1,8 +1,0 @@
-[build]
-  functions = "netlify/functions"
-
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/relay"
-  status = 200
-  force = true
