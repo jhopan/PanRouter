@@ -242,6 +242,8 @@ export async function POST(request) {
           ...process.env,
           PATH: extraPath ? `${extraPath}${path.delimiter}${process.env.PATH || ""}` : process.env.PATH,
           NETLIFY_AUTH_TOKEN: netlifyToken.trim(),
+          CI: "true",
+          NETLIFY_TELEMETRY_DISABLE: "1",
         };
 
         let stdout = "";
@@ -254,20 +256,22 @@ export async function POST(request) {
             shell: isWin,
           });
 
+          // 180 seconds gives comfortable headroom for international uploads & CDN propagation
           const timer = setTimeout(() => {
             child.kill();
-            reject(new Error("Netlify deploy process timed out after 60s"));
-          }, 60000);
+            reject(new Error("Netlify deploy process timed out after 180s"));
+          }, 180000);
 
           child.stdout?.on("data", (chunk) => {
             const str = chunk.toString();
             stdout += str;
-            if (str.includes("Packaging Functions") || str.includes("bundling")) {
-              send({ step: "building", msg: "Packaging relay function..." });
-            } else if (str.includes("Uploading") || str.includes("Hashing")) {
-              send({ step: "uploading", msg: "Uploading function to Netlify..." });
-            } else if (str.includes("Waiting for deploy")) {
-              send({ step: "processing", msg: "Waiting for deploy to go live..." });
+            const lines = str.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean);
+            for (const line of lines) {
+              if (line.includes("{") && line.includes("}")) continue;
+              const clean = line.replace(/[✔⠋❯]/g, "").trim();
+              if (clean.length > 3 && clean.length < 100) {
+                send({ step: "deploying", msg: clean });
+              }
             }
           });
 
