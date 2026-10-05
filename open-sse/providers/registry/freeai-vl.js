@@ -11,7 +11,7 @@ export default {
     textIcon: "FV",
     website: "https://free.ai/",
     notice: {
-      text: "Free.ai vision models: OpenAI-compatible endpoint (/v1/chat/completions). Same API key as freeai (fai). Chat/code models → use freeai (fai).",
+      text: "Free.ai Vision — DEPRECATED. Model sudah digabung ke provider freeai (fai) satu node satu key; freeai-vl dipertahankan untuk kompatibilitas koneksi lama saja.",
       apiKeyUrl: "https://free.ai/",
     },
   },

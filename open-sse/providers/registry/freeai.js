@@ -11,15 +11,16 @@ export default {
     textIcon: "FA",
     website: "https://free.ai/",
     notice: {
-      text: "Free.ai chat models: self-hosted open-source, 60 RPM / 1000 req/month per key. Vision models → use freeai-vl (fai-vl). Key from free.ai.",
+      text: "Free.ai: satu node untuk chat + code + vision (qwen-vl, qwen25-vl, moondream2). 60 RPM / 1000 req/month per key, key sekali untuk semua model. Key dari free.ai.",
       apiKeyUrl: "https://free.ai/",
     },
   },
   category: "apikey",
   authModes: ["apikey"],
   transport: {
-    // Node A: /v1/chat/ (native path) — serves all self-hosted chat/code models (7 models).
-    // Vision models (qwen-vl, qwen25-vl) use /v1/chat/completions → separate provider freeai-vl.
+    // Base chat/code path: /v1/chat/ (native). Vision models (qwen-vl,
+    // qwen25-vl, moondream2) are routed by FreeAIExecutor to
+    // /v1/chat/completions (OpenAI-compat) automatically — satu key, satu node.
     baseUrl: "https://api.free.ai/v1/chat/",
     auth: { combined: true, header: "Authorization", scheme: "bearer" },
   },
@@ -35,6 +36,10 @@ export default {
     // CODE
     { id: "qwen-coder",     name: "Qwen 2.5 Coder 7B" },
     { id: "qwen3-coder",    name: "Qwen3-Coder 7B" },
+    // VISION (routed to /v1/chat/completions automatically)
+    { id: "qwen-vl",   name: "Qwen2.5-VL 7B",    capabilities: { vision: true } },
+    { id: "qwen25-vl", name: "Qwen2.5-VL 7B v2",  capabilities: { vision: true } },
+    { id: "moondream2", name: "Moondream 2",         capabilities: { vision: true } },
   ],
   passthroughModels: true,
   serviceKinds: ["llm"],
