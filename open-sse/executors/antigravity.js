@@ -385,19 +385,86 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   // Parse retry time from Antigravity error message body
-  // Format: "Your quota will reset after 2h7m23s" or "1h30m" or "45m" or "30s"
+  // Formats: "Your quota will reset after 2h7m23s" / "Resets in 74h19m34s." /
+  // "1h30m" / "45m" / "30s" — supports decimal units ("34.031069133s") too.
   parseRetryFromErrorMessage(errorMessage) {
     if (!errorMessage || typeof errorMessage !== "string") return null;
 
-    const match = errorMessage.match(/reset after (\d+h)?(\d+m)?(\d+s)?/i);
+    const match = errorMessage.match(/resets?\s+(?:in|after)\s+(\d+(?:\.\d+)?h)?(\d+(?:\.\d+)?m)?(\d+(?:\.\d+)?s)?/i);
     if (!match) return null;
 
     let totalMs = 0;
-    if (match[1]) totalMs += parseInt(match[1]) * 3600 * 1000; // hours
-    if (match[2]) totalMs += parseInt(match[2]) * 60 * 1000; // minutes
-    if (match[3]) totalMs += parseInt(match[3]) * 1000; // seconds
+    if (match[1]) totalMs += parseFloat(match[1]) * 3600 * 1000; // hours
+    if (match[2]) totalMs += parseFloat(match[2]) * 60 * 1000; // minutes
+    if (match[3]) totalMs += parseFloat(match[3]) * 1000; // seconds
 
     return totalMs > 0 ? totalMs : null;
+  }
+
+  /**
+   * Parse precise quota reset from Antigravity's Google-generated 409/429 body.
+   *
+   * The generation endpoint returns RESOURCE_EXHAUSTED with an exact reset in
+   * `details[].metadata.quotaResetTimeStamp` (ISO) plus
+   * `details[].metadata.quotaResetDelay` ("74h19m34.031069133s") and a RetryInfo
+   * `retryDelay` in seconds. Without this parser, chat.js falls back to the live
+   * quota API — which has NO per-model row for free-tier accounts — so the
+   * strike breaker would CACHE_BLOCK for only 15m instead of parking until the
+   * real (often multi-day) reset.
+   * @returns {Promise<{status: number, message: string, resetsAtMs?: number}>}
+   */
+  async parseError(response, bodyText) {
+    if (response && (response.status === 409 || response.status === 429) && bodyText) {
+      let errorJson = null;
+      try {
+        errorJson = JSON.parse(bodyText);
+      } catch {
+        // fall through to message-based parsing below
+      }
+
+      let resetsAtMs = null;
+      // Google nests details under error.details (ErrorInfo/RetryInfo); some
+      // relays surface an unwrapped top-level details — handle both.
+      const rawDetails = errorJson?.details || errorJson?.error?.details;
+      if (Array.isArray(rawDetails)) {
+        for (const detail of rawDetails) {
+          const metadata = detail?.metadata;
+          if (metadata?.quotaResetTimeStamp) {
+            const ts = Date.parse(metadata.quotaResetTimeStamp);
+            if (!Number.isNaN(ts) && ts > Date.now()) {
+              resetsAtMs = ts;
+              break;
+            }
+          }
+          if (metadata?.quotaResetDelay) {
+            const delayMs = this.parseRetryFromErrorMessage(`resets in ${metadata.quotaResetDelay}`);
+            if (delayMs) {
+              resetsAtMs = Date.now() + delayMs;
+              break;
+            }
+          }
+          if (typeof detail?.["@type"] === "string" && detail["@type"].includes("RetryInfo") && typeof detail.retryDelay === "string") {
+            const seconds = parseFloat(detail.retryDelay);
+            if (Number.isFinite(seconds) && seconds > 0) {
+              resetsAtMs = Date.now() + seconds * 1000;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!resetsAtMs) {
+        const errorMessage = this.extractErrorMessage(errorJson, bodyText);
+        const retryMs = this.parseRetryFromErrorMessage(errorMessage);
+        if (retryMs) resetsAtMs = Date.now() + retryMs;
+      }
+
+      if (resetsAtMs) {
+        return { status: response.status, message: bodyText, resetsAtMs };
+      }
+    }
+
+    return super.parseError(response, bodyText);
   }
 
   extractErrorMessage(errorJson, bodyText = "") {

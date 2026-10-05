@@ -333,10 +333,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     if (result.success) return result.response;
 
-    // Antigravity 409/429: refresh live quota to get exact resetAt before locking
+    // Antigravity 409/429: prefer the exact reset parsed from the error body
+    // (quotaResetTimeStamp / RetryInfo) — the quota usage API has no per-model
+    // row for free-tier accounts, and running it anyway would trip the strike
+    // breaker into a 15m CACHE_BLOCK instead of the true multi-day reset.
+    // Only hit the live quota API when the body carried no precise resetAt.
     let quotaResetMs = null;
     let resetsAtMs = result.resetsAtMs;
-    if (provider === "antigravity" && (result.status === 409 || result.status === 429)) {
+    if (provider === "antigravity" && (result.status === 409 || result.status === 429) && !resetsAtMs) {
       quotaResetMs = await handleAntigravityQuotaError(
         credentials.connectionId, result.status, model,
         refreshedCredentials.accessToken, credentials.providerSpecificData
