@@ -131,6 +131,20 @@ async function _doRefresh(connectionId, accessToken, providerSpecificData, now) 
 }
 
 /**
+ * Map an Antigravity model id to its weekly family bucket key.
+ * The usage API only reports per-model rows on paid tier; free-tier accounts
+ * expose family buckets (gemini_weekly / claude_gpt_weekly) instead — the error
+ * path must fall back to the family key or it misclassifies free-tier 429s as
+ * "quota unknown" and the strike breaker CACHE_BLOCKs for only 15m.
+ */
+export function antigravityFamilyKey(model) {
+  if (!model) return null;
+  if (/gemini|palm|gemma|imagen/i.test(model)) return "gemini_weekly";
+  if (/claude|gpt|opus|sonnet/i.test(model)) return "claude_gpt_weekly";
+  return null;
+}
+
+/**
  * Handle Antigravity 409/429 — refresh RAM cache and return model resetAt when exhausted.
  * Called from chat handler error path.
  * @returns {number|null} resetAt timestamp ms (for resetsAtMs passthrough) or null
@@ -140,7 +154,11 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
 
   // Throttle applies to error paths too: one quota request per account/30s.
   // The first 409/429 populates cache; concurrent or repeated errors reuse it.
-  const quota = (await refreshAntigravityQuota(connectionId, accessToken, providerSpecificData))?.[model];
+  // Fall back from the exact model id to its weekly family bucket so free-tier
+  // accounts (which have no per-model rows) still resolve to a real resetAt.
+  const quotas = (await refreshAntigravityQuota(connectionId, accessToken, providerSpecificData)) || {};
+  const familyKey = antigravityFamilyKey(model);
+  const quota = quotas[model] || (familyKey ? quotas[familyKey] : undefined);
 
   // Strike breaker: count every 429 whose quota reading is either optimistic
   // (remaining > 0) or unavailable (quota API 403/error). 3 within the window

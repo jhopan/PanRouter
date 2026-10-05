@@ -27,7 +27,7 @@ vi.mock("open-sse/services/usage/google.js", () => ({
 }));
 vi.mock("@/sse/utils/logger.js", () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 
-const { getAntigravityQuotaCache, handleAntigravityQuotaError, refreshAntigravityQuota, clearAntigravityStrikes } = await import("@/sse/services/antigravityQuota.js");
+const { getAntigravityQuotaCache, handleAntigravityQuotaError, refreshAntigravityQuota, clearAntigravityStrikes, antigravityFamilyKey } = await import("@/sse/services/antigravityQuota.js");
 const { getProviderCredentials } = await import("@/sse/services/auth.js");
 
 const MODEL = "claude-opus-4-6-thinking";
@@ -298,14 +298,40 @@ describe("Antigravity quota-aware routing", () => {
   });
 
   it("keeps the optimistic path null without touching the quota cache", async () => {
-    mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
-      [MODEL]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
-    } });
+      mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
+        [MODEL]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
+      } });
 
-    await expect(handleAntigravityQuotaError("ag-optimistic", 429, MODEL, "token", {}))
-      .resolves.toBeNull();
-    // Optimistic reading must NOT poison the shared cache (auth pre-filter
-    // treats cached 0% as exhausted).
-    expect(getAntigravityQuotaCache().get("ag-optimistic")?.[MODEL]?.remainingPercentage).toBe(90);
+      await expect(handleAntigravityQuotaError("ag-optimistic", 429, MODEL, "token", {}))
+        .resolves.toBeNull();
+      // Optimistic reading must NOT poison the shared cache (auth pre-filter
+      // treats cached 0% as exhausted).
+      expect(getAntigravityQuotaCache().get("ag-optimistic")?.[MODEL]?.remainingPercentage).toBe(90);
+    });
+
+    it("maps gemini/claude model ids to weekly family bucket keys", () => {
+      expect(antigravityFamilyKey("gemini-3.8-flash-high")).toBe("gemini_weekly");
+      expect(antigravityFamilyKey("claude-sonnet-4-6")).toBe("claude_gpt_weekly");
+      expect(antigravityFamilyKey("gpt-oss-120b-medium")).toBe("claude_gpt_weekly");
+      expect(antigravityFamilyKey("unknown-model")).toBeNull();
+    });
+
+    it("falls back to the weekly family bucket when no per-model row exists (free tier)", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+      // Free-tier usage API: NO per-model row, only the weekly family bucket.
+      mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
+        gemini_weekly: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+      } });
+
+      try {
+        await expect(handleAntigravityQuotaError("ag-family", 429, "gemini-3.8-flash-high", "token", {}))
+          .resolves.toBe(Date.parse(FUTURE_RESET));
+        const cached = getAntigravityQuotaCache().get("ag-family");
+        expect(cached["gemini-3.8-flash-high"]).toBeUndefined();
+        expect(cached.gemini_weekly).toMatchObject({ remainingPercentage: 0 });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
-});

@@ -162,6 +162,12 @@ export const QUOTA_EXHAUSTED_SIGNALS = [
   // TokenHarbor free-tier rolling window: "You've used this period's free
   // allowance. Your next rolling 7-day period starts on <date> at <hh:mm> UTC."
   "free allowance",
+  // Antigravity/Google quota refusals: "Individual quota reached. Please
+  // upgrade your subscription to increase your limits. Resets in 74h19m34s."
+  // with status RESOURCE_EXHAUSTED in the body.
+  "individual quota",
+  "resource_exhausted",
+  "upgrade your subscription to increase",
 ];
 
 /**
