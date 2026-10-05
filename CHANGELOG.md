@@ -1,3 +1,14 @@
+# v0.5.75.25 (2026-10-05)
+
+## Antigravity Quota Family-Only Routing + Exact Reset Parking
+
+- **Family-only quota routing**: Plus/Free accounts share ONE weekly limit per family. Per-model rows on Plus only mirror that weekly bucket (only Pro/Ultra add a real 5h session). Now the router blocks exclusively on the family buckets:
+  - `gemini-*` (termasuk `gemini-3.1-flash-image`) → `gemini_weekly`
+  - `claude-*`, `gpt-*` (termasuk `gpt-oss-120b`) → `claude_gpt_weekly`
+- **Exact reset from 429 body**: `AntigravityExecutor.parseError` reads `quotaResetTimeStamp` / `quotaResetDelay` / `RetryInfo.retryDelay` from Google's error `details`; chat.js prefers it over the live quota API.
+- **Fix 15m strike misclassification**: free-tier accounts have no per-model quota rows, so 429s used to hit the strike breaker (15m CACHE_BLOCK) despite the body saying "Resets in 74h". Now parks until the true weekly reset.
+- `QUOTA_EXHAUSTED_SIGNALS` + `isQuotaExhaustedError` recognize "individual quota" / "RESOURCE_EXHAUSTED" / "upgrade your subscription to increase".
+
 # v0.5.75.24 (2026-10-05)
 
 ## Netlify Headless CLI Deploy + CodeBuddy Intl Auto-Ping Upgrade
