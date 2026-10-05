@@ -1,11 +1,21 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
 
 const NETLIFY_API = "https://api.netlify.com/api/v1";
+
+// Resolve netlify-cli from the installed dependency tree (PanRouter declares
+// netlify-cli in cli/package.json, so a global `npm i -g panrouter` installs it
+// alongside the app). Falls back to PATH search for standalone setups.
+const requireForCli = createRequire(import.meta.url);
+let NETLIFY_CLI_BIN = null;
+try {
+  NETLIFY_CLI_BIN = requireForCli.resolve("netlify-cli/bin/run.js");
+} catch { /* not installed as a dep — PATH search below covers it */ }
 
 // Standalone relay function code (CommonJS handler, native Netlify Functions runtime)
 const RELAY_CODE = `exports.handler = async function(event) {
@@ -228,13 +238,16 @@ export async function POST(request) {
         ];
 
         let resolvedCmd = cmdName;
+        let resolvedRunScript = NETLIFY_CLI_BIN;
         const finalArgs = args;
 
-        for (const dir of searchDirs) {
-          const candidate = path.join(dir, cmdName);
-          if (candidate && fs.existsSync(candidate)) {
-            resolvedCmd = candidate;
-            break;
+        if (!resolvedRunScript) {
+          for (const dir of searchDirs) {
+            const candidate = path.join(dir, cmdName);
+            if (candidate && fs.existsSync(candidate)) {
+              resolvedCmd = candidate;
+              break;
+            }
           }
         }
 
@@ -252,11 +265,18 @@ export async function POST(request) {
         let stderr = "";
 
         await new Promise((resolve, reject) => {
-          const child = spawn(resolvedCmd, finalArgs, {
-            cwd: tmplDir,
-            env: childEnv,
-            shell: isWin,
-          });
+          // Preferred: run the installed netlify-cli node script directly (works
+          // without .cmd shims / shell on any platform). Fallback: PATH-spawn.
+          const child = resolvedRunScript
+            ? spawn(process.execPath, [resolvedRunScript, ...finalArgs], {
+                cwd: tmplDir,
+                env: childEnv,
+              })
+            : spawn(resolvedCmd, finalArgs, {
+                cwd: tmplDir,
+                env: childEnv,
+                shell: isWin,
+              });
 
           // 180 seconds gives comfortable headroom for international uploads & CDN propagation
           const timer = setTimeout(() => {
