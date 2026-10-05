@@ -5,7 +5,7 @@ import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { isQuotaExhaustedError, resolveQuotaResetAt } from "open-sse/services/quotaWindow.js";
 import { quotaWindowFor } from "open-sse/config/quotaWindows.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
-import { getAntigravityQuotaCache } from "./antigravityQuota.js";
+import { getAntigravityQuotaCache, antigravityFamilyKey } from "./antigravityQuota.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -159,26 +159,20 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           return false;
         }
       }
-      // Antigravity: skip if live quota exhausted for this model or its weekly bucket
+      // Antigravity: family-only routing. Plus/free accounts share ONE weekly
+      // limit per family (gemini_weekly / claude_gpt_weekly); the per-model rows
+      // on Plus just mirror that weekly bucket — only Pro/Ultra add a real 5h
+      // session. Skip if the matching weekly bucket is exhausted.
       if (isAntigravity && model && antigravityQuotaCache) {
         const cache = antigravityQuotaCache.get(c.id);
         if (cache) {
           const account = c.id?.slice(0, 8) || "unknown";
           const now = Date.now();
-          // 1. Per-model key (fine-grained, from per-model quota API)
-          const perModel = cache[model];
-          if (perModel && perModel.remainingPercentage <= 0 && perModel.resetAt && new Date(perModel.resetAt).getTime() > now) {
-            log.debug("AG_QUOTA", `${account} | CACHE_BLOCK ${model} — skip upstream until ${perModel.resetAt}`);
-            return false;
-          }
-          // 2. Weekly bucket (gemini_weekly / claude_gpt_weekly)
-          const bucketKey = /^gemini/i.test(model) ? "gemini_weekly"
-            : /^claude|^gpt/i.test(model) ? "claude_gpt_weekly"
-            : null;
-          if (bucketKey) {
-            const bucket = cache[bucketKey];
+          const familyKey = antigravityFamilyKey(model);
+          if (familyKey) {
+            const bucket = cache[familyKey];
             if (bucket && bucket.remainingPercentage <= 0 && bucket.resetAt && new Date(bucket.resetAt).getTime() > now) {
-              log.debug("AG_QUOTA", `${account} | BUCKET_BLOCK ${model} (${bucketKey}) — skip upstream until ${bucket.resetAt}`);
+              log.debug("AG_QUOTA", `${account} | BUCKET_BLOCK ${model} (${familyKey}) — skip upstream until ${bucket.resetAt}`);
               return false;
             }
           }
@@ -203,7 +197,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
       if (isAntigravity && model && antigravityQuotaCache) {
         connections.forEach((c) => {
-          const resetAt = antigravityQuotaCache.get(c.id)?.[model]?.resetAt;
+          const cache = antigravityQuotaCache.get(c.id);
+          if (!cache) return;
+          // Family-only: read the weekly bucket; per-model only as a fallback
+          // for models outside the known families.
+          const familyKey = antigravityFamilyKey(model);
+          const resetAt = (familyKey && cache[familyKey]?.resetAt) || cache[model]?.resetAt;
           if (resetAt && new Date(resetAt).getTime() > Date.now()) expiries.push(resetAt);
         });
       }

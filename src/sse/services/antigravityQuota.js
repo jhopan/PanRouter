@@ -32,6 +32,8 @@ const strikeBlocks = new Map(); // "connectionId|model" → blockedUntil ms
  * Re-apply active strike blocks onto a fresh quotas snapshot so the auth
  * pre-filter (which reads this cache) keeps skipping the blocked pair across
  * requests until the block expires — same channel as the exhausted-0% path.
+ * Family-only: blocks are written under the weekly family bucket
+ * (gemini_weekly / claude_gpt_weekly), which is what the pre-filter reads.
  */
 function applyActiveStrikeBlocks(connectionId, quotas) {
   const now = Date.now();
@@ -41,7 +43,9 @@ function applyActiveStrikeBlocks(connectionId, quotas) {
       strikeBlocks.delete(key);
       continue;
     }
-    quotas[key.slice(connectionId.length + 1)] = {
+    const model = key.slice(connectionId.length + 1);
+    const familyKey = antigravityFamilyKey(model);
+    quotas[familyKey || model] = {
       remainingPercentage: 0,
       resetAt: new Date(until).toISOString(),
     };
@@ -61,8 +65,11 @@ export function clearAntigravityStrikes(connectionId, model) {
   if (until === undefined) return;
   strikeBlocks.delete(key);
   const cached = quotaCache.get(connectionId);
-  if (cached?.[model]?.resetAt === new Date(until).toISOString()) {
-    delete cached[model];
+  if (!cached) return;
+  const familyKey = antigravityFamilyKey(model);
+  const target = familyKey || model;
+  if (cached[target]?.resetAt === new Date(until).toISOString()) {
+    delete cached[target];
     quotaCache.set(connectionId, cached);
   }
 }
@@ -154,11 +161,13 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
 
   // Throttle applies to error paths too: one quota request per account/30s.
   // The first 409/429 populates cache; concurrent or repeated errors reuse it.
-  // Fall back from the exact model id to its weekly family bucket so free-tier
-  // accounts (which have no per-model rows) still resolve to a real resetAt.
+  // Family-only: plus/free accounts share ONE weekly limit per family — the
+  // per-model rows on Plus just mirror that weekly bucket (only Pro/Ultra add
+  // a real 5h session). Read the family bucket first; keep per-model only as
+  // a fallback for models outside the known families.
   const quotas = (await refreshAntigravityQuota(connectionId, accessToken, providerSpecificData)) || {};
   const familyKey = antigravityFamilyKey(model);
-  const quota = quotas[model] || (familyKey ? quotas[familyKey] : undefined);
+  const quota = (familyKey && quotas[familyKey]) || quotas[model];
 
   // Strike breaker: count every 429 whose quota reading is either optimistic
   // (remaining > 0) or unavailable (quota API 403/error). 3 within the window
@@ -185,7 +194,7 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
       // this pair on subsequent requests too, not just the current retry loop
       // (the chat handler does not persist modelLock_* for this path).
       const cached = quotaCache.get(connectionId) || {};
-      cached[model] = { remainingPercentage: 0, resetAt: new Date(blockedUntil).toISOString() };
+            cached[familyKey || model] = { remainingPercentage: 0, resetAt: new Date(blockedUntil).toISOString() };
       quotaCache.set(connectionId, cached);
       strikeBlocks.set(key, blockedUntil);
       return blockedUntil;

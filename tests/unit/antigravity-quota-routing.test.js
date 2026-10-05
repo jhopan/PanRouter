@@ -31,6 +31,7 @@ const { getAntigravityQuotaCache, handleAntigravityQuotaError, refreshAntigravit
 const { getProviderCredentials } = await import("@/sse/services/auth.js");
 
 const MODEL = "claude-opus-4-6-thinking";
+const FAMILY_KEY = "claude_gpt_weekly"; // family bucket for claude-*/gpt-* models
 const FUTURE_RESET = "2026-09-01T00:00:00.000Z";
 
 beforeEach(() => {
@@ -44,14 +45,15 @@ describe("Antigravity quota-aware routing", () => {
   it("records exhausted upstream quota after 429 and returns its exact reset time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+    // Family-only: Plus/free accounts expose the weekly bucket, not per-model rows.
     mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
-      [MODEL]: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+      [FAMILY_KEY]: { remainingPercentage: 0, resetAt: FUTURE_RESET },
     } });
 
     try {
       await expect(handleAntigravityQuotaError("ag-a", 429, MODEL, "token", {}))
         .resolves.toBe(Date.parse(FUTURE_RESET));
-      expect(getAntigravityQuotaCache().get("ag-a")[MODEL]).toEqual({
+      expect(getAntigravityQuotaCache().get("ag-a")[FAMILY_KEY]).toEqual({
         remainingPercentage: 0,
         resetAt: FUTURE_RESET,
       });
@@ -68,7 +70,7 @@ describe("Antigravity quota-aware routing", () => {
       { id: "ag-b", email: "b@example.com", isActive: true },
     ]);
     getAntigravityQuotaCache().set("ag-a", {
-      [MODEL]: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+      [FAMILY_KEY]: { remainingPercentage: 0, resetAt: FUTURE_RESET },
     });
 
     try {
@@ -86,7 +88,7 @@ describe("Antigravity quota-aware routing", () => {
     vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
     mocks.getProviderConnections.mockResolvedValue([{ id: "ag-a", email: "a@example.com", isActive: true }]);
     getAntigravityQuotaCache().set("ag-a", {
-      [MODEL]: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+      [FAMILY_KEY]: { remainingPercentage: 0, resetAt: FUTURE_RESET },
     });
 
     try {
@@ -104,7 +106,7 @@ describe("Antigravity quota-aware routing", () => {
     vi.setSystemTime(new Date("2026-09-01T00:00:01.000Z"));
     mocks.getProviderConnections.mockResolvedValue([{ id: "ag-a", email: "a@example.com", isActive: true }]);
     getAntigravityQuotaCache().set("ag-a", {
-      [MODEL]: { remainingPercentage: 0, resetAt: FUTURE_RESET },
+      [FAMILY_KEY]: { remainingPercentage: 0, resetAt: FUTURE_RESET },
     });
 
     try {
@@ -123,12 +125,12 @@ describe("Antigravity quota-aware routing", () => {
 
     const first = refreshAntigravityQuota("ag-concurrent", "token", {});
     const second = refreshAntigravityQuota("ag-concurrent", "token", {});
-    resolveUsage({ quotas: { [MODEL]: { remainingPercentage: 0, resetAt: FUTURE_RESET } } });
+    resolveUsage({ quotas: { [FAMILY_KEY]: { remainingPercentage: 0, resetAt: FUTURE_RESET } } });
 
-    await expect(Promise.all([first, second])).resolves.toEqual([
-      { [MODEL]: { remainingPercentage: 0, resetAt: FUTURE_RESET } },
-      { [MODEL]: { remainingPercentage: 0, resetAt: FUTURE_RESET } },
-    ]);
+        await expect(Promise.all([first, second])).resolves.toEqual([
+          { [FAMILY_KEY]: { remainingPercentage: 0, resetAt: FUTURE_RESET } },
+          { [FAMILY_KEY]: { remainingPercentage: 0, resetAt: FUTURE_RESET } },
+        ]);
     expect(mocks.getAntigravityUsage).toHaveBeenCalledTimes(1);
   });
 
@@ -171,12 +173,12 @@ describe("Antigravity quota-aware routing", () => {
   });
 
   it("strike-breaks after 3 optimistic 429s within 60s and cache-blocks 15 minutes", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
-    // Quota API lies: reports 90% remaining while generation keeps 429ing.
-    mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
-      [MODEL]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
-    } });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+      // Quota API lies: family bucket reports 90% remaining while generation keeps 429ing.
+      mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
+        [FAMILY_KEY]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
+      } });
 
     try {
       const first = await handleAntigravityQuotaError("ag-strike", 429, MODEL, "token", {});
@@ -195,13 +197,13 @@ describe("Antigravity quota-aware routing", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
     mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
-      [MODEL]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
-    } });
+          [FAMILY_KEY]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
+        } });
 
-    try {
-      await handleAntigravityQuotaError("ag-window", 429, MODEL, "token", {});
-      await handleAntigravityQuotaError("ag-window", 429, MODEL, "token", {});
-      await vi.advanceTimersByTimeAsync(61_000);
+        try {
+          await handleAntigravityQuotaError("ag-window", 429, MODEL, "token", {});
+          await handleAntigravityQuotaError("ag-window", 429, MODEL, "token", {});
+          await vi.advanceTimersByTimeAsync(61_000);
       const result = await handleAntigravityQuotaError("ag-window", 429, MODEL, "token", {});
       expect(result).toBeNull(); // window lapsed — counter restarted at 1
     } finally {
@@ -226,48 +228,48 @@ describe("Antigravity quota-aware routing", () => {
   });
 
   it("persists the block into the shared cache so the next request skips the pair", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
-    mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
-      [MODEL]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
-    } });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+      mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
+        [FAMILY_KEY]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
+      } });
 
-    try {
-      await handleAntigravityQuotaError("ag-persist", 429, MODEL, "token", {});
-      await handleAntigravityQuotaError("ag-persist", 429, MODEL, "token", {});
-      await handleAntigravityQuotaError("ag-persist", 429, MODEL, "token", {});
+      try {
+        await handleAntigravityQuotaError("ag-persist", 429, MODEL, "token", {});
+        await handleAntigravityQuotaError("ag-persist", 429, MODEL, "token", {});
+        await handleAntigravityQuotaError("ag-persist", 429, MODEL, "token", {});
 
-      // The synthesized entry must be visible to the auth pre-filter reading
-      // the shared cache — and must survive an optimistic upstream refresh.
-      const cached = getAntigravityQuotaCache().get("ag-persist")?.[MODEL];
-      expect(cached).toMatchObject({ remainingPercentage: 0 });
-      expect(Date.parse(cached.resetAt)).toBe(Date.parse("2026-08-26T00:15:00.000Z"));
+        // The synthesized entry must be visible to the auth pre-filter reading
+        // the shared cache (family bucket) — and must survive an optimistic refresh.
+        const cached = getAntigravityQuotaCache().get("ag-persist")?.[FAMILY_KEY];
+        expect(cached).toMatchObject({ remainingPercentage: 0 });
+        expect(Date.parse(cached.resetAt)).toBe(Date.parse("2026-08-26T00:15:00.000Z"));
 
-      await refreshAntigravityQuota("ag-persist", "token", {});
-      expect(getAntigravityQuotaCache().get("ag-persist")?.[MODEL]).toMatchObject({
-        remainingPercentage: 0,
-      });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        await refreshAntigravityQuota("ag-persist", "token", {});
+        expect(getAntigravityQuotaCache().get("ag-persist")?.[FAMILY_KEY]).toMatchObject({
+          remainingPercentage: 0,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
 
   it("clears strike state and the synthesized block after a successful request", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
-    mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
-      [MODEL]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
-    } });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+      mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
+        [FAMILY_KEY]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
+      } });
 
-    try {
-      await handleAntigravityQuotaError("ag-clear", 429, MODEL, "token", {});
-      await handleAntigravityQuotaError("ag-clear", 429, MODEL, "token", {});
-      await handleAntigravityQuotaError("ag-clear", 429, MODEL, "token", {});
-      expect(getAntigravityQuotaCache().get("ag-clear")?.[MODEL]?.remainingPercentage).toBe(0);
+      try {
+        await handleAntigravityQuotaError("ag-clear", 429, MODEL, "token", {});
+        await handleAntigravityQuotaError("ag-clear", 429, MODEL, "token", {});
+        await handleAntigravityQuotaError("ag-clear", 429, MODEL, "token", {});
+        expect(getAntigravityQuotaCache().get("ag-clear")?.[FAMILY_KEY]?.remainingPercentage).toBe(0);
 
-      clearAntigravityStrikes("ag-clear", MODEL);
-      // Synthesized entry gone — pair selectable again immediately.
-      expect(getAntigravityQuotaCache().get("ag-clear")?.[MODEL]).toBeUndefined();
+        clearAntigravityStrikes("ag-clear", MODEL);
+        // Synthesized entry gone — pair selectable again immediately.
+        expect(getAntigravityQuotaCache().get("ag-clear")?.[FAMILY_KEY]).toBeUndefined();
 
       // Two more 429s do NOT inherit earlier strikes: no block on the third-in-episode.
       await handleAntigravityQuotaError("ag-clear", 429, MODEL, "token", {});
@@ -278,11 +280,11 @@ describe("Antigravity quota-aware routing", () => {
   });
 
   it("anchors the window at the first strike: 3 strikes spread over 90s do not trip", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
-    mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
-      [MODEL]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
-    } });
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-08-26T00:00:00.000Z"));
+      mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
+        [FAMILY_KEY]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
+      } });
 
     try {
       await handleAntigravityQuotaError("ag-anchor", 429, MODEL, "token", {});      // t=0
@@ -299,14 +301,14 @@ describe("Antigravity quota-aware routing", () => {
 
   it("keeps the optimistic path null without touching the quota cache", async () => {
       mocks.getAntigravityUsage.mockResolvedValue({ quotas: {
-        [MODEL]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
+        [FAMILY_KEY]: { remainingPercentage: 90, resetAt: FUTURE_RESET },
       } });
 
       await expect(handleAntigravityQuotaError("ag-optimistic", 429, MODEL, "token", {}))
         .resolves.toBeNull();
       // Optimistic reading must NOT poison the shared cache (auth pre-filter
       // treats cached 0% as exhausted).
-      expect(getAntigravityQuotaCache().get("ag-optimistic")?.[MODEL]?.remainingPercentage).toBe(90);
+      expect(getAntigravityQuotaCache().get("ag-optimistic")?.[FAMILY_KEY]?.remainingPercentage).toBe(90);
     });
 
     it("maps gemini/claude model ids to weekly family bucket keys", () => {
