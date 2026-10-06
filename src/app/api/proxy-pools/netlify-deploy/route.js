@@ -8,14 +8,110 @@ import fs from "node:fs";
 
 const NETLIFY_API = "https://api.netlify.com/api/v1";
 
-// Resolve netlify-cli from the installed dependency tree (PanRouter declares
-// netlify-cli in cli/package.json, so a global `npm i -g panrouter` installs it
-// alongside the app). Falls back to PATH search for standalone setups.
+// netlify-cli is intentionally NOT a hard dependency: it pulls ~1200 packages
+// (sharp, esbuild, @netlify/build…) that make `npm i -g panrouter` heavy and
+// fail on low-memory containers. Instead we install it lazily on first Netlify
+// deploy into ~/.9router/runtime/netlify-cli (same pattern as sql.js/systray2).
 const requireForCli = createRequire(import.meta.url);
-let NETLIFY_CLI_BIN = null;
-try {
-  NETLIFY_CLI_BIN = requireForCli.resolve("netlify-cli/bin/run.js");
-} catch { /* not installed as a dep — PATH search below covers it */ }
+
+function netlifyRuntimeBase() {
+  const dataDir = process.env.DATA_DIR
+    || (process.platform === "win32"
+      ? path.join(process.env.APPDATA || os.homedir(), "9router")
+      : path.join(os.homedir(), ".9router"));
+  return path.join(dataDir, "runtime");
+}
+
+function netlifyLazyRunScript() {
+  return path.join(netlifyRuntimeBase(), "netlify-cli", "node_modules", "netlify-cli", "bin", "run.js");
+}
+
+function resolveNetlifyRunScript() {
+  // 1. Already a dependency of this app (future installs may ship it again).
+  try {
+    return requireForCli.resolve("netlify-cli/bin/run.js");
+  } catch { /* next */ }
+  // 2. Lazy-installed copy in the runtime dir.
+  const lazy = netlifyLazyRunScript();
+  if (fs.existsSync(lazy)) return lazy;
+  // 3. Legacy runtime location.
+  const legacy = path.join(netlifyRuntimeBase(), "node_modules", "netlify-cli", "bin", "run.js");
+  if (fs.existsSync(legacy)) return legacy;
+  return null;
+}
+
+function resolveNetlifyCmd() {
+  // PATH fallback (e.g. user ran `npm i -g netlify-cli` themselves).
+  const isWin = process.platform === "win32";
+  const cmdName = isWin ? "netlify.cmd" : "netlify";
+  const searchDirs = [
+    path.join(process.env.APPDATA || "", "npm"),
+    path.join(process.env.LOCALAPPDATA || "", "hermes", "tools", "node-26.7.0-win32-x64"),
+    process.cwd(),
+    path.join(process.cwd(), "node_modules", ".bin"),
+  ];
+  for (const dir of searchDirs) {
+    const candidate = path.join(dir, cmdName);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Ensure a runnable netlify-cli exists. Returns { runScript } when found/installed,
+ * { cmd } for PATH commands, or null when installation failed.
+ * On the very first deploy it auto-installs into the runtime dir so the global
+ * PanRouter install stays light (sql.js/systray2 lazy pattern).
+ */
+async function ensureNetlifyCli(send) {
+  const runScript = resolveNetlifyRunScript();
+  if (runScript) return { runScript };
+
+  const cmd = resolveNetlifyCmd();
+  if (cmd) return { cmd };
+
+  const lazyDir = path.join(netlifyRuntimeBase(), "netlify-cli");
+  const lazyRun = path.join(lazyDir, "node_modules", "netlify-cli", "bin", "run.js");
+  const manualCmd = `npm i -g netlify-cli`;
+
+  send({ step: "installing", msg: `netlify-cli belum terpasang — menginstall otomatis (sekali saja).\nPerintah manual: ${manualCmd}` });
+
+  const isWin = process.platform === "win32";
+  const npmCmd = isWin ? "npm.cmd" : "npm";
+  fs.mkdirSync(lazyDir, { recursive: true });
+
+  let installErr = "";
+  try {
+    await new Promise((resolvePromise, rejectPromise) => {
+      const child = spawn(npmCmd, ["install", "--prefix", lazyDir, "--no-audit", "--no-fund", "--loglevel=error", "netlify-cli"], {
+        env: { ...process.env, CI: "true", NETLIFY_TELEMETRY_DISABLE: "1" },
+      });
+      const timer = setTimeout(() => { child.kill(); rejectPromise(new Error("netlify-cli install timed out after 10 minutes")); }, 600000);
+      child.stdout?.on("data", (chunk) => {
+        const line = chunk.toString().trim();
+        if (line && line.length < 120) send({ step: "installing", msg: line });
+      });
+      child.stderr?.on("data", (chunk) => { installErr += chunk.toString(); });
+      child.on("error", (e) => { clearTimeout(timer); rejectPromise(e); });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolvePromise();
+        else rejectPromise(new Error(`netlify-cli install exit ${code}: ${installErr.slice(0, 300)}`));
+      });
+    });
+  } catch (e) {
+    send({ step: "error", msg: `Install netlify-cli gagal: ${e.message}\nSilakan jalankan manual lalu klik Deploy lagi:\n  ${manualCmd}` });
+    return null;
+  }
+
+  if (!fs.existsSync(lazyRun)) {
+    send({ step: "error", msg: `netlify-cli terinstall tapi tidak ditemukan di ${lazyRun}\nCoba manual: ${manualCmd}` });
+    return null;
+  }
+
+  send({ step: "installing", msg: "netlify-cli siap. lanjut deploy..." });
+  return { runScript: lazyRun };
+}
 
 // Standalone relay function code (CommonJS handler, native Netlify Functions runtime)
 const RELAY_CODE = `exports.handler = async function(event) {
@@ -229,30 +325,26 @@ export async function POST(request) {
         const isWin = process.platform === "win32";
         const cmdName = isWin ? "netlify.cmd" : "netlify";
 
-        // Collect extra candidate directories where netlify-cli might reside
+        // Path candidates for the PATH fallback (module/lazy resolution first).
         const searchDirs = [
           path.join(process.env.APPDATA || "", "npm"),
           path.join(process.env.LOCALAPPDATA || "", "hermes", "tools", "node-26.7.0-win32-x64"),
           process.cwd(),
           path.join(process.cwd(), "node_modules", ".bin"),
         ];
+        const extraPath = searchDirs.filter((d) => d && fs.existsSync(d)).join(path.delimiter);
 
-        let resolvedCmd = cmdName;
-        let resolvedRunScript = NETLIFY_CLI_BIN;
+        // Lazy resolve: bundled dep → runtime dir → PATH. Install on first use
+        // if nothing is present, so the global PanRouter install stays light.
+        const cli = await ensureNetlifyCli(send);
+        if (!cli) {
+          controller.close();
+          return;
+        }
+        const resolvedRunScript = cli.runScript || null;
+        const resolvedCmd = cli.cmd || cmdName;
         const finalArgs = args;
 
-        if (!resolvedRunScript) {
-          for (const dir of searchDirs) {
-            const candidate = path.join(dir, cmdName);
-            if (candidate && fs.existsSync(candidate)) {
-              resolvedCmd = candidate;
-              break;
-            }
-          }
-        }
-
-        // Prepend search dirs to PATH so node and other sub-executables are always found
-        const extraPath = searchDirs.filter((d) => d && fs.existsSync(d)).join(path.delimiter);
         const childEnv = {
           ...process.env,
           PATH: extraPath ? `${extraPath}${path.delimiter}${process.env.PATH || ""}` : process.env.PATH,
