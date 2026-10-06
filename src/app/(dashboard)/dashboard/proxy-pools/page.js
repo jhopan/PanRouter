@@ -27,6 +27,46 @@ function normalizeFormData(data = {}) {
   };
 }
 
+/**
+ * Robust clipboard copy. navigator.clipboard only works on secure contexts
+ * (https / localhost); when the dashboard is reached over http://<ip>:20128
+ * it is undefined or rejects, so fall back to the hidden-textarea +
+ * document.execCommand("copy") technique. Returns true on success.
+ */
+async function copyText(text, notify) {
+  const notifyResult = (ok) => {
+    if (ok) notify.success("Tersalin ke clipboard!");
+    else notify.error("Gagal menyalin — salin manual (klik teks untuk memilih).");
+  };
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      notifyResult(true);
+      return true;
+    }
+  } catch (e) {
+    // fall through to legacy path
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    notifyResult(ok);
+    return ok;
+  } catch (e) {
+    notifyResult(false);
+    return false;
+  }
+}
+
 export default function ProxyPoolsPage() {
   const [proxyPools, setProxyPools] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -900,10 +940,7 @@ export default function ProxyPoolsPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                if (typeof navigator !== "undefined" && navigator.clipboard) {
-                                  navigator.clipboard.writeText(accessUrl);
-                                  notify.success("Link pengaturan Netlify disalin!");
-                                }
+                                copyText(accessUrl, notify);
                                 setActiveLockMenuId(null);
                               }}
                               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
@@ -1196,10 +1233,7 @@ export default function ProxyPoolsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (typeof navigator !== "undefined" && navigator.clipboard) {
-                      navigator.clipboard.writeText(netlifyDeployResult.deployUrl);
-                      notify.success("URL Relay disalin ke clipboard!");
-                    }
+                    copyText(netlifyDeployResult.deployUrl, notify);
                   }}
                   className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-text-muted hover:text-primary shrink-0"
                   title="Salin URL Relay"
@@ -1225,10 +1259,7 @@ export default function ProxyPoolsPage() {
                   size="sm"
                   icon="content_copy"
                   onClick={() => {
-                    if (typeof navigator !== "undefined" && navigator.clipboard) {
-                      navigator.clipboard.writeText(netlifyDeployResult.accessUrl);
-                      notify.success("Link pengaturan Netlify disalin!");
-                    }
+                    copyText(netlifyDeployResult.accessUrl, notify);
                   }}
                 >
                   Salin Link Pengaturan
