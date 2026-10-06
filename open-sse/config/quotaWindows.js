@@ -168,6 +168,11 @@ export const QUOTA_EXHAUSTED_SIGNALS = [
   "individual quota",
   "resource_exhausted",
   "upgrade your subscription to increase",
+  // Google/Antigravity default quota refusals: "You exceeded your current
+  // quota" (403) and unverified-account variants. Without this, a 403 quota
+  // refusal is treated as a 2-minute rate-limit instead of parked until the
+  // weekly bucket resets.
+  "exceeded your current quota",
 ];
 
 /**

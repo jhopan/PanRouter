@@ -333,14 +333,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     if (result.success) return result.response;
 
-    // Antigravity 409/429: prefer the exact reset parsed from the error body
-    // (quotaResetTimeStamp / RetryInfo) — the quota usage API has no per-model
+    // Antigravity 409/429/403(quota): prefer the exact reset parsed from the error
+    // body (quotaResetTimeStamp / RetryInfo) — the quota usage API has no per-model
     // row for free-tier accounts, and running it anyway would trip the strike
     // breaker into a 15m CACHE_BLOCK instead of the true multi-day reset.
     // Only hit the live quota API when the body carried no precise resetAt.
+    // 403 "You exceeded your current quota" / "not eligible. Verify your account"
+    // is the same quota-class refusal (and surfaces the verification URL via
+    // the quota refresh logVerificationHint) — treat it like 429 here.
     let quotaResetMs = null;
     let resetsAtMs = result.resetsAtMs;
-    if (provider === "antigravity" && (result.status === 409 || result.status === 429) && !resetsAtMs) {
+    const antigravityQuotaStatus = result.status === 409 || result.status === 429 ||
+      (result.status === 403 && /quota|eligible|verify|further action/i.test(result.error || ""));
+    if (provider === "antigravity" && antigravityQuotaStatus && !resetsAtMs) {
       quotaResetMs = await handleAntigravityQuotaError(
         credentials.connectionId, result.status, model,
         refreshedCredentials.accessToken, credentials.providerSpecificData

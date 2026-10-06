@@ -123,6 +123,13 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     const subscriptionInfo = await getAntigravitySubscriptionInfo(accessToken, proxyOptions);
     const projectId = subscriptionInfo?.cloudaicompanionProject || null;
 
+    // Surface account-level verification requirements (Google anti-abuse gate).
+    // The CLI shows: "Eligibility check failed ... Please verify your account in
+    // your browser to continue: <accounts.google.com/signin/continue?...>".
+    // Same signal sometimes arrives from loadProject/loadCodeAssist — scan for it
+    // and print the exact verification URL so logs are actionable.
+    logVerificationHint(subscriptionInfo);
+
     const response = await fetchWithTimeout(ANTIGRAVITY_CONFIG.quotaApiUrl, {
       method: "POST",
       headers: {
@@ -301,5 +308,27 @@ async function getAntigravitySubscriptionInfo(accessToken, proxyOptions = null) 
   } catch (error) {
     console.error("[Antigravity Subscription] Error:", error.message);
     return null;
+  }
+}
+
+/**
+ * Scan an Antigravity API payload for account verification / eligibility gates
+ * and print the verification URL to the console when found. Fail-open: any
+ * parse hiccup is ignored. Google's message is usually:
+ *   "Eligibility check failed: Your current account is not eligible for
+ *    Antigravity. Verify your account to continue." + accounts.google.com URL.
+ */
+function logVerificationHint(payload) {
+  try {
+    const raw = JSON.stringify(payload || "");
+    if (!raw) return;
+    const lower = raw.toLowerCase();
+    const hints = ["verify", "eligible", "further action", "signin/continue"];
+    if (!hints.some((h) => lower.includes(h))) return;
+    const urlMatch = raw.match(/https:\/\/accounts\.google\.com\/signin\/continue[^"\\\s]+/) || raw.match(/https:\/\/accounts\.google\.com\/[^"\\\s]+/);
+    const url = urlMatch ? urlMatch[0].replace(/\\u0026/g, "&") : "(URL not returned by API)";
+    console.warn(`[AG_QUOTA] ⚠ ACCOUNT VERIFICATION REQUIRED — buka link berikut di browser akun tersebut:\n  ${url}\n  (sama seperti prompt "Further action is required to use Antigravity" di CLI agy)`);
+  } catch {
+    // never break quota refresh because of logging
   }
 }
