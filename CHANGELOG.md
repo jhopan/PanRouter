@@ -1,3 +1,14 @@
+# v0.5.75.26 (2026-10-06)
+
+## Netlify CLI Bundled + Free.ai Unified + Antigravity Verify-Hint
+
+- **Netlify CLI kini dependency resmi** (`cli/package.json`): `npm i -g panrouter` otomatis mengunduh netlify-cli; route deploy resolve via `require.resolve("netlify-cli/bin/run.js")` lalu spawn `node run.js` (fallback PATH untuk setup standalone) — menghilangkan `spawn netlify ENOENT` di mesin baru/VPS.
+- **Free.ai disatukan jadi satu node** (`freeai`): semua model chat + code + vision (qwen-vl, qwen25-vl, moondream2) dalam satu provider, satu API key. Executor baru me-routing model vision ke `/v1/chat/completions`, chat/code ke `/v1/chat/`. `freeai-vl` ditandai deprecated (kompatibilitas koneksi lama dipertahankan).
+- **Antigravity fingerprint diperbarui ke IDE 2.19.1** — User-Agent `antigravity/ide/2.19.1 darwin/arm64` + `X-Client-Version` mengikuti.
+- **Link verifikasi akun di console log**: saat `loadProject`/quota mengindikasikan "verify your account / not eligible", router mencetak URL `accounts.google.com/signin/continue?...` (fail-open, tidak menyimpan apa pun).
+- **403 kuota Antigravity dilayani seperti 429** (`chat.js`): 403 berisi quota/eligible/verify ikut jalur refresh quota → parkir family bucket + log verifikasi.
+- `QUOTA_EXHAUSTED_SIGNALS` + `"exceeded your current quota"` agar 403 kuota tidak jatuh ke cooldown 2 menit.
+
 # v0.5.75.25 (2026-10-05)
 
 ## Antigravity Quota Family-Only Routing + Exact Reset Parking
