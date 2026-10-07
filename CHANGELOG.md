@@ -1,3 +1,12 @@
+# v0.5.75.27 (2026-10-07)
+
+## Netlify Relay Fixed + Lazy CLI Install + Clipboard Fix
+
+- **Netlify pool routing diperbaiki**: pool `type: "netlify"` kini diperlakukan sebagai header-relay (spek sama dengan Vercel/Cloudflare/Deno → `x-relay-target`/`x-relay-path`), bukan HTTP proxy biasa. Menghilangkan `[ProxyFetch] invalid url` (undici menolak URL fungsi `/relay` yang ber-path) dan memastikan request benar-benar lewat relay.
+- **Relay function Netlify + guard SSRF minimal**: blokir loopback/metadata/`*.netlify.app` → 403, tetap meneruskan target sah.
+- **netlify-cli dimuat lazy saat deploy pertama** (tidak hard-dependency): install otomatis ke `~/.9router/runtime/netlify-cli` + perintah manual tampil di modal; `npm i -g panrouter` kembali ringan (~10 paket).
+- **Perbaikan tombol salin di Proxy Pools**: `navigator.clipboard` gagal di http non-https → fallback `execCommand("copy")`, toast jujur sesuai hasil.
+
 # v0.5.75.26 (2026-10-06)
 
 ## Netlify CLI Bundled + Free.ai Unified + Antigravity Verify-Hint
