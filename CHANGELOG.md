@@ -1,3 +1,11 @@
+# v0.5.75.28 (2026-10-07)
+
+## Antigravity Eligibility Verdict + CodeBuddy DNS-Steering Bypass
+
+- **Deteksi eligible real** (`parseEligibility`): baca field resmi `ineligibleTiers[].reasonCode` dari `loadCodeAssist` — akun with status `VALIDATION_REQUIRED`/`INELIGIBLE_ACCOUNT` kena flag; yang lainnya dianggap eligible (fail-open). Menghapus false positive dari scanning keyword URL.
+- **Link verifikasi lengkap tersedia di 4 tempat**: console log (dedup 30 mnt), `GET /api/usage/<connectionId>` (`eligibility.validationUrl`), dashboard Usage (banner merah "Akun tidak eligible" + tombol buka/salin URL utuh), dan CLI `agy`.
+- **CodeBuddy Intl DNS steering bypass** (`realIpResolver`): `www.codebuddy.ai` menjawab `0.0.0.1` di resolver datacenter (eo.dnse2.com) → OAuth fetch gagal. Helper resolve via DoH chain + UDP fallback, undici agent custom-lookup; sambung ke OAuth state/poll, token refresh, dan proxyAwareFetch direct. Fail-open.
+
 # v0.5.75.27 (2026-10-07)
 
 ## Netlify Relay Fixed + Lazy CLI Install + Clipboard Fix
