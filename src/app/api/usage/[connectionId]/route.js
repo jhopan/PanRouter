@@ -7,6 +7,7 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
 import { buildRouterQuotaState, hasQuotaRows } from "open-sse/services/routerQuotaState.js";
+import { eligibilityFromUsage } from "open-sse/services/usage/google.js";
 
 /**
  * Attach router-side quota rows when the provider itself reports none.
@@ -192,6 +193,17 @@ export async function GET(request, { params }) {
 
     // Fetch usage from provider API
     let usage = await getUsageForProvider(connection, proxyOptions, { force });
+
+    // For Antigravity, surface the REAL eligibility verdict (ineligibleTiers +
+    // FULL verificationUrl) in the quota payload so the dashboard can show
+    // "not eligible — open link to verify" instead of guessing.
+    if (connection.provider === "antigravity") {
+      try {
+        usage = { ...usage, eligibility: eligibilityFromUsage(usage) };
+      } catch {
+        // leave eligibility out on any hiccup
+      }
+    }
 
     // If provider returned an auth-expired message instead of throwing,
     // force-refresh token and retry once (OAuth only)

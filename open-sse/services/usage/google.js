@@ -123,12 +123,9 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     const subscriptionInfo = await getAntigravitySubscriptionInfo(accessToken, proxyOptions);
     const projectId = subscriptionInfo?.cloudaicompanionProject || null;
 
-    // Surface account-level verification requirements (Google anti-abuse gate).
-    // The CLI shows: "Eligibility check failed ... Please verify your account in
-    // your browser to continue: <accounts.google.com/signin/continue?...>".
-    // Same signal sometimes arrives from loadProject/loadCodeAssist — scan for it
-    // and print the exact verification URL so logs are actionable.
-    logVerificationHint(subscriptionInfo);
+    // Surface REAL account-level eligibility gates (ineligibleTiers[] +
+        // validationUrl), deduped 30 min per account, full URL. No keyword guessing.
+        logEligibilityOnce(subscriptionInfo, accessToken);
 
     const response = await fetchWithTimeout(ANTIGRAVITY_CONFIG.quotaApiUrl, {
       method: "POST",
@@ -312,23 +309,76 @@ async function getAntigravitySubscriptionInfo(accessToken, proxyOptions = null) 
 }
 
 /**
- * Scan an Antigravity API payload for account verification / eligibility gates
- * and print the verification URL to the console when found. Fail-open: any
- * parse hiccup is ignored. Google's message is usually:
- *   "Eligibility check failed: Your current account is not eligible for
- *    Antigravity. Verify your account to continue." + accounts.google.com URL.
+ * Parse Google's eligibility verdict from a loadCodeAssist/loadProject payload.
+ * Authoritative field: `ineligibleTiers[]` — eligible accounts simply omit it.
+ * @returns {object} { eligible:boolean, reasonCode?, reasonMessage?, validationUrl?, tierName? }
  */
-function logVerificationHint(payload) {
+export function parseEligibility(payload) {
   try {
-    const raw = JSON.stringify(payload || "");
-    if (!raw) return;
-    const lower = raw.toLowerCase();
-    const hints = ["verify", "eligible", "further action", "signin/continue"];
-    if (!hints.some((h) => lower.includes(h))) return;
-    const urlMatch = raw.match(/https:\/\/accounts\.google\.com\/signin\/continue[^"\\\s]+/) || raw.match(/https:\/\/accounts\.google\.com\/[^"\\\s]+/);
-    const url = urlMatch ? urlMatch[0].replace(/\\u0026/g, "&") : "(URL not returned by API)";
-    console.warn(`[AG_QUOTA] ⚠ ACCOUNT VERIFICATION REQUIRED — buka link berikut di browser akun tersebut:\n  ${url}\n  (sama seperti prompt "Further action is required to use Antigravity" di CLI agy)`);
+    const inel = Array.isArray(payload?.ineligibleTiers) ? payload.ineligibleTiers : [];
+    if (inel.length === 0) return { eligible: true };
+    const first = inel[0] || {};
+    return {
+      eligible: false,
+      reasonCode: first.reasonCode || "INELIGIBLE",
+      reasonMessage: first.reasonMessage || "",
+      validationUrl: first.validationUrl || "",
+      learnMoreUrl: first.validationLearnMoreUrl || "",
+      tierName: first.tierName || first.tierId || "",
+    };
+  } catch {
+    return { eligible: true }; // fail-open: unknown state must never block
+  }
+}
+
+// Dedup: one verification warning per account/URL per 30 minutes max.
+const verificationWarnedAt = new Map();
+const VERIFICATION_WARN_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Log a real ineligible (validation-required) account ONCE per 30min with the
+ * FULL verification URL — no keyword guessing, no truncation. Fail-open.
+ */
+function logEligibilityOnce(payload, accessToken = "") {
+  try {
+    const info = parseEligibility(payload);
+    if (info.eligible) return;
+    const url = info.validationUrl || "(URL not returned by API)";
+    const urlKey = info.validationUrl || accessToken.slice(0, 12);
+    const last = verificationWarnedAt.get(urlKey) || 0;
+    if (Date.now() - last < VERIFICATION_WARN_TTL_MS) return;
+    verificationWarnedAt.set(urlKey, Date.now());
+    console.warn(
+      `[AG_QUOTA] AKUN TIDAK ELIGIBLE (${info.reasonCode || "INELIGIBLE"}) — ${info.tierName ? "tier " + info.tierName + " " : ""}\n` +
+      `  pesan: ${(info.reasonMessage || "").slice(0, 300)}\n` +
+      `  buka link verifikasi lengkap berikut di browser akun tersebut:\n  ${url}\n` +
+      `  (sama seperti prompt "Further action is required to use Antigravity" di CLI agy)`
+    );
   } catch {
     // never break quota refresh because of logging
   }
+}
+
+// Short-lived eligibility cache (5m) so test/usage calls don't hammer loadCodeAssist.
+const eligibilityCache = new Map();
+const ELIGIBILITY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Public helper: real eligibility verdict for an Antigravity connection.
+ * Cached 5 minutes, fail-open (eligible when unknown).
+ * @returns {Promise<{eligible:boolean, reasonCode?:string, reasonMessage?:string, validationUrl?:string}>}
+ */
+export async function getAntigravityEligibility(accessToken, providerSpecificData, proxyOptions = null) {
+  const cacheKey = String(accessToken || "").slice(-24);
+  const cached = eligibilityCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.info;
+
+  const info = parseEligibility(await getAntigravitySubscriptionInfo(accessToken, proxyOptions));
+  eligibilityCache.set(cacheKey, { info, expiresAt: Date.now() + ELIGIBILITY_CACHE_TTL_MS });
+  return info;
+}
+
+/** Pull eligibility out of an already-fetched usage object (no extra network). */
+export function eligibilityFromUsage(usage) {
+  return parseEligibility(usage?.subscriptionInfo);
 }

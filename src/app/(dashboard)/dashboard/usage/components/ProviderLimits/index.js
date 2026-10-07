@@ -1297,6 +1297,49 @@ export default function ProviderLimits() {
                     onHideQuota={(quotaRow) => handleHideQuota(conn.provider, quotaRow)}
                   />
                 )}
+                {quota?.eligibility && quota.eligibility.eligible === false && (
+                  <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-red-600 dark:text-red-400">
+                      <span className="material-symbols-outlined text-[15px]">person_off</span>
+                      Akun tidak eligible ({quota.eligibility.reasonCode || "INELIGIBLE"})
+                    </div>
+                    {quota.eligibility.reasonMessage && (
+                      <p className="text-[10px] leading-relaxed text-red-700/80 dark:text-red-300/80">
+                        {quota.eligibility.reasonMessage}
+                      </p>
+                    )}
+                    {quota.eligibility.validationUrl && (
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <a
+                          href={quota.eligibility.validationUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono break-all text-[10px] text-blue-600 underline dark:text-blue-400"
+                        >
+                          Buka link verifikasi →
+                        </a>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(quota.eligibility.validationUrl);
+                            } catch {
+                              const ta = document.createElement("textarea");
+                              ta.value = quota.eligibility.validationUrl;
+                              document.body.appendChild(ta);
+                              ta.select();
+                              document.execCommand("copy");
+                              document.body.removeChild(ta);
+                            }
+                          }}
+                          className="rounded border border-black/10 px-1.5 py-0.5 font-mono text-[10px] text-text-muted hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
+                        >
+                          Salin URL lengkap
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {quota?.message && !error && !isLoading && (
                   <p className="mt-2 px-1 text-[10px] leading-relaxed text-text-muted">
                     {quota.message}
