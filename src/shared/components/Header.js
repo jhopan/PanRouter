@@ -106,13 +106,6 @@ const getPageInfo = (pathname) => {
       icon: "data_usage",
       breadcrumbs: [],
     };
-  if (pathname.includes("/mitm"))
-    return {
-      title: "MITM Proxy",
-      description: "Intercept CLI tool traffic and route through 9Router",
-      icon: "security",
-      breadcrumbs: [],
-    };
   if (pathname.includes("/token-saver"))
     return {
       title: "Token Saver",

@@ -1,7 +1,6 @@
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
-const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
 
 const DEFAULT_SETTINGS = {
@@ -56,7 +55,7 @@ const DEFAULT_SETTINGS = {
   outboundProxyEnabled: false,
   outboundProxyUrl: "",
   outboundNoProxy: "",
-  mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
+  mitmRouterBaseUrl: "http://localhost:20128",
   dnsToolEnabled: {},
   rtkEnabled: true,
   headroomEnabled: false,

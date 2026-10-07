@@ -3,7 +3,7 @@
 import os from "os";
 import { execSync } from "child_process";
 import { installTailscale, loadState, generateShortId } from "@/lib/tunnel";
-import { getCachedPassword, loadEncryptedPassword, initDbHooks } from "@/mitm/manager";
+import { getCachedPassword, loadEncryptedPassword, initDbHooks } from "@/lib/platform/password";
 import { getSettings, updateSettings } from "@/lib/localDb";
 
 initDbHooks(getSettings, updateSettings);
