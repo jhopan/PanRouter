@@ -1,11 +1,12 @@
 import { CODEBUDDY_INTL_CONFIG } from "../constants/oauth.js";
+import { dnsFixedFetch } from "../../../../open-sse/utils/realIpResolver.js";
 
 // CodeBuddy International — mirrors codebuddy-cn flow against the .ai domain.
 const codebuddyIntl = {
   config: CODEBUDDY_INTL_CONFIG,
   flowType: "device_code",
   requestDeviceCode: async (config) => {
-    const response = await fetch(`${config.stateUrl}?platform=${config.platform}`, {
+      const response = await dnsFixedFetch(`${config.stateUrl}?platform=${config.platform}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -33,7 +34,7 @@ const codebuddyIntl = {
     };
   },
   pollToken: async (config, deviceCode) => {
-    const response = await fetch(`${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`, {
+      const response = await dnsFixedFetch(`${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`, {
       method: "GET",
       headers: {
         Accept: "application/json",

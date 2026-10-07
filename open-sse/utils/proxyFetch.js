@@ -1,6 +1,7 @@
 import { Readable } from "stream";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
+import { maybeDnsFixDispatcher } from "./realIpResolver.js";
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
@@ -312,6 +313,19 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const connectionProxyUrl = resolveConnectionProxyUrl(targetUrl, proxyOptions);
   const envProxyUrl = connectionProxyUrl ? null : normalizeProxyUrl(getEnvProxyUrl(targetUrl));
   const proxyUrl = connectionProxyUrl || envProxyUrl;
+
+  // DNS-steering workaround (e.g. www.codebuddy.ai answers 0.0.0.1 to
+  // datacenter resolvers): when no relay/proxy is in play, connect to the real
+  // IP via a custom undici dispatcher instead of the poisoned system DNS.
+  // Fail-open — any hiccup falls through to the normal path.
+  if (!vercelRelayUrl && !proxyUrl) {
+    try {
+      const dispatcher = await maybeDnsFixDispatcher(targetUrl);
+      if (dispatcher) return await originalFetch(url, { ...options, dispatcher });
+    } catch {
+      // fall through to standard resolution
+    }
+  }
 
   // MITM DNS bypass: for known MITM-intercepted hosts, resolve real IP to avoid DNS spoof
   if (shouldBypassMitmDns(targetUrl)) {
