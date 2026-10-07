@@ -94,11 +94,15 @@ export async function resolveConnectionProxyConfig(
         proxyUrl;
 
       if (isValidPool) {
-        /**
-         * Vercel/Cloudflare relay proxies use base URL rewriting
-         * instead of HTTP_PROXY environment variables.
-         */
-        if (proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno") {
+              /**
+               * Relay proxies (Vercel / Cloudflare / Deno / Netlify) use base URL
+               * rewriting via x-relay-target/x-relay-path headers instead of
+               * HTTP_PROXY environment variables. Netlify relay functions speak the
+               * EXACT same header spec as Vercel — without it here, a netlify pool is
+               * misclassified as a standard HTTP proxy (its relay URL contains a
+               * function path, which undici rejects as "invalid url").
+               */
+              if (proxyPool.type === "vercel" || proxyPool.type === "cloudflare" || proxyPool.type === "deno" || proxyPool.type === "netlify") {
           return {
             source: proxyPool.type,
 

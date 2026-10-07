@@ -146,6 +146,24 @@ const RELAY_CODE = `exports.handler = async function(event) {
     };
   }
 
+  // Minimal safety: never forward to loopback / cloud metadata / Netlify's own
+  // infra. Keeps the relay from being a trivial open proxy without blocking
+  // legit upstreams (cloudcode-pa, agnes, codebuddy, etc.).
+  {
+    const h = targetUrl.hostname.toLowerCase();
+    const isIp = /^\\d{1,3}(\\.\\d{1,3}){3}$/.test(h);
+    if (h === "localhost" || h.endsWith(".local") || h.endsWith(".localhost") ||
+        h === "0.0.0.0" || h.endsWith(".netlify.app") || h.endsWith(".netlify.com") ||
+        (isIp && (h.startsWith("169.254.") || h.startsWith("127.") || h.startsWith("10.") ||
+                  h.startsWith("192.168.") || h.startsWith("172.")))) {
+      return {
+        statusCode: 403,
+        headers: corsHeaders(),
+        body: JSON.stringify({ error: "Target not allowed" })
+      };
+    }
+  }
+
   const skip = new Set([
     "x-relay-target",
     "x-relay-path",
