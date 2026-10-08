@@ -1,3 +1,12 @@
+# v0.5.75.29 (2026-10-08)
+
+## MITM Server & CLI Tools Cards Removal
+
+- **Hapus MITM proxy server sepenuhnya**: direktori `src/mitm/` (server, CA certs, handlers Antigravity/Kiro/Cursor, DNS config) dihapus tuntas (~6.3k baris kode usang dibersihkan).
+- **Ekstrak platform helpers untuk Tailscale**: helper password sudo terenkripsi AES-GCM dan runner `execWithPassword` dipindahkan ke `src/lib/platform/password.js` dan `dnsExec.js` agar integrasi Tailscale daemon tetap berfungsi mandiri tanpa dependensi MITM.
+- **Pembersihan UI & Dashboard**: section `MITM Tools` (Antigravity & Kiro card) di CLI Tools dihapus, halaman `/dashboard/mitm` beserta seluruh kartu pendukungnya dibuang.
+- **Rampingkan bundle CLI & dependensi**: dependency `node-forge` dicopot dari CLI, build step `buildMitm.js` ditiadakan, dan dead code DNS bypass di `proxyFetch.js` dibersihkan.
+
 # v0.5.75.28 (2026-10-07)
 
 ## Antigravity Eligibility Verdict + CodeBuddy DNS-Steering Bypass
