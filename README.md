@@ -205,6 +205,7 @@ docker run -d -p 20128:20128 --env-file .env -v panrouter-data:/root/.9router pa
 | **Token expired** | OAuth diperbarui otomatis. Kalau tetap gagal: Dashboard → Provider → Reconnect. |
 | **Port conflict** | Set `PORT=20128` di `.env` |
 | **`model_config` not known** | Qoder: jalankan list model fetch sekali dari dashboard sebelum chat |
+| **CodeBuddy DNS steering** | Beberapa VPS datacenter mengalami DNS poisoning (`www.codebuddy.ai` → `0.0.0.1`) dari Tencent EdgeOne geo-fencing. Gejala: OAuth login gagal `fetch failed`, auto-ping retry 3x, quota check error. **Solusi**: Pindah ke VPS dengan ASN berbeda yang belum di-steering, atau gunakan residential proxy. Test dulu dengan `getent hosts www.codebuddy.ai` — kalau balas `0.0.0.1` berarti kena steering. |
 
 ---
 

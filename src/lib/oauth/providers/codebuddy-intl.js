@@ -1,12 +1,11 @@
 import { CODEBUDDY_INTL_CONFIG } from "../constants/oauth.js";
-import { codebuddyFetch } from "../../../../open-sse/utils/codebuddyFetch.js";
 
-// CodeBuddy International — mirrors codebuddy-cn flow against the .ai domain.
+// CodeBuddy International — mirrors codebuddy-cn flow against www.codebuddy.ai
 const codebuddyIntl = {
   config: CODEBUDDY_INTL_CONFIG,
   flowType: "device_code",
   requestDeviceCode: async (config) => {
-    const response = await codebuddyFetch(`${config.stateUrl}?platform=${config.platform}`, {
+    const response = await fetch(`${config.authorizationUrl}?platform=${config.platform}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -34,7 +33,7 @@ const codebuddyIntl = {
     };
   },
   pollToken: async (config, deviceCode) => {
-    const response = await codebuddyFetch(`${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`, {
+    const response = await fetch(`${config.tokenUrl}?state=${encodeURIComponent(deviceCode)}`, {
       method: "GET",
       headers: {
         Accept: "application/json",

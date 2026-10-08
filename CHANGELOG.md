@@ -1,3 +1,12 @@
+# v0.5.75.31 (2026-10-08)
+
+## Revert CodeBuddy DNS Bypass + Documentation
+
+- **Revert perbaikan DNS steering CodeBuddy**: menghapus `codebuddyFetch` isolated client dan semua referensinya — kembali ke transport normal `fetch()` seperti v0.5.75.27. Alasannya: DNS steering Tencent EdgeOne hanya mengenai ASN/IP range datacenter tertentu (bukan semua VPS), sehingga solusi yang lebih sederhana adalah pindah VPS ke provider dengan ASN berbeda yang belum di-steering.
+- **README troubleshooting entry baru**: dokumentasi gejala DNS steering CodeBuddy (`www.codebuddy.ai` → `0.0.0.1`), cara deteksi (`getent hosts`), dan solusi (pindah VPS atau residential proxy).
+- **Keep**: `freeai-vl` tetap `hidden:true` (unrelated UI improvement dari v0.5.75.30).
+- **Keep**: tanpa `realIpResolver.js` (bug OOM dari v0.5.75.28/29 tidak dikembalikan).
+
 # v0.5.75.30 (2026-10-08)
 
 ## Fix CodeBuddy Intl DNS Steering (Isolated Client) + Free.ai Unified UI
