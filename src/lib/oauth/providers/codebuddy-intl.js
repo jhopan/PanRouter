@@ -1,11 +1,11 @@
 import { CODEBUDDY_INTL_CONFIG } from "../constants/oauth.js";
 
-// CodeBuddy International — mirrors codebuddy-cn flow against www.codebuddy.ai
+// CodeBuddy International — mirrors codebuddy-cn flow against the .ai domain.
 const codebuddyIntl = {
   config: CODEBUDDY_INTL_CONFIG,
   flowType: "device_code",
   requestDeviceCode: async (config) => {
-    const response = await fetch(`${config.authorizationUrl}?platform=${config.platform}`, {
+    const response = await fetch(`${config.stateUrl}?platform=${config.platform}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,6 +1,6 @@
 {
   "name": "panrouter",
-  "version": "0.5.75.31",
+  "version": "0.5.75.32",
   "description": "PanRouter CLI - Start and manage PanRouter server (by Jhopanstore)",
   "bin": {
     "panrouter": "./cli.js",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "enquirer": "^2.4.1",
+    "node-forge": "^1.3.3",
     "node-machine-id": "^1.1.12",
     "react": "19.2.1",
     "react-dom": "19.2.1"

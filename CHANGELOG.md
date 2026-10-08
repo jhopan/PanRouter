@@ -1,35 +1,9 @@
-# v0.5.75.31 (2026-10-08)
+# v0.5.75.32 (2026-10-08)
 
-## Revert CodeBuddy DNS Bypass + Documentation
+## Revert ke Baseline v0.5.75.27 + Satukan Free.ai UI
 
-- **Revert perbaikan DNS steering CodeBuddy**: menghapus `codebuddyFetch` isolated client dan semua referensinya — kembali ke transport normal `fetch()` seperti v0.5.75.27. Alasannya: DNS steering Tencent EdgeOne hanya mengenai ASN/IP range datacenter tertentu (bukan semua VPS), sehingga solusi yang lebih sederhana adalah pindah VPS ke provider dengan ASN berbeda yang belum di-steering.
-- **README troubleshooting entry baru**: dokumentasi gejala DNS steering CodeBuddy (`www.codebuddy.ai` → `0.0.0.1`), cara deteksi (`getent hosts`), dan solusi (pindah VPS atau residential proxy).
-- **Keep**: `freeai-vl` tetap `hidden:true` (unrelated UI improvement dari v0.5.75.30).
-- **Keep**: tanpa `realIpResolver.js` (bug OOM dari v0.5.75.28/29 tidak dikembalikan).
-
-# v0.5.75.30 (2026-10-08)
-
-## Fix CodeBuddy Intl DNS Steering (Isolated Client) + Free.ai Unified UI
-
-- **Perbaikan permanen CodeBuddy Intl DNS Steering** (`codebuddyFetch`): menghapus total `realIpResolver.js` yang sebelumnya memicu rekursi tak terhingga dan kebocoran memori (OOM) pada global fetch. Menggantikannya dengan helper native `node:https` terisolasi yang mengarahkan domain `www.codebuddy.ai` langsung ke IP Anycast Tencent EdgeOne (`43.159.106.56`). Global fetch dan provider lain kembali bersih 100%.
-- **Satu provider Free.ai di Dashboard**: menyembunyikan kartu deprecated `freeai-vl` (`hidden: true`) dari katalog provider agar UI bersih dan pengguna cukup memakai satu provider `freeai` (Free.ai) yang sudah otomatis mendukung model chat, code, dan vision dalam satu API key.
-
-# v0.5.75.29 (2026-10-08)
-
-## MITM Server & CLI Tools Cards Removal
-
-- **Hapus MITM proxy server sepenuhnya**: direktori `src/mitm/` (server, CA certs, handlers Antigravity/Kiro/Cursor, DNS config) dihapus tuntas (~6.3k baris kode usang dibersihkan).
-- **Ekstrak platform helpers untuk Tailscale**: helper password sudo terenkripsi AES-GCM dan runner `execWithPassword` dipindahkan ke `src/lib/platform/password.js` dan `dnsExec.js` agar integrasi Tailscale daemon tetap berfungsi mandiri tanpa dependensi MITM.
-- **Pembersihan UI & Dashboard**: section `MITM Tools` (Antigravity & Kiro card) di CLI Tools dihapus, halaman `/dashboard/mitm` beserta seluruh kartu pendukungnya dibuang.
-- **Rampingkan bundle CLI & dependensi**: dependency `node-forge` dicopot dari CLI, build step `buildMitm.js` ditiadakan, dan dead code DNS bypass di `proxyFetch.js` dibersihkan.
-
-# v0.5.75.28 (2026-10-07)
-
-## Antigravity Eligibility Verdict + CodeBuddy DNS-Steering Bypass
-
-- **Deteksi eligible real** (`parseEligibility`): baca field resmi `ineligibleTiers[].reasonCode` dari `loadCodeAssist` — akun with status `VALIDATION_REQUIRED`/`INELIGIBLE_ACCOUNT` kena flag; yang lainnya dianggap eligible (fail-open). Menghapus false positive dari scanning keyword URL.
-- **Link verifikasi lengkap tersedia di 4 tempat**: console log (dedup 30 mnt), `GET /api/usage/<connectionId>` (`eligibility.validationUrl`), dashboard Usage (banner merah "Akun tidak eligible" + tombol buka/salin URL utuh), dan CLI `agy`.
-- **CodeBuddy Intl DNS steering bypass** (`realIpResolver`): `www.codebuddy.ai` menjawab `0.0.0.1` di resolver datacenter (eo.dnse2.com) → OAuth fetch gagal. Helper resolve via DoH chain + UDP fallback, undici agent custom-lookup; sambung ke OAuth state/poll, token refresh, dan proxyAwareFetch direct. Fail-open.
+- **Kembalikan seluruh basis kode ke v0.5.75.27**: membatalkan seluruh eksperimen DNS bypass CodeBuddy (realIpResolver, codebuddyFetch) yang memicu OOM dan error routing di VPS. Seluruh sistem kembali ke kondisi stabil v27.
+- **Satukan Free.ai di Dashboard**: menyembunyikan provider deprecated `freeai-vl` (`hidden: true`) dari UI Add Connection, sehingga dashboard hanya menampilkan satu provider `freeai` (Free.ai) untuk seluruh model chat, code, dan vision.
 
 # v0.5.75.27 (2026-10-07)
 

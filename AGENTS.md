@@ -130,7 +130,7 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 - **When the operator says "release" / "rilis", it means publish a GitHub Release on `jhopan/PanRouter` — nothing else.** Not an npm publish (this repo does not publish to the registry), not a local build, not a tag alone.
 - The whole flow, in order:
   1. Bump the version in **both** `package.json` and `cli/package.json` (they move together), and add a top entry to `CHANGELOG.md`.
-  2. **JANGAN build lokal.** Build & pack sepenuhnya dilakukan GitHub Actions (`release.yml`) setelah tag di-push. Tidak perlu `npm run build` local, tidak perlu memastikan port kosong, tidak menyentuh `.next` — commit + push + tag sudah cukup. (Dulu ada langkah `npm run build` di sini untuk membuktikan kompilasi; itu dihapus karena lokal di mesin operator mudah kena gangguan dev server dan tidak menambah jaminan apa pun dibanding CI.)
+  2. `npm run build` to prove it compiles. Stop the dev server first — `next build` and `next dev` share `.next`.
   3. Commit + push `master`.
   4. `git tag -a vX.Y.Z` and **push the tag**. The tag is what triggers CI; nothing is published from the local machine.
   5. `.github/workflows/release.yml` then runs on `ubuntu-latest`: `npm run cli:pack`, and `gh release create` for **two** releases — the versioned one (`vX.Y.Z`) and a `latest` release whose tag is force-moved to the same commit, carrying `panrouter-latest.tgz` for the stable install URL.

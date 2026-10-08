@@ -599,7 +599,7 @@ export async function refreshCodebuddyIntlToken(refreshToken, log) {
   if (!refreshToken) return null;
   return dedupRefresh("codebuddy-intl", refreshToken, async () => {
     const oauth = PROVIDER_OAUTH["codebuddy-intl"] || {};
-    const response = await proxyAwareFetch(oauth.refreshUrl, {
+    const response = await fetch(oauth.refreshUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

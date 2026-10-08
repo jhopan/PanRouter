@@ -1,3 +1,77 @@
+// MITM Tools — IDE tools intercepted via MITM proxy
+export const MITM_TOOLS = {
+  antigravity: {
+    id: "antigravity",
+    name: "Antigravity",
+    image: "/providers/antigravity.png",
+    color: "#4285F4",
+    description: "Google Antigravity IDE with MITM",
+    configType: "mitm",
+    mitmDomain: "daily-cloudcode-pa.googleapis.com",
+    modelAliases: ["gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-3.7-flash-high", "gemini-3.7-flash-medium", "gemini-3.7-flash-low", "gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low", "gemini-3.5-flash-low", "gemini-3-flash-agent", "gemini-3.5-flash-extra-low", "gemini-3.1-pro-low", "gemini-pro-agent", "claude-sonnet-4-6", "claude-opus-4-6-thinking", "gpt-oss-120b-medium", "gemini-3-flash"],
+    defaultModels: [
+      { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)", alias: "gemini-3.8-flash-high" },
+      { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)", alias: "gemini-3.8-flash-medium" },
+      { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)", alias: "gemini-3.8-flash-low" },
+      { id: "gemini-3.7-flash-high", name: "Gemini 3.7 Flash (High)", alias: "gemini-3.7-flash-high" },
+      { id: "gemini-3.7-flash-medium", name: "Gemini 3.7 Flash (Medium)", alias: "gemini-3.7-flash-medium" },
+      { id: "gemini-3.7-flash-low", name: "Gemini 3.7 Flash (Low)", alias: "gemini-3.7-flash-low" },
+      { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash (High)", alias: "gemini-3.6-flash-high" },
+      { id: "gemini-3.6-flash-medium", name: "Gemini 3.6 Flash (Medium)", alias: "gemini-3.6-flash-medium" },
+      { id: "gemini-3.6-flash-low", name: "Gemini 3.6 Flash (Low)", alias: "gemini-3.6-flash-low" },
+      { id: "gemini-3.5-flash-low", name: "Gemini 3.5 Flash (Medium) / Default", alias: "gemini-3.5-flash-low", mandatory: true },
+      { id: "gemini-3-flash-agent", name: "Gemini 3.5 Flash (High)", alias: "gemini-3-flash-agent" },
+      { id: "gemini-3.5-flash-extra-low", name: "Gemini 3.5 Flash (Low)", alias: "gemini-3.5-flash-extra-low" },
+      { id: "gemini-3.1-pro-low", name: "Gemini 3.1 Pro (Low)", alias: "gemini-3.1-pro-low" },
+      { id: "gemini-pro-agent", name: "Gemini 3.1 Pro (High)", alias: "gemini-pro-agent" },
+      { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)", alias: "claude-sonnet-4-6" },
+      { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)", alias: "claude-opus-4-6-thinking" },
+      { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)", alias: "gpt-oss-120b-medium" },
+      { id: "gemini-3-flash", name: "Gemini 3 Flash (Command)", alias: "gemini-3-flash" },
+    ],
+  },
+  kiro: {
+    id: "kiro",
+    name: "Kiro",
+    image: "/providers/kiro.png",
+    color: "#FF6B00",
+    description: "Kiro IDE with MITM",
+    configType: "mitm",
+    mitmDomain: "runtime.us-east-1.kiro.dev",
+    defaultModels: [
+      // Kiro's agent/"vibe" mode sends modelId "auto" for the main turn and "simple-task"
+      // for background sub-tasks (verified via MITM request dump of generateAssistantResponse).
+      // Both need a mappable slot — otherwise getMappedModel returns null and the chat call
+      // is passed through to AWS instead of being routed to the chosen provider.
+      { id: "auto", name: "Auto (Kiro Agent)", alias: "auto" },
+      { id: "claude-sonnet-5", name: "Claude Sonnet 5", alias: "claude-sonnet-5" },
+      { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5", alias: "claude-sonnet-4.5" },
+      { id: "claude-sonnet-4", name: "Claude Sonnet 4", alias: "claude-sonnet-4" },
+      { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
+      { id: "deepseek-3.2", name: "DeepSeek 3.2", alias: "deepseek-3.2" },
+      { id: "minimax-m2.1", name: "MiniMax M2.1", alias: "minimax-m2.1" },
+      { id: "gpt-5.6-sol", name: "GPT 5.6 Sol", alias: "gpt-5.6-sol", contextLength: 272000, rateMultiplier: 2.4 },
+      { id: "gpt-5.6-terra", name: "GPT 5.6 Terra", alias: "gpt-5.6-terra", contextLength: 272000, rateMultiplier: 1.2 },
+      { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", alias: "gpt-5.6-luna", contextLength: 272000, rateMultiplier: 0.6 },
+      { id: "simple-task", name: "Qwen3 Coder Next", alias: "simple-task" },
+    ],
+  },
+  // cursor: {
+  //   id: "cursor",
+  //   name: "Cursor",
+  //   image: "/providers/cursor.png",
+  //   color: "#000000",
+  //   description: "Cursor IDE with MITM",
+  //   configType: "mitm",
+  //   mitmDomain: "api2.cursor.sh",
+  //   defaultModels: [
+  //     { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", alias: "claude-sonnet-4-5" },
+  //     { id: "claude-opus-4", name: "Claude Opus 4", alias: "claude-opus-4" },
+  //     { id: "gpt-4o", name: "GPT-4o", alias: "gpt-4o" },
+  //   ],
+  // },
+};
+
 // CLI Tools configuration
 export const CLI_TOOLS = {
   claude: {
