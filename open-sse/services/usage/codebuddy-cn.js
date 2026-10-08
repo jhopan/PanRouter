@@ -20,6 +20,7 @@
  */
 
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
+import { codebuddyFetch } from "../../utils/codebuddyFetch.js";
 import { PROVIDERS } from "../../providers/index.js";
 import { U, parseResetTime } from "./shared.js";
 
@@ -50,7 +51,8 @@ async function getCodeBuddyUsage(providerId, accessToken, apiKey, providerSpecif
   }
 
   try {
-    const response = await proxyAwareFetch(U(providerId).url, {
+    const fetchFn = (providerId === "codebuddy-intl" && !proxyOptions) ? codebuddyFetch : proxyAwareFetch;
+    const response = await fetchFn(U(providerId).url, {
       method: "POST",
       headers: {
         ...(PROVIDERS[providerId]?.headers || {}),

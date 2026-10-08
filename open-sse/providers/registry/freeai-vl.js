@@ -4,6 +4,7 @@ export default {
   alias: "fai-vl",
   aliases: ["free-ai-vl", "freeai-vision"],
   uiAlias: "fai-vl",
+  hidden: true,
   display: {
     name: "Free.ai Vision",
     icon: "visibility",

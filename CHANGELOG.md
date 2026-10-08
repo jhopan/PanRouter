@@ -1,3 +1,10 @@
+# v0.5.75.30 (2026-10-08)
+
+## Fix CodeBuddy Intl DNS Steering (Isolated Client) + Free.ai Unified UI
+
+- **Perbaikan permanen CodeBuddy Intl DNS Steering** (`codebuddyFetch`): menghapus total `realIpResolver.js` yang sebelumnya memicu rekursi tak terhingga dan kebocoran memori (OOM) pada global fetch. Menggantikannya dengan helper native `node:https` terisolasi yang mengarahkan domain `www.codebuddy.ai` langsung ke IP Anycast Tencent EdgeOne (`43.159.106.56`). Global fetch dan provider lain kembali bersih 100%.
+- **Satu provider Free.ai di Dashboard**: menyembunyikan kartu deprecated `freeai-vl` (`hidden: true`) dari katalog provider agar UI bersih dan pengguna cukup memakai satu provider `freeai` (Free.ai) yang sudah otomatis mendukung model chat, code, dan vision dalam satu API key.
+
 # v0.5.75.29 (2026-10-08)
 
 ## MITM Server & CLI Tools Cards Removal
