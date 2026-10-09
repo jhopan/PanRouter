@@ -318,6 +318,16 @@ async function getAntigravitySubscriptionInfo(accessToken, proxyOptions = null) 
  *   "Eligibility check failed: Your current account is not eligible for
  *    Antigravity. Verify your account to continue." + accounts.google.com URL.
  */
+export function formatEligibilityLog({ reasonCode = "VALIDATION_REQUIRED", validationUrl }) {
+  return JSON.stringify({
+    eligibility: {
+      eligible: false,
+      reasonCode,
+      validationUrl,
+    },
+  }, null, 2);
+}
+
 function logVerificationHint(payload) {
   try {
     const raw = JSON.stringify(payload || "");
@@ -326,8 +336,8 @@ function logVerificationHint(payload) {
     const hints = ["verify", "eligible", "further action", "signin/continue"];
     if (!hints.some((h) => lower.includes(h))) return;
     const urlMatch = raw.match(/https:\/\/accounts\.google\.com\/signin\/continue[^"\\\s]+/) || raw.match(/https:\/\/accounts\.google\.com\/[^"\\\s]+/);
-    const url = urlMatch ? urlMatch[0].replace(/\\u0026/g, "&") : "(URL not returned by API)";
-    console.warn(`[AG_QUOTA] ⚠ ACCOUNT VERIFICATION REQUIRED — buka link berikut di browser akun tersebut:\n  ${url}\n  (sama seperti prompt "Further action is required to use Antigravity" di CLI agy)`);
+    const validationUrl = urlMatch ? urlMatch[0].replace(/\\u0026/g, "&") : null;
+    console.warn(`[AG_QUOTA] ACCOUNT VERIFICATION REQUIRED\n${formatEligibilityLog({ validationUrl })}`);
   } catch {
     // never break quota refresh because of logging
   }
