@@ -1,4 +1,5 @@
 import { BaseExecutor } from "./base.js";
+import { randomUUID } from "node:crypto";
 import { PROVIDERS, PROVIDER_OAUTH } from "../config/providers.js";
 import { ANTHROPIC_API_VERSION, OPENAI_COMPAT_BASE, ANTHROPIC_COMPAT_BASE, selectAnthropicBeta, mergeAnthropicBeta } from "../providers/shared.js";
 import { resolveOpenAICompatibleApiType } from "../services/provider.js";
@@ -48,6 +49,12 @@ const HEADER_HOOKS = {
   clineHeaders: (h, c) => Object.assign(h, buildClineHeaders(c.apiKey || c.accessToken, {}, { isApiKey: Boolean(c.apiKey) })),
   kilocodeOrg: (h, c) => { if (c.providerSpecificData?.orgId) h["X-Kilocode-OrganizationID"] = c.providerSpecificData.orgId; },
   museHeaders: (h, c) => { if (c?.accessToken && !c?.apiKey) h["x-api-version"] = "1.0.0"; },
+  // MiniMax Code (mcode): placeholder x-api-key + per-request session/timezone headers.
+  minimaxHeaders: (h) => {
+    h["x-api-key"] = "sk-xxx";
+    h["X-Mavis-Timezone-Offset"] = String(new Date().getTimezoneOffset() * -60);
+    if (!h["X-Mavis-Session-Id"]) h["X-Mavis-Session-Id"] = randomUUID();
+  },
 };
 
 // Config-driven OAuth refresh grants — derived from registry oauth.refresh.

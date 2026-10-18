@@ -141,6 +141,8 @@ import p137 from "./freeai-vl.js";
 import p138 from "./nous.js";
 import p139 from "./dahl.js";
 import p140 from "./muse.js";
+import p141 from "./minimax-code.js";
+import p142 from "./minimax-code-global.js";
 
 export default [
   p0,
@@ -283,4 +285,6 @@ export default [
   p138,
   p139,
   p140,
+  p141,
+  p142,
 ];
