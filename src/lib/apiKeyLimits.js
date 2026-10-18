@@ -108,4 +108,26 @@ export function mergeLimits(prev, patch) {
   return next;
 }
 
+/**
+ * Hide models a key may not call from its own /v1/models listing.
+ *
+ * The enforcement path (checkApiKeyLimits) already rejects a disallowed model
+ * at request time; this only stops the client from seeing entries it can never
+ * use. A key with no limits blob, or an empty/null `models` allowlist, is
+ * unrestricted and sees the full list.
+ *
+ * Entries are matched on `id` and, when present, `root` — /v1/models reports
+ * both the alias and the underlying upstream id, and either spelling may be
+ * what the operator put in the allowlist.
+ */
+export function filterModelsByKeyLimits(list, limits) {
+  if (!Array.isArray(list)) return list;
+  const allow = limits?.models;
+  if (!Array.isArray(allow) || allow.length === 0) return list;
+  return list.filter((entry) => {
+    if (!entry?.id) return false;
+    return isAllowed(allow, entry.id) || (entry.root ? isAllowed(allow, entry.root) : false);
+  });
+}
+
 export { setApiKeyLimits };

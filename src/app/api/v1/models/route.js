@@ -10,6 +10,9 @@ import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { extractApiKey } from "@/sse/services/auth.js";
+import { getApiKeyByKey } from "@/lib/db/index.js";
+import { filterModelsByKeyLimits } from "@/lib/apiKeyLimits.js";
 
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
@@ -458,7 +461,21 @@ export async function GET(request) {
     // Detect cross-instance recursive /models fetch (another 9router fetching our /models)
     const skipDynamicFetch = request?.headers?.get(INTERNAL_MODELS_FETCH_HEADER) === "1";
     const data = await buildModelsList([LLM_KIND], { skipDynamicFetch });
-    return Response.json({ object: "list", data }, {
+
+    // A key with a `models` allowlist should not see entries it can never call.
+    // Enforcement already happens at request time; this only trims the listing.
+    let visible = data;
+    try {
+      const apiKey = extractApiKey(request);
+      if (apiKey) {
+        const record = await getApiKeyByKey(apiKey);
+        if (record?.limits) visible = filterModelsByKeyLimits(data, record.limits);
+      }
+    } catch {
+      // Listing must never fail because of the key lookup — fall back to full list.
+    }
+
+    return Response.json({ object: "list", data: visible }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });
   } catch (error) {
