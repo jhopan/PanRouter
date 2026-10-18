@@ -21,6 +21,8 @@ const STRIP_RULES = [
   // "integer above maximum value, expected <= 32768". Pin an explicit endpoint cap;
   // min() with the model ceiling still applies if a variant's own limit is lower.
   { provider: "volcengine-ark", match: /kimi/i, maxOutputCap: 32768, clampToModelMaxOutput: true },
+  // OpenCode Go rejects response_format for its DeepSeek relay family (HTTP 400).
+  { provider: "opencode-go", match: /^deepseek/i, drop: ["response_format"] },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.

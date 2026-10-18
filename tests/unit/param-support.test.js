@@ -52,4 +52,19 @@ describe("stripUnsupportedParams", () => {
 
     expect(body.max_tokens).toBe(64000);
   });
+
+  it("drops response_format only for OpenCode Go DeepSeek models", () => {
+    const response_format = { type: "json_schema", json_schema: { name: "result", schema: { type: "object" } } };
+    const deepseek = { messages: [], response_format };
+    const glm = { messages: [], response_format };
+    const otherProvider = { messages: [], response_format };
+
+    stripUnsupportedParams("opencode-go", "deepseek-v4.1-flash", deepseek);
+    stripUnsupportedParams("opencode-go", "glm-5.3-flash", glm);
+    stripUnsupportedParams("openrouter", "deepseek/deepseek-v3.2", otherProvider);
+
+    expect(deepseek.response_format).toBeUndefined();
+    expect(glm.response_format).toBe(response_format);
+    expect(otherProvider.response_format).toBe(response_format);
+  });
 });

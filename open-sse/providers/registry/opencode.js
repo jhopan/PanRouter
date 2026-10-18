@@ -19,6 +19,10 @@ export default {
     },
     forceStream: true,
     noAuth: true,
+    // Zen rejects replayed assistant turns without reasoning_content.
+    reasoningInject: {
+      scope: "all",
+    },
     quirks: {
       forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
     },

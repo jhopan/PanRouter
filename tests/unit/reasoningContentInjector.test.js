@@ -45,6 +45,24 @@ describe("injectReasoningContent — DeepSeek thinking round-trip", () => {
     expect(out.messages[0].reasoning_content).toBe(original);
   });
 
+  it("injects a placeholder for OpenCode Zen multi-turn assistant messages", () => {
+    const out = injectReasoningContent({
+      provider: "opencode",
+      model: "glm-5.3-flash-free",
+      body: bodyWith([{ role: "assistant", content: "earlier answer" }]),
+    });
+    expect(out.messages[0].reasoning_content).toBe(" ");
+  });
+
+  it("does not inject OpenCode placeholder for other providers", () => {
+    const out = injectReasoningContent({
+      provider: "openrouter",
+      model: "glm-5.3-flash-free",
+      body: bodyWith([{ role: "assistant", content: "earlier answer" }]),
+    });
+    expect(out.messages[0].reasoning_content).toBeUndefined();
+  });
+
   it("applies provider-level rule for provider 'deepseek' (scope all)", () => {
     const out = injectReasoningContent({
       provider: "deepseek",
