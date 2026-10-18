@@ -36,6 +36,7 @@ export const GEMINI_CONFIG = { ...GOOGLE_OAUTH_CLIENT, ...PROVIDER_OAUTH["gemini
 export const QODER_CONFIG = { ...PROVIDER_OAUTH["qoder"] };
 export const QODER_CN_CONFIG = { ...PROVIDER_OAUTH["qoder-cn"] };
 export const GLM_OAUTH_CONFIG = { ...PROVIDER_OAUTH["glm"] };
+export const MUSE_CONFIG = { ...PROVIDER_OAUTH["muse"] };
 
 // iFlow OAuth Configuration (Authorization Code)
 export const IFLOW_CONFIG = { ...PROVIDER_OAUTH["iflow"] };
