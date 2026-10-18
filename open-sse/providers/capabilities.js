@@ -165,6 +165,8 @@ export const PROVIDER_CAPABILITIES = {
   // Overrides the global entry, whose z.ai shape is correct for z.ai itself.
   "opencode-go": {
     "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
+    // This keyed Messages lane accepts adaptive thinking, not Claude budget thinking.
+    "claude-haiku-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   },
   "codex": {
     "gpt-6-astra":               { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 },

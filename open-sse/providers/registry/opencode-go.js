@@ -65,6 +65,8 @@ export default {
     { id: "gpt-5.6-luna", name: "GPT 5.6 Luna", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
     { id: "muse-spark-1.2-contributor", name: "Muse Spark 1.2 Contributor", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
     { id: "muse-spark-1.3-contributor", name: "Muse Spark 1.3 Contributor", targetFormat: "openai-responses", supportedFormats: ["openai-responses"] },
+    // /chat/completions rejects this model; it runs on native Messages only.
+    { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", targetFormat: "claude", supportedFormats: ["claude"] },
   ],
   features: {
     usage: true,

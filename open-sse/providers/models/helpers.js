@@ -25,3 +25,7 @@ export function isMuseSparkModel(modelId) {
   const base = clean.includes("/") ? clean.split("/").pop() : clean;
   return /^muse[-_]?spark(?:$|[-_:.\s])/i.test(base);
 }
+
+export function isOpencodeFreeTierModel(modelId) {
+  return /(?:^|[-_.])free$/i.test(String(modelId || "").replace(/\([^()]+\)\s*$/, "").trim());
+}
