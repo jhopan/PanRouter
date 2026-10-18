@@ -1,3 +1,75 @@
+# v0.5.76.0 (2026-10-19)
+
+## Provider Baru
+
+- **Nous Research** — OAuth Device Code + agent key minting, 8 model free-tier, thinking format `nous` (low/medium/high), token refresh otomatis
+- **Dahl Inference** — OpenAI-compatible node (GLM-5.3-Flash, DeepSeek-V4-Flash, MiniMax-M2.7)
+- **Muse (Meta Model API)** — dual auth OAuth/apikey, `museHeaders` hook, transport Chat + Responses
+- **MiniMax Code CN + Global** — OAuth PKCE, single-use refresh dedup, normalisasi 402/403 → 429
+- **TinyFish** — webSearch + webFetch provider (x-api-key)
+- **v1m (System One)** — decision engine (calibrated model, systemoneConfig)
+- **Qoder CN** — region-aware support (gateway.qoder.com.cn); intl behaviour tidak berubah
+- **GLM Coding OAuth** — Z.ai CLI polling flow (cliInit → cliPoll → businessLogin → coding-plan API key)
+- **Amazon Bedrock** — SigV4 signing, AWS EventStream decoder, static key + profile/SSO; `bedrock-xai` alias `br`/`brx`
+- **Gemini 4 Argon** — gemini-level thinking LOW/MEDIUM/HIGH only (menolak "minimal"), `defaultLocation: global`, vertex API-key project/location
+
+## OpenCode
+
+- **Free tier fingerprint v2**: pindah `/zen/v1` → `/inference/v1`, UA `opencode/latest/2.0.26/cli`, header `x-opencode-session-id`/`x-session-affinity`, ganti tool quartet → `read`/`shell` schema verbatim CLI v2
+- **Zen multi-turn**: inject `reasoning_content` placeholder agar tidak 400
+- **Go DeepSeek**: drop `response_format` (upstream menolaknya)
+- **Go Haiku 5.5**: route ke `/messages` + adaptive thinking
+- Bukti live: `POST /inference/v1/chat/completions` → HTTP 200 SSE ✓
+
+## Fitur
+
+- **Gemini Live STT**: WebSocket `bidiGenerateContent`, audio naik sebagai `realtimeInput` mediaChunks, server push `inputTranscription`
+- **Claude reset grants**: `consumeClaudeResetGrant()` + rute `/api/usage/[id]/claude-reset`, usage cache 5m + 429 cooldown 3m
+- **Quota tracker frequency limit**: baris `Frequency Limit — <model>` muncul otomatis di quota tracker ketika model terkena 429 per-model (e.g. CodeBuddy Intl deepseek-v4.1-flash gratis); countdown reset time tampil langsung; mekanisme skip per-model sudah berjalan sejak sebelumnya
+- **Model search regex/negasi**: cari model dengan `/pattern/`, `!keyword`, atau kombinasi `claude !haiku`
+- **Sembunyikan model terlarang dari /v1/models**: key dengan `limits.models` allowlist tidak melihat model yang tidak diizinkan
+- **Anchor ping schedule**: `quotaPingSchedule.js` — slot tetap jam lokal (anchor 09:30, window 5h, 3 slot/hari), grace 30m, `getDuePingSlot`/`getNextPingSlot`
+- **Nous Portal routes lengkap**: live catalog dengan prefix `nous/`, test probe via inference kecil, validate route
+- **GLM + Zed OAuth modal**: GLM Coding sign-in dari dashboard, Zed auto-import dari IDE keyring
+
+## Dashboard
+
+- **ProviderBarChart + TopModelsChart**: grafik breakdown per-provider dan top model di halaman Usage
+- **AutoPingScheduleModal**: konfigurasi anchor/timezone/window/slots per-connection
+- **CustomConfigCard**: tambah custom header per-provider dengan blocked-header guard
+- **Tooltip portal**: render via `createPortal` + fixed position sehingga tidak ter-clip overflow ancestor
+- **Proxy dropdown maxHeight**: menu tidak keluar viewport saat list panjang
+
+## CLI Tools
+
+- 8 route baru: `codewhale`, `codex-profiles`, `crush`, `forge`, `hermes-profiles`, `omp`, `pi`, `smelt` + `resolveApiKey` helper
+- **GenericCliToolCard**: card universal untuk tool tanpa card khusus
+- Antigravity model aliases diperbarui (Claude Sonnet 5.5, Opus 5.5, Gemini 3.1 Pro high/low)
+
+## Usage & Quota
+
+- **Cursor + CommandCode**: usage reader masing-masing
+- **Qoder add-on quota**: baris "Add-on" tampil ketika akun punya grant promo; sentinel 9999-12-31 → "Never expires"
+- **Combo presets**: `/api/combos/presets` + `comboPresets.js`
+- **Claude usage cache**: dedup per-token 5m, 429 cooldown 3m agar tidak hammer endpoint quota
+
+## Fix Bug (dari upstream 9router)
+
+- **headroom**: hanya warning kalau `messageBytes` DAN `bodyBytes` sama-sama tidak menyusut <5% (sebelumnya false warning saat tool schema besar)
+- **usageRepo**: fallback `input_tokens` di live-history 24h (Gemini/embedding tidak lagi 0)
+- **claudeMessage.js**: shared module, SSE→JSON path balikin Claude shape yang benar
+- **combo**: fallback ke model berikutnya kalau HTTP 200 balik isi kosong (`in_progress`/`incomplete`)
+- **Gemini 4**: drop sampling params yang tidak didukung; `functionResponse` diorder terakhir di merged user turn
+- **GitHub Copilot embeddings**: pindah ke `api.githubcopilot.com`; ganti `text-embedding-3-large` → `text-embedding-ada-002`
+- **nodesRepo**: hapus `customModels` KV saat provider node dihapus
+
+## Internal
+
+- Nous attribution: tag `product=panrouter`, `client=panrouter`, `user=panrouter` untuk akun Portal via openai-compatible node
+- Codex CLI bump 0.154.0 → 0.159.0; catalog: tambah GPT-6 family + extended context `[1m]`, hapus gpt-5.5/5.4/5.3-codex-spark yang sudah retired, tambah `gpt-daybreak-blue-latest`/`gpt-reserve`
+- Codex auto-ping model: `gpt-5.5` → `gpt-5.6-terra`
+- Semua teks "9Router/9router" → "PanRouter" di file yang baru diport
+
 # v0.5.75.32 (2026-10-08)
 
 ## Revert ke Baseline v0.5.75.27 + Satukan Free.ai UI
