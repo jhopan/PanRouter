@@ -102,10 +102,16 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     if (!rect) return;
     const MENU_H = 288; // matches max-h; estimate for flip decision
     const spaceBelow = window.innerHeight - rect.bottom;
-    const top = spaceBelow >= MENU_H + 8
-      ? rect.bottom + 6   // natural: below the control, small breathing gap
-      : Math.max(8, rect.top - MENU_H - 6); // flip above when cramped at viewport bottom
-    setProxyMenuPos({ right: window.innerWidth - rect.right, top });
+    const flipUp = spaceBelow < MENU_H + 8;
+    const top = flipUp
+      ? Math.max(8, rect.top - MENU_H - 6)   // flip above when cramped at viewport bottom
+      : rect.bottom + 6;                     // natural: below the control, small breathing gap
+    // Cap the menu to the space actually available so a short viewport scrolls
+    // inside the menu instead of running off-screen.
+    const maxHeight = flipUp
+      ? Math.max(rect.top - 14, 120)
+      : Math.max(spaceBelow - 14, 120);
+    setProxyMenuPos({ right: window.innerWidth - rect.right, top, maxHeight });
     setShowProxyDropdown(true);
   };
 
@@ -320,7 +326,7 @@ useEffect(() => {
               {showProxyDropdown && proxyMenuPos && typeof document !== "undefined" && createPortal(
                 <div
                   ref={proxyMenuRef}
-                  style={{ position: "fixed", right: proxyMenuPos.right, top: proxyMenuPos.top, width: "max-content" }}
+                  style={{ position: "fixed", right: proxyMenuPos.right, top: proxyMenuPos.top, width: "max-content", ...(proxyMenuPos.maxHeight ? { maxHeight: proxyMenuPos.maxHeight } : {}) }}
                   className="z-[9999] max-w-[78vw] max-h-[288px] overflow-y-auto overscroll-contain rounded-lg border border-border bg-bg py-1 shadow-lg"
                 >
                   <button
