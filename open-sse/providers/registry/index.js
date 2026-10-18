@@ -147,6 +147,7 @@ import p143 from "./bedrock.js";
 import p144 from "./bedrock-xai.js";
 import p145 from "./tinyfish.js";
 import p146 from "./v1m.js";
+import p147 from "./qoder-cn.js";
 
 export default [
   p0,
@@ -295,4 +296,5 @@ export default [
   p144,
   p145,
   p146,
+  p147,
 ];
