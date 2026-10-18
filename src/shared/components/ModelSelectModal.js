@@ -7,6 +7,7 @@ import ProviderIcon from "./ProviderIcon";
 import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
+import { parseSearchQuery, matchesSearch } from "@/shared/utils/modelSearchFilter";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
@@ -426,8 +427,8 @@ export default function ModelSelectModal({
   const filteredCombos = useMemo(() => {
     if (kindFilter || capFilter) return [];
     if (!searchQuery.trim()) return combos;
-    const query = searchQuery.toLowerCase();
-    return combos.filter(c => c.name.toLowerCase().includes(query));
+    const parsed = parseSearchQuery(searchQuery);
+    return combos.filter((c) => matchesSearch(c.name, parsed));
   }, [combos, searchQuery, kindFilter]);
 
   // Sort models alphabetically, with added models floated to top
@@ -437,9 +438,10 @@ export default function ModelSelectModal({
     return [...added, ...rest];
   };
 
-  // Filter models by search query
+  // Filter models by search query (regex / negation aware)
   const filteredGroups = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const parsed = parseSearchQuery(searchQuery);
+    const isEmpty = parsed.isEmpty;
 
     const filtered = {};
     Object.entries(groupedModels).forEach(([providerId, group]) => {
@@ -449,13 +451,9 @@ export default function ModelSelectModal({
         models = models.filter((m) => getCaps(m.value)?.[capFilter] === true);
         if (models.length === 0) return;
       }
-      if (query) {
-        const providerNameMatches = group.name.toLowerCase().includes(query);
-        models = models.filter(
-          (m) =>
-            m.name.toLowerCase().includes(query) ||
-            m.id.toLowerCase().includes(query)
-        );
+      if (!isEmpty) {
+        const providerNameMatches = matchesSearch(group.name, parsed);
+        models = models.filter((m) => matchesSearch([m.name, m.id], parsed));
         if (models.length === 0 && !providerNameMatches) return;
       }
       filtered[providerId] = {
