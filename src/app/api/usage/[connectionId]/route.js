@@ -6,7 +6,7 @@ import { getUsageForProvider } from "open-sse/services/usage.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
-import { buildRouterQuotaState, hasQuotaRows } from "open-sse/services/routerQuotaState.js";
+import { buildRouterQuotaState, hasQuotaRows, mergeModelLocks } from "open-sse/services/routerQuotaState.js";
 
 /**
  * Attach router-side quota rows when the provider itself reports none.
@@ -18,7 +18,12 @@ import { buildRouterQuotaState, hasQuotaRows } from "open-sse/services/routerQuo
  */
 function withRouterQuotaState(usage, connection) {
   try {
-    if (hasQuotaRows(usage)) return usage;
+    if (hasQuotaRows(usage)) {
+      // Provider has real quota rows — but model locks (frequency limits) are
+      // not reported by the usage API. Merge them in so the tracker shows
+      // e.g. "Frequency Limit — deepseek-v4.1-flash: resets in 12 m".
+      return mergeModelLocks(usage, connection);
+    }
     const synthetic = buildRouterQuotaState(connection);
     if (!synthetic) return usage;
     return { ...usage, ...synthetic };

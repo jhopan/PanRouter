@@ -99,3 +99,49 @@ export function buildRouterQuotaState(connection, now = Date.now()) {
 export function hasQuotaRows(usage) {
   return Boolean(usage?.quotas) && Object.keys(usage.quotas).length > 0;
 }
+
+/**
+ * Merge active modelLock_* cooldowns into an existing quota payload.
+ *
+ * For providers like CodeBuddy Intl that have a real usage API, the provider's
+ * own quota rows are authoritative. But when the router parks a model on a
+ * frequency-limit 429, the reset time lives in modelLock_<model> — the usage
+ * API never returns this, so the dashboard shows no sign of the limit.
+ *
+ * This function appends one extra row per active lock so the quota tracker
+ * shows "Frequency Limit — deepseek-v4.1-flash: resets in 12 m" alongside the
+ * normal credits rows. Fail-open: any error returns the original usage object.
+ *
+ * @param {object} usage  - Provider usage payload (may already have .quotas)
+ * @param {object} connection - Connection DB row (may have modelLock_* fields)
+ * @param {number} [now]
+ */
+export function mergeModelLocks(usage, connection, now = Date.now()) {
+  try {
+    if (!connection) return usage;
+    const locks = Object.entries(connection)
+      .filter(([key]) => key.startsWith("modelLock_"))
+      .map(([key, value]) => ({ model: key.slice("modelLock_".length), until: timeOf(value) }))
+      .filter((l) => l.until > now)
+      .sort((a, b) => a.until - b.until);
+
+    if (locks.length === 0) return usage;
+
+    const merged = {
+      ...usage,
+      quotas: { ...(usage?.quotas || {}) },
+    };
+    for (const lock of locks.slice(0, MAX_MODEL_ROWS)) {
+      const label = lock.model === "__all"
+        ? "Frequency Limit (account)"
+        : `Frequency Limit — ${lock.model}`;
+      merged.quotas[label] = {
+        ...depletedRow(lock.until),
+        recurring: true,
+      };
+    }
+    return merged;
+  } catch {
+    return usage;
+  }
+}
