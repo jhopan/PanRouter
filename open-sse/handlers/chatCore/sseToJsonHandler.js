@@ -3,6 +3,7 @@ import { restoreToolNames } from "../../utils/opencodeFingerprint.js";
 import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
+import { openAICompletionToClaudeMessage } from "../../translator/concerns/claudeMessage.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
@@ -358,7 +359,9 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, ta
     // already imports parseSSEToOpenAIResponse from this module.
     const finalBody = sourceFormat === FORMATS.OPENAI_RESPONSES
       ? chatCompletionToResponses(parsed, customToolNames)
-      : parsed;
+      : sourceFormat === FORMATS.CLAUDE
+        ? openAICompletionToClaudeMessage(parsed)
+        : parsed;
 
     return { success: true, response: new Response(JSON.stringify(restoreToolNames(finalBody, toolNameMap)), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }) };
   } catch (err) {

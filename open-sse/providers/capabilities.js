@@ -132,6 +132,20 @@ export const MODEL_CAPABILITIES = {
   // via OpenAI Responses input_image; reasoning supports up to xhigh.
   "muse-spark-1.2-contributor-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
   "muse-spark-1.3-contributor-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  // ── OpenCode Free (reasoning: true in models.dev, ids newer than the tables above) ──
+  // Without these entries getCapabilitiesForModel() falls through to DEFAULT_CAPABILITIES
+  // (reasoning: false) and applyThinking() strips the client's reasoning_effort — see #2690.
+  "space-bunny-free":          { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 524288 },
+  "space-bunny":               { vision: true, videoInput: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 524288 },
+  "big-pickle":                { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 32000 },
+  "exo-free":                  { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "fledge-alpha-free":         { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
+  "longcat-2.0":               { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "longcat-2.0-free":          { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "longcat-2.5-preview-free":  { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "north-mini-code-free":      { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 64000 },
+  "ring-2.6-1t-free":          { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "x-preview-f-free":          { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
   // FreeBuff/Codebuff free-tier catalog (provider "freebuff") — OmniRoute parity
   "mimo-v2.5":          { vision: true, reasoning: true, thinkingFormat: null, thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
   "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 48000 },
@@ -498,4 +512,9 @@ export function getCapabilitiesForModel(provider, model) {
 
   // 4. Floor
   return refine(null, provider, model);
+}
+
+// Gemini 4 (Argon) drops sampling params and requires functionResponse-last merged user turns.
+export function isGemini4Model(model) {
+  return /(?:^|\/)gemini-4(?:$|[-.])/i.test(String(model || ""));
 }
