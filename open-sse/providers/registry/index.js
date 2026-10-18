@@ -143,6 +143,8 @@ import p139 from "./dahl.js";
 import p140 from "./muse.js";
 import p141 from "./minimax-code.js";
 import p142 from "./minimax-code-global.js";
+import p143 from "./bedrock.js";
+import p144 from "./bedrock-xai.js";
 
 export default [
   p0,
@@ -287,4 +289,6 @@ export default [
   p140,
   p141,
   p142,
+  p143,
+  p144,
 ];

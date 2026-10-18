@@ -5,6 +5,7 @@ import { GithubExecutor } from "./github.js";
 import { IFlowExecutor } from "./iflow.js";
 import { QoderExecutor } from "./qoder.js";
 import { MinimaxCodeExecutor } from "./minimax-code.js";
+import { BedrockExecutor } from "./bedrock.js";
 import { KiroExecutor } from "./kiro.js";
 import { KimchiExecutor } from "./kimchi.js";
 import { CodexExecutor } from "./codex.js";
@@ -40,6 +41,10 @@ const executors = {
   qoder: new QoderExecutor(),
   "minimax-code": new MinimaxCodeExecutor("minimax-code"),
   "minimax-code-global": new MinimaxCodeExecutor("minimax-code-global"),
+  bedrock: new BedrockExecutor(),
+  br: new BedrockExecutor(),
+  "bedrock-xai": new BedrockExecutor("bedrock-xai"),
+  brx: new BedrockExecutor("bedrock-xai"),
   kiro: new KiroExecutor(),
   kimchi: new KimchiExecutor(),
   codex: new CodexExecutor(),
