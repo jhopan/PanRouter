@@ -182,6 +182,17 @@ export const PROVIDER_CAPABILITIES = {
     // This keyed Messages lane accepts adaptive thinking, not Claude budget thinking.
     "claude-haiku-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   },
+  // Nous Research Portal free-tier models (probed live 2026-10-15)
+  "nous": {
+    "meituan/longcat-2.0:free":         { tools: true, reasoning: true, thinkingFormat: "nous", contextWindow: 1048756, maxOutput: 262144 },
+    "meituan/longcat-2.5-preview:free": { tools: true, vision: true, reasoning: true, thinkingFormat: "nous", contextWindow: 1048576, maxOutput: 131072 },
+    "stepfun/step-5-preview:free":      { tools: true, vision: true, videoInput: true, reasoning: true, thinkingFormat: "nous", contextWindow: 1000000, maxOutput: 64000 },
+    "upstage/solar-mini4:free":         { tools: true, reasoning: true, thinkingFormat: "nous", contextWindow: 524288, maxOutput: 131072 },
+    "stepfun/step-3.7-flash:free":      { tools: true, vision: true, videoInput: true, reasoning: true, thinkingFormat: "nous", contextWindow: 262144, maxOutput: 256000 },
+    "poolside/laguna-s-2.1:free":       { tools: true, reasoning: true, thinkingFormat: "nous", contextWindow: 262144, maxOutput: 131072 },
+    "poolside/laguna-xs-2.1:free":      { tools: true, reasoning: true, thinkingFormat: "nous", contextWindow: 262144, maxOutput: 32768 },
+    "stealth/missingno":                { tools: true, reasoning: true, thinkingFormat: "nous", contextWindow: 262144, maxOutput: 131072 },
+  },
   "codex": {
     "gpt-6-astra":               { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 },
     "gpt-5.6-sol":               CODEX_GPT_56_SOL_CAPS,

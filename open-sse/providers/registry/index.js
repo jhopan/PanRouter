@@ -138,6 +138,7 @@ import p125 from "./bai.js";
 import p126 from "./freebuff.js";
 import p127 from "./freeai.js";
 import p137 from "./freeai-vl.js";
+import p138 from "./nous.js";
 
 export default [
   p0,
@@ -277,4 +278,5 @@ export default [
   p136,
   p127,
   p137,
+  p138,
 ];
