@@ -28,6 +28,7 @@ import trae from "./trae.js";
 import windsurf from "./windsurf.js";
 import zed from "./zed.js";
 import nous from "./nous.js";
+import muse from "./muse.js";
 
 // Provider configurations
 const PROVIDERS = {
@@ -55,6 +56,7 @@ const PROVIDERS = {
   windsurf,
   zed,
   nous,
+  muse,
 };
 
 export { PROVIDERS };
