@@ -1,3 +1,44 @@
+# v0.5.77.0 (2026-10-19)
+
+## Breaking
+
+- **FreeBuff dihapus seluruhnya.** Upstream sudah tidak bisa diproxy lagi — setiap
+  request balik 401/409. Yang dihapus:
+  - provider registry, executor, tool map, usage probe, OAuth provider
+  - auto-streak harian (`freebuffAutoStreak` + konfigurasinya)
+  - UI model-pin di ConnectionRow + handler `PUT /api/providers/[id]`
+  - entri di `quotaWindows`, `OAuthModal`, `noPkceProviders`, catalog capabilities
+  - `FREEBUFF_WAITING_ROOM` (budget antrean 428)
+  - 5 file test khusus FreeBuff
+
+  `wafGuard` **tidak** disentuh — daftar host-nya melindungi node proxy, bukan
+  provider ini. Koneksi FreeBuff yang sudah ada di DB jadi tidak terpakai; hapus
+  manual dari dashboard.
+
+## Perbaikan
+
+- **CodeBuddy Intl — tombol Test koneksi** sekarang memakai validasi `tokenExists`
+  yang sama dengan CodeBuddy CN. Sebelumnya provider ini tidak dikenali dashboard
+  sehingga test koneksi tidak pernah jalan.
+- **CodeBuddy CN — catalog 2026-09-30**: tambah `kimi-k2.8-preview`
+  (300k context / 131072 output), buang `kimi-k2.6`, `kimi-k2.7`, dan
+  `glm-5v-turbo` yang sudah tidak dipublikasikan server.
+- **DeepSeek V4.1 Flash (CodeBuddy CN)** — level reasoning jadi `low`/`high`/`max`.
+  Blok provider-specific dipindah ke atas aturan generik `*deepseek-v4.*` karena
+  `PATTERN_THINKING` memakai `find()` sehingga aturan generik (6 level) menutupi
+  aturan khusus provider.
+
+## Test
+
+- Golden header snapshot tidak lagi menyimpan UUID acak per request
+  (`X-Mavis-Session-Id` dari MiniMax). Sebelumnya test gagal bergantian setiap
+  run karena nilai UUID baru selalu ditulis ke snapshot.
+- `quota-window` dan `error-rules-daily-quota` tidak lagi menguji perilaku
+  FreeBuff (provider-nya sudah tidak ada).
+- Baseline alias + providers di-regenerate.
+- Suite: **2727 lulus**, 0 regresi baru dibanding HEAD (22 file yang masih gagal
+  sudah gagal sebelum perubahan ini — tercatat di `known-fails.txt`).
+
 # v0.5.76.0 (2026-10-19)
 
 ## Provider Baru
