@@ -1,3 +1,36 @@
+# v0.5.78.1 (2026-10-19)
+
+## Perbaikan
+
+- **OAuth modal: provider device-code yang tidak pernah bisa login.**
+  `minimax-code-global` mendeklarasikan `flowType: "device_code"` dan terdaftar di
+  provider index, tapi tidak ada di list `deviceCodeProviders` milik modal —
+  jadi memilih provider itu jatuh ke cabang authorization-code dan login tidak
+  pernah mulai.
+
+  Audit yang sama menemukan empat provider lain dalam kondisi identik, jadi
+  semuanya sekalian diperbaiki:
+
+  | Provider | PKCE |
+  |---|---|
+  | `minimax-code` | ya (code challenge) |
+  | `minimax-code-global` | ya (code challenge) |
+  | `muse` | tidak |
+  | `nous` | tidak |
+  | `qoder-cn` | tidak |
+  | `glm` | tidak |
+
+  Keenamnya sekarang ada di `deviceCodeProviders`. Lima yang tanpa PKCE juga
+  masuk `noPkceDeviceProviders` di route supaya `requestDeviceCode` dipanggil
+  tanpa challenge; `minimax-code` tetap lewat jalur PKCE.
+
+## Test
+
+- Test baru memastikan **setiap** file provider yang mendeklarasikan
+  `flowType: "device_code"` benar-benar bisa dijangkau dari modal, sehingga bug
+  sekelas ini tidak bisa lolos lagi.
+- Suite: **2740 lulus**, 0 regresi baru.
+
 # v0.5.78.0 (2026-10-19)
 
 ## OpenCode Free — katalog diperbarui
