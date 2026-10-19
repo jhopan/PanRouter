@@ -1,3 +1,29 @@
+# v0.5.78.2 (2026-10-19)
+
+## Perbaikan
+
+- **GLM Coding: jalur login OAuth tidak bisa dijangkau dari UI.** Registry-nya
+  `category: "apikey"` tanpa `authModes`, jadi halaman provider menghitung
+  `isOAuth = false` dan hanya menawarkan modal API key. Provider OAuth Z.ai
+  (`src/lib/oauth/providers/glm.js`, flow CLI polling) sudah lengkap dan bahkan
+  terdaftar di list device-code modal — tapi tidak ada jalan untuk memulainya.
+
+  Sekarang `authModes: ["apikey", "oauth"]` + `hasOAuth: true`, jadi halaman
+  membuka modal OAuth dan flow CLI polling-nya jalan.
+
+- **`nous` sudah benar** — dilaporkan bermasalah, tapi verifikasi menunjukkan
+  `category: "freeTier"` dengan `authModes: ["oauth", "apikey"]`. Halaman
+  provider menerima keduanya (`authModes.includes("oauth")`), dan `nous` sudah
+  ada di list device-code modal sejak v0.5.78.1. Tidak ada perubahan kode.
+
+## Test
+
+- Test rantai penuh baru: untuk **setiap** provider device-code, pastikan
+  benar-benar bisa dijangkau dari UI (`category` oauth/free, atau `authModes`
+  memuat oauth) — bukan sekadar terdaftar di list modal. Test inilah yang
+  menemukan bug GLM di atas.
+- Suite: **2769 lulus**, 0 regresi baru.
+
 # v0.5.78.1 (2026-10-19)
 
 ## Perbaikan
