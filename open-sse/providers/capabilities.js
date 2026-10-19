@@ -143,6 +143,15 @@ export const MODEL_CAPABILITIES = {
   "longcat-2.0":               { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "longcat-2.0-free":          { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "longcat-2.5-preview-free":  { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  // OpenCode free-tier catalog (probed live 2026-10-19). Entries mirror the
+  // model family's published limits; upstream publishes no per-model table.
+  "deepseek-v4.1-flash-free":  { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "glm-5.3-flash-free":        { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 32000 },
+  "mimo-v2.6-flash-free":      { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
+  "nemotron-3.5-lightning-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
+  "nemotron-3.5-super-vl-free":  { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
+  "jev-1.13-free":             { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 65536 },
+  "beam-free":                 { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "north-mini-code-free":      { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 64000 },
   "ring-2.6-1t-free":          { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "x-preview-f-free":          { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },

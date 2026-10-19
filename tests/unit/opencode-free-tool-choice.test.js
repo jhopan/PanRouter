@@ -9,20 +9,20 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 
 // Break caught: opencode/muse-spark-1.3-contributor-free 400 vì upstream
 // chỉ nhận tool_choice "auto"; named/required/none phải demote sang "auto".
+//
+// The muse-spark contributor family was retired upstream (410 ModelDeprecated,
+// 2026-10-19) and is no longer in the catalog, but the quirk stays wired so a
+// passthrough id keeps the same wire contract if upstream revives it.
 const FREE_13 = "muse-spark-1.3-contributor-free";
 const CREDS = { connectionId: "opencode-free-tool-choice-test" };
 const INPUT = [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }];
 const TOOLS = [{ type: "function", name: "get_weather", description: "w", parameters: { type: "object", properties: {} } }];
 
-// transformRequest injects the free-tier fingerprint quartet (PR parity: every
-// Responses request carries the decoys; live-verified 2026-09-19).
-const FINGERPRINT = ["bash", "glob", "grep", "read"].map((name) => ({
-  type: "function",
-  name,
-  description: "This tool is currently unavailable and must not be used.",
-  parameters: { type: "object", properties: {} },
-}));
-const TOOLS_WITH_FINGERPRINT = [...TOOLS, ...FINGERPRINT];
+// transformRequest injects the free-tier fingerprint (v2 contract: the CLI's
+// own `read` and `shell` definitions, verbatim — see open-sse/utils/
+// opencodeFingerprint.js). The v1 bash/glob/grep/read quartet is gone.
+const FINGERPRINT_NAMES = ["read", "shell"];
+const TOOLS_WITH_FINGERPRINT_NAMES = [...TOOLS.map((t) => t.name), ...FINGERPRINT_NAMES];
 
 function responsesBody(model, tool_choice) {
   const body = { model, input: structuredClone(INPUT), tools: structuredClone(TOOLS) };
@@ -46,7 +46,7 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
       const body = responsesBody(model, structuredClone(choice));
       const out = new OpenCodeExecutor().transformRequest(model, body, true, CREDS);
       expect(out.tool_choice).toBe("auto");
-      expect(out.tools).toEqual(TOOLS_WITH_FINGERPRINT);
+      expect(out.tools.map((t) => t.name)).toEqual(TOOLS_WITH_FINGERPRINT_NAMES);
       expect(out.input).toEqual(INPUT);
     }
   });
@@ -56,7 +56,7 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
       FREE_13, responsesBody(FREE_13, "auto"), true, CREDS,
     );
     expect(autoOut.tool_choice).toBe("auto");
-    expect(autoOut.tools).toEqual(TOOLS_WITH_FINGERPRINT);
+    expect(autoOut.tools.map((t) => t.name)).toEqual(TOOLS_WITH_FINGERPRINT_NAMES);
     expect(autoOut.input).toEqual(INPUT);
 
     const absentOut = new OpenCodeExecutor().transformRequest(
@@ -64,7 +64,7 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
     );
     // Fingerprint leg supplies decoys on Responses → tool_choice defaults to auto.
     expect(absentOut.tool_choice).toBe("auto");
-    expect(absentOut.tools).toEqual(TOOLS_WITH_FINGERPRINT);
+    expect(absentOut.tools.map((t) => t.name)).toEqual(TOOLS_WITH_FINGERPRINT_NAMES);
     expect(absentOut.input).toEqual(INPUT);
   });
 
@@ -87,15 +87,15 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
     const { url, transformedBody } = await ex.execute({
       model: FREE_13, body, stream: true, credentials: CREDS,
     });
-    expect(url).toBe("https://opencode.ai/zen/v1/responses");
+    expect(url).toBe("https://opencode.ai/inference/v1/responses");
     expect(transformedBody.tool_choice).toBe("auto");
     expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
     const [actualUrl, actualInit] = proxyAwareFetch.mock.calls[0];
-    expect(actualUrl).toBe("https://opencode.ai/zen/v1/responses");
+    expect(actualUrl).toBe("https://opencode.ai/inference/v1/responses");
     const sent = JSON.parse(actualInit.body);
     expect(sent.tool_choice).toBe("auto");
     expect(sent.model).toBe(FREE_13);
-    expect(sent.tools).toEqual(TOOLS_WITH_FINGERPRINT);
+    expect(sent.tools.map((t) => t.name)).toEqual(TOOLS_WITH_FINGERPRINT_NAMES); //TH_FINGERPRINT);
     expect(sent.input).toEqual(INPUT);
   });
 });

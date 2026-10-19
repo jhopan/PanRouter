@@ -30,12 +30,12 @@ function hasValidOpencodeVersion(ua) {
   const m = String(ua || "").match(/^opencode\/[a-z0-9-]+\/(\d+)\.\d+\.\d+\/[a-z0-9-]+$/i);
   return !!m && parseInt(m[1], 10) >= 2;
 }
-// Models served by /inference/v1/responses; every other model stays on /chat/completions.
-const RESPONSES_MODELS = new Set([
-  "muse-spark-1.2-contributor-free",
-  "muse-spark-1.3-contributor-free",
-]);
-const MESSAGES_MODELS = new Set(["union-alpha"]);
+// Models served by /inference/v1/responses; every other model stays on
+// /chat/completions. Empty today — the muse-spark contributor models were
+// retired upstream (410 ModelDeprecated on 2026-10-19). isMuseSparkModel() is
+// still consulted so a passthrough id keeps routing correctly if it returns.
+const RESPONSES_MODELS = new Set();
+const MESSAGES_MODELS = new Set();
 
 let lastTimestamp = 0;
 let counter = 0;

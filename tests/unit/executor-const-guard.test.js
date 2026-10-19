@@ -57,31 +57,32 @@ describe("antigravity retry (429=6 was proposed but never landed; current = 3)",
 });
 
 describe("OpenCode Free endpoint routing", () => {
-  const MUSE = "muse-spark-1.2-contributor-free";
-
-  it("declares the Responses format only on the Muse Spark model", () => {
+  it("declares no transport-wide format (every catalog model is chat)", () => {
     expect(opencode.transport.format).toBeUndefined();
-    const muse = opencode.models.find((m) => m.id === MUSE);
-    expect(muse?.targetFormat).toBe("openai-responses");
-    const muse13 = opencode.models.find((m) => m.id === "muse-spark-1.3-contributor-free");
-    expect(muse13?.targetFormat).toBe("openai-responses");
+    // The muse-spark contributor models that needed targetFormat
+    // "openai-responses" were retired upstream (410 ModelDeprecated,
+    // 2026-10-19) and dropped from the catalog.
+    expect(opencode.models.some((m) => m.targetFormat)).toBe(false);
   });
 
-  it("routes Muse Spark to /responses and every other model to /chat/completions", () => {
+  it("routes every catalog model to the v2 /inference/v1/chat/completions", () => {
     const executor = new OpenCodeExecutor();
-    expect(executor.buildUrl(MUSE)).toBe("https://opencode.ai/zen/v1/responses");
-    expect(executor.buildUrl(`${MUSE}(xhigh)`)).toBe("https://opencode.ai/zen/v1/responses");
-    expect(executor.buildUrl("muse-spark-1.3-contributor-free")).toBe("https://opencode.ai/zen/v1/responses");
-    expect(executor.buildUrl("muse-spark-1.4-contributor-free")).toBe("https://opencode.ai/zen/v1/responses");
-    expect(executor.buildUrl("muse-spark-2.0-contributor-free(xhigh)")).toBe("https://opencode.ai/zen/v1/responses");
-    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/zen/v1/chat/completions");
-    expect(executor.buildUrl("hy3-free")).toBe("https://opencode.ai/zen/v1/chat/completions");
+    for (const model of opencode.models) {
+      expect(executor.buildUrl(model.id)).toBe("https://opencode.ai/inference/v1/chat/completions");
+    }
+    // isMuseSparkModel() still routes a passthrough id to /responses, so an
+    // upstream revival of the family keeps working without a code change.
+    expect(executor.buildUrl("muse-spark-2.0-contributor-free(xhigh)"))
+      .toBe("https://opencode.ai/inference/v1/responses");
   });
 
   it("normalizes Chat token/thinking fields only for the Responses model", () => {
     const executor = new OpenCodeExecutor();
+    // Passthrough muse-spark id — the family is retired from the catalog but
+    // isMuseSparkModel() still routes it, so the Responses normalization must
+    // keep working if upstream revives it.
     const muse = { max_tokens: 4096, reasoning_effort: "high" };
-    executor.transformRequest(MUSE, muse, true, {});
+    executor.transformRequest("muse-spark-2.0-contributor-free", muse, true, {});
     expect(muse.max_output_tokens).toBe(4096);
     expect(muse.max_tokens).toBeUndefined();
     expect(muse.reasoning).toEqual({ effort: "high", summary: "auto" });
