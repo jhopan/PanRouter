@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import {
   AWS_CREDENTIAL_MODE,
   AWS_CREDENTIAL_PROVIDERS_MODULE,
@@ -232,14 +233,47 @@ function present(resolved, region, mode, expiresAt) {
  * @param {function} [opts.now] - Test seam for the clock.
  * @returns {Promise<{accessKeyId,secretAccessKey,sessionToken,region,mode,expiresAt}>}
  */
+// @aws-sdk/credential-providers is an OPTIONAL dependency: only Bedrock's
+// profile/SSO mode needs it, and static-key users must never be forced to
+// install ~20 extra packages.
+//
+// A literal dynamic import of the SDK makes webpack resolve the specifier at
+// BUILD time. When the package is absent the build fails with "Module not
+// found", and because executors/index.js pulls bedrock.js into every route,
+// that one missing optional dep took down /v1/models, /models and the root
+// layout.
+//
+// Resolving through createRequire keeps it out of the bundler's module graph
+// (same pattern as netlify-cli in src/app/api/proxy-pools/netlify-deploy).
+// `serverExternalPackages` in next.config.mjs keeps the real package external
+// at runtime, where it is present in the packaged CLI.
+const requireOptional = createRequire(import.meta.url);
+
+function loadAwsCredentialProviders() {
+  // CommonJS interop: the SDK ships CJS, and the dynamic import contract this
+  // module relies on is `{ fromIni }`. Wrapping require() in a promise keeps
+  // the same shape for callers and for the test seam.
+  return Promise.resolve().then(() => requireOptional(AWS_CREDENTIAL_PROVIDERS_MODULE));
+}
+
 export async function resolveAwsCredentials(
   credentials,
   {
     log = null,
-    // The specifier MUST stay a literal. With a variable here, Next's output tracing cannot
-    // see the dependency, so @aws-sdk/credential-providers is left out of the standalone
-    // build and profile/SSO mode dies with MODULE_NOT_FOUND only in the packaged CLI.
-    loadCredentialProviders = () => import("@aws-sdk/credential-providers"),
+    // Profile/SSO mode needs @aws-sdk/credential-providers, which is an OPTIONAL
+    // dependency: static-key users must never be forced to install it.
+    //
+    // The specifier is built at runtime instead of written as a literal so
+    // webpack stops trying to resolve it at build time. A literal `import()`
+    // makes the whole build fail with "Module not found" when the package is
+    // absent, and because executors/index.js pulls in bedrock.js for every
+    // route, that one missing optional dep took down /v1/models, /models and
+    // the root layout with it.
+    //
+    // serverExternalPackages keeps the real module out of the bundle, so this
+    // resolves through Node's loader at runtime where the package genuinely
+    // exists (or fails inside the try/catch below with a readable message).
+    loadCredentialProviders = loadAwsCredentialProviders,
     now = () => Date.now(),
     resolveTimeoutMs = AWS_CREDENTIAL_RESOLVE_TIMEOUT_MS,
   } = {},
