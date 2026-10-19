@@ -47,6 +47,11 @@ const PATTERN_THINKING = [
   // DeepSeek v4.* (Alibaba MaaS, probed live): effort low|medium|high|xhigh|max
   // all 200 via output_config.effort; "none" is a 400 on the anthropic route
   // (disable thinking instead). none kept for the picker = disable.
+  { provider: "codebuddy-cn", pattern: "glm-5.3*",     levels: ["low", "high", "max"] },
+  { provider: "codebuddy-cn", pattern: "glm-5.2",      levels: ["high", "xhigh"] },
+  { provider: "codebuddy-cn", pattern: "deepseek-v4*", levels: ["low", "high", "max"] },
+  { provider: "codebuddy-cn", pattern: "hy3*",         levels: ["low", "high"] },
+  { provider: "codebuddy-cn", pattern: "hy4*",         levels: ["high"] },
   { pattern: "*deepseek-v4.*", levels: ["none", "low", "medium", "high", "xhigh", "max"] },
   // codebuddy-cn per-model effort sets — the server's product-config payload
   // publishes `reasoning.supportedEfforts` per model. NOTE: the chat endpoint
@@ -55,11 +60,6 @@ const PATTERN_THINKING = [
   // clamped, so the declared set stays authoritative for the picker. Models
   // that publish no supportedEfforts (glm-5.1 / glm-5v-turbo / kimi-k2.x /
   // kimi-k3-1 / minimax-m3) fall through to the openai format default.
-  { provider: "codebuddy-cn", pattern: "glm-5.3*",     levels: ["low", "high", "max"] },
-  { provider: "codebuddy-cn", pattern: "glm-5.2",      levels: ["high", "xhigh"] },
-  { provider: "codebuddy-cn", pattern: "deepseek-v4*", levels: ["low", "high", "xhigh"] },
-  { provider: "codebuddy-cn", pattern: "hy3*",         levels: ["low", "high"] },
-  { provider: "codebuddy-cn", pattern: "hy4*",         levels: ["high"] },
 ];
 
 // Returns valid thinking levels for a model, or null when the model has no reasoning.

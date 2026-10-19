@@ -47,10 +47,8 @@ export default {
   models: [
     { id: "glm-5.2", name: "GLM-5.2" },
     { id: "glm-5.1", name: "GLM-5.1" },
-    { id: "glm-5v-turbo", name: "GLM-5v-Turbo" },
     { id: "minimax-m3", name: "MiniMax-M3" },
-    { id: "kimi-k2.7", name: "Kimi-K2.7-Code" },
-    { id: "kimi-k2.6", name: "Kimi-K2.6" },
+    { id: "kimi-k2.8-preview", name: "Kimi-K2.8-Preview" },
     // Catalog mirrors the server's product-config payload (the plugin fetches
     // it from copilot.tencent.com). Models the server no longer publishes are
     // removed even when the chat endpoint still answers them — the published
