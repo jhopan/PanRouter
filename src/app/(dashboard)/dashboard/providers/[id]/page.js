@@ -29,7 +29,6 @@ const ONE_BY_ONE_DELAY_MS = 1000;
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
-  freebuff: "freebuffAutoStreak",
   "codebuddy-intl": "codebuddyIntlAutoPing",
 };
 
@@ -71,7 +70,6 @@ export default function ProviderDetailPage() {
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
-  const [pinMenuConnId, setPinMenuConnId] = useState(null);
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [liveModels, setLiveModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
@@ -974,36 +972,10 @@ export default function ProviderDetailPage() {
                 onMoveUp={() => handleSwapPriority(index, index - 1)}
                 onMoveDown={() => handleSwapPriority(index, index + 1)}
                 onToggleActive={(isActive) => handleUpdateConnectionStatus(conn.id, isActive)}
-                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && (conn.authType === "oauth" || providerId === "codebuddy-intl" || providerId === "freebuff") ? {
+                autoPing={AUTO_PING_SETTINGS_KEYS[providerId] && (conn.authType === "oauth" || providerId === "codebuddy-intl") ? {
                   on: autoPing.connections[conn.id] === true,
                   onToggle: (on) => handleAutoPingConnection(conn.id, on),
                   provider: providerId,
-                } : null}
-                modelPin={providerId === "freebuff" ? {
-                  pinnedModel: conn.providerSpecificData?.pinnedModel || "",
-                  models: models.map((m) => m.id || m).filter(Boolean),
-                  open: pinMenuConnId === conn.id,
-                  onToggleMenu: () => setPinMenuConnId((prev) => (prev === conn.id ? null : conn.id)),
-                  onSelect: async (modelId) => {
-                    setPinMenuConnId(null);
-                    try {
-                      const res = await fetch(`/api/providers/${conn.id}`, {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ pinnedModel: modelId || null }),
-                      });
-                      if (res.ok) {
-                        setConnections(prev => prev.map(c =>
-                          c.id === conn.id
-                            ? { ...c, providerSpecificData: { ...c.providerSpecificData, pinnedModel: modelId || null } }
-                            : c
-                        ));
-                      }
-                    } catch (error) {
-                      console.log("Error updating pin:", error);
-                    }
-                  },
-                  tooltip: "Pin to one model — other models never use this account (no 409 churn).",
                 } : null}
                 onUpdateProxy={async (proxyPoolId) => {
                   try {

@@ -146,12 +146,6 @@ export const MODEL_CAPABILITIES = {
   "north-mini-code-free":      { reasoning: true, thinkingFormat: "openai", contextWindow: 256000, maxOutput: 64000 },
   "ring-2.6-1t-free":          { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "x-preview-f-free":          { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1048576, maxOutput: 131072 },
-  // FreeBuff/Codebuff free-tier catalog (provider "freebuff") — OmniRoute parity
-  "mimo-v2.5":          { vision: true, reasoning: true, thinkingFormat: null, thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
-  "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 48000 },
-  // fb-proxy v1.9.0 catalog additions (modelcat/catalog_gen.go)
-  "ox-alpha":           { vision: false, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
-  "gemini-3.8-flash":   { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 65536 },
 };
 
 const KIRO_GPT_5_6_CAPABILITIES = { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 272000, maxOutput: 128000 };
@@ -228,11 +222,9 @@ export const PROVIDER_CAPABILITIES = {
     "glm-5.0":            { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 48000 },
     // maxOutput 64000 per both the plugin-baked fallback and the live server
     // table (the old 38000 had no source and truncated output).
-    "glm-5v-turbo":       { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 64000 },
     "glm-4.7":            { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 48000 },
     "minimax-m3":         { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 512000, maxOutput: 128000 },
-    "kimi-k2.7":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 256000, maxOutput: 32000 },
-    "kimi-k2.6":          { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 256000, maxOutput: 32000 },
+    "kimi-k2.8-preview":  { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 300000, maxOutput: 131072 },
     // Per-model values mirror the server's product-config payload (the plugin
     // fetches it from copilot.tencent.com; the `models[]` entries carry
     // maxInputTokens/maxOutputTokens/supportsImages). contextWindow =

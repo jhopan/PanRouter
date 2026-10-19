@@ -29,7 +29,6 @@ import ZedExecutor from "./zed.js";
 import WindsurfExecutor from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
 import { DevinCliExecutor } from "./devin-cli.js";
-import { FreebuffExecutor } from "./freebuff.js";
 import { FreeAIExecutor } from "./freeai.js";
 
 const executors = {
@@ -73,8 +72,6 @@ const executors = {
   zed: new ZedExecutor(),
   windsurf: new WindsurfExecutor(),
   "devin-cli": new DevinCliExecutor(),
-  freebuff: new FreebuffExecutor(),
-  fb: new FreebuffExecutor(), // Alias for freebuff
   freeai: new FreeAIExecutor(),
   fai: new FreeAIExecutor(), // Alias for freeai
 };

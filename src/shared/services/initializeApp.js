@@ -118,11 +118,6 @@ async function runHeavyStartup() {
     .then(({ configureCodebuddyAutoPing }) => configureCodebuddyAutoPing(settings))
     .catch((e) => console.log("[CB_PING] scheduler start failed:", e.message));
 
-  // FreeBuff daily-streak keeper (opt-in per connection via settings).
-  import("@/shared/services/freebuffAutoStreak.js")
-    .then(({ configureFreebuffAutoStreak }) => configureFreebuffAutoStreak(settings))
-    .catch((e) => console.log("[FB_STREAK] scheduler start failed:", e.message));
-
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")

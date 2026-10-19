@@ -9,7 +9,7 @@
  * That WAF inspects the request BODY and blocks anything containing a
  * backtick-quoted `curl`/`wget` command with an http(s) URL — it reads the
  * markdown inline-code span as command-injection / SSRF. Verified against
- * freebuff-proxy-zn7c.onrender.com (2026-09-16): the identical text WITHOUT the
+ * a compatible node behind a body-inspecting WAF: the identical text WITHOUT the
  * backticks passes. It is deterministic, and size-independent (2 MB of prose is
  * fine; 30 characters with a backtick are not).
  *
@@ -22,8 +22,6 @@
  * Scope is deliberately a HOST list, not a provider:
  *   - "frp" is a client-facing model alias; the real target is the compatible
  *     node's baseUrl, which is what actually carries the WAF.
- *   - The native `freebuff` provider talks to www.codebuff.com directly and must
- *     NOT be touched — keying on the provider name would wrongly rewrite it.
  *   - Proxy pools must not be used as the key either: the vercel-relay pool is
  *     shared with unrelated providers (CodeBuddy-INTL uses the same one), and the
  *     block happens with or without a proxy. The pool is not the cause.

@@ -1,7 +1,7 @@
 // Quota-window config: how long a connection must stay parked after its free
 // tier refuses a request, per provider.
 //
-// Reality: providers reset on wildly different cadences — Cline daily, FreeBuff
+// Reality: providers reset on wildly different cadences — Cline daily, tokenharbor
 // daily (Pacific), Antigravity weekly, Claude/Codex 5-hour session windows, Kiro
 // on a date it reports itself. Hardcoding one cadence either parks accounts for
 // days too long (quota already reset) or retries them hundreds of times (quota
@@ -72,7 +72,6 @@ export const QUOTA_WINDOWS = {
     tokenharbor: { scope: QUOTA_SCOPES.WEEKLY, usageKey: null },
     // ── Calendar-only providers ────────────────────────────────────────────
     cline: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 0 },
-    freebuff: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 7 }, // Pacific midnight
     default: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 0 },
   },
 

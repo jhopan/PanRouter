@@ -31,10 +31,10 @@ describe("daily free-tier quota classification", () => {
     expect(resetAt.getUTCMinutes()).toBe(0);
   });
 
-  it("freebuff resets on the Pacific quota day (07:00 UTC)", () => {
-    const cooldown = dailyQuotaCooldownMs("freebuff");
+  it("an unknown provider falls back to the 00:00 UTC rollover", () => {
+    const cooldown = dailyQuotaCooldownMs("no-such-provider");
     const resetAt = new Date(Date.now() + cooldown);
-    expect(resetAt.getUTCHours()).toBe(7);
+    expect(resetAt.getUTCHours()).toBe(0);
   });
 
   it("never parks for longer than the safety ceiling", () => {

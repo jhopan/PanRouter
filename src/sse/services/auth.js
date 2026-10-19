@@ -143,22 +143,9 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
 
     // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
-    const pinSkipped = [];
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
-      // FreeBuff pinned model (MODEL_LOCKS parity): a connection pinned to a
-      // specific model only serves that model. Prevents cross-model fallback
-      // from ever forcing a model switch on a live upstream instance (409
-      // model-bound churn = the farm-pattern that got two accounts swept).
-      if (providerId === "freebuff" && model) {
-        const pinned = c.providerSpecificData?.pinnedModel;
-        if (pinned && model !== pinned) {
-          log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | pinned to ${pinned}, skip (requested ${model})`);
-          pinSkipped.push({ id: c.id?.slice(0, 8), pinned });
-          return false;
-        }
-      }
       // Antigravity: family-only routing. Plus/free accounts share ONE weekly
       // limit per family (gemini_weekly / claude_gpt_weekly); the per-model rows
       // on Plus just mirror that weekly bucket — only Pro/Ultra add a real 5h
@@ -218,13 +205,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           lastErrorCode: earliestConn?.errorCode || null
         };
       }
-      if (pinSkipped.length > 0 && pinSkipped.length === connections.length) {
-        const pinList = pinSkipped.map((p) => `${p.id}→${p.pinned}`).join(", ");
-        const msg = `All freebuff accounts are pinned to other models (${pinList}); nothing serves ${model}. Unpin one or add an account pinned to ${model}.`;
-        log.warn("AUTH", `${provider} | ${msg}`);
-        return { __authError: msg };
-      }
-      log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable${pinSkipped.length ? ` (${pinSkipped.length} skipped by model pin)` : ""}`);
+      log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
       return null;
     }
 

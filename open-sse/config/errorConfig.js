@@ -63,14 +63,6 @@ export function dailyQuotaCooldownMs(provider = null, now = Date.now()) {
 }
 
 
-// FreeBuff waiting room (428): the admission queue after a session expires.
-// The executor waits in-request (honoring upstream Retry-After) up to the
-// budget, then surfaces a 503 with the real wait.
-export const FREEBUFF_WAITING_ROOM = {
-  firstWaitMs: 5000,        // first retry delay
-  maxWaitMs: 5 * 60_000,    // total in-request wait budget (5 min — queue can be slow)
-};
-
 // Cooldown durations (ms)
 const COOLDOWN = {
   long: 2 * 60 * 1000,

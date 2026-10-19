@@ -28,9 +28,9 @@ describe("quotaWindowFor", () => {
   });
 
   it("is case-insensitive and carries shared knobs + ceiling", () => {
-    const cfg = quotaWindowFor("FreeBuff");
+    const cfg = quotaWindowFor("Cline");
     expect(cfg.scope).toBe(QUOTA_SCOPES.DAILY);
-    expect(cfg.resetUtcHour).toBe(7);
+    expect(cfg.resetUtcHour).toBe(0);
     expect(cfg.maxCooldownMs).toBeGreaterThan(24 * 3600 * 1000);
     expect(cfg.weeklyResetWeekday).toBe(1);
   });

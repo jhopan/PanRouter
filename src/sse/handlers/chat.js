@@ -263,11 +263,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           log.warn("CHAT", `[${provider}/${model}] ${credentials.error}`);
           return errorResponse(credentials.status || HTTP_STATUS.NOT_FOUND, credentials.error);
         }
-        const hint = provider === "freebuff" && model
-          ? ` (check the model pin 🔒 on your freebuff connections — accounts pinned to other models never serve ${model})`
-          : "";
         log.warn("CHAT", `No active credentials for provider: ${provider}`);
-        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}${hint}`);
+        return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
       }
       log.warn("CHAT", "No more accounts available", { provider });
       return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable", lastHeaders);

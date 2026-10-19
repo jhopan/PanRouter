@@ -135,7 +135,6 @@ import p121 from "./alitp-intl.js";
 import p122 from "./xquik.js";
 import p124 from "./agentrouter.js";
 import p125 from "./bai.js";
-import p126 from "./freebuff.js";
 import p127 from "./freeai.js";
 import p137 from "./freeai-vl.js";
 import p138 from "./nous.js";
@@ -275,7 +274,6 @@ export default [
   p122,
   p124,
   p125,
-  p126,
   p128,
   p129,
   p130,
