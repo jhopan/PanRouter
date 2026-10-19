@@ -1,3 +1,57 @@
+# v0.5.78.0 (2026-10-19)
+
+## OpenCode Free — katalog diperbarui
+
+Model lama sudah dipensiunkan upstream. `muse-spark-1.2-contributor-free`,
+`muse-spark-1.3-contributor-free`, dan `union-alpha` sekarang balas
+**410 ModelDeprecated**. Katalog diganti dengan 10 model free yang benar-benar
+dilayani (diprobe live dari `GET /zen/v1/models`):
+
+| Model | Keterangan |
+|---|---|
+| `big-pickle` | 200k context |
+| `space-bunny-free` | 1M context, vision + video |
+| `deepseek-v4.1-flash-free` | 1M context, reasoning |
+| `glm-5.3-flash-free` | 1M context, reasoning |
+| `mimo-v2.6-flash-free` | 1M context, reasoning |
+| `longcat-2.5-preview-free` | 1M context |
+| `nemotron-3.5-lightning-free` | 1M context |
+| `nemotron-3.5-super-vl-free` | 1M context, vision |
+| `jev-1.13-free` | 200k context |
+| `beam-free` | 1M context, vision |
+
+`test` sengaja tidak dimasukkan — itu fixture upstream, bukan model.
+
+`RESPONSES_MODELS` / `MESSAGES_MODELS` sekarang kosong: semua model katalog
+memakai jalur chat. `isMuseSparkModel()` tetap dipakai sehingga id passthrough
+`muse-spark-*` masih diarahkan ke `/responses` kalau upstream menghidupkannya lagi.
+
+## OpenCode Free — 403 karena IP proxy di-flag
+
+Gate free-tier OpenCode membalas `403 FreeTierError` kalau request keluar dari
+IP yang sudah ditandai. Transport-nya sendiri sukses, jadi fallback proxy yang
+berbasis `catch` tidak pernah jalan — setiap retry tetap lewat proxy yang sama
+dan 403 terus berulang sampai proxy diganti manual.
+
+Sekarang respons 403 berisi penanda `FreeTierError` dari jalur proxy **diputar
+ulang sekali lewat egress langsung**. `strictProxy: true` tetap tidak pernah
+keluar dari jalur yang dikonfigurasi, dan body stream yang sudah terpakai tidak
+dikirim ulang.
+
+Ported dari PR upstream 9router #4988.
+
+> Catatan: kalau IP publikmu sendiri juga di-flag (bukan cuma proxy), replay
+> langsung tetap 403. Dalam kasus itu pakai proxy pool dengan IP bersih.
+
+## Test
+
+- `executor-const-guard` dan `opencode-free-tool-choice` sekarang menguji
+  endpoint v2 `/inference/v1` dan fingerprint `read`/`shell`, bukan quartet
+  `bash`/`glob`/`grep`/`read` yang sudah tidak dipakai. Keduanya sudah gagal
+  sebelum perubahan ini.
+- Suite: **2734 lulus**, 0 regresi baru (20 file yang masih gagal sudah gagal
+  sebelum perubahan ini).
+
 # v0.5.77.0 (2026-10-19)
 
 ## Breaking
