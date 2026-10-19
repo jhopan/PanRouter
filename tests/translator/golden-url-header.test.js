@@ -36,8 +36,11 @@ function sanitize(headers) {
     }
     out[k] = typeof v === "string"
       ? v.replace(/Bearer .+/, "Bearer <TOK>")
-          .replace(/sk-test-APIKEY|tok-test-ACCESS/g, "<CRED>")
+          .replace(/«redacted:sk-…»|tok-test-ACCESS/g, "<CRED>")
           .replace(/kimi-\d{10,}/g, "kimi-<TS>")
+          // Per-request random ids (MiniMax Mavis session, etc.) must never be
+          // baked into the golden snapshot — they change on every run.
+          .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<UUID>")
       : v;
   }
   return out;
