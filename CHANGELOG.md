@@ -1,3 +1,45 @@
+# v0.5.78.3 (2026-10-19)
+
+## Perbaikan penting
+
+- **`@aws-sdk/credential-providers` yang opsional tidak lagi mematahkan build.**
+  Import-nya ditulis sebagai literal `import("@aws-sdk/credential-providers")`,
+  jadi webpack mencoba me-resolve saat **build**. Kalau paket itu tidak ada:
+
+  ```
+  Module not found: Can't resolve '@aws-sdk/credential-providers'
+  ```
+
+  Karena `executors/index.js` menarik `bedrock.js` ke **setiap** route, satu
+  dependency opsional yang hilang membuat:
+
+  - `GET /v1/models` → **500**
+  - `GET /models` → **500**
+  - root layout (`src/app/layout.js`) → gagal compile
+
+  Bukan cuma Bedrock yang rusak — seluruh aplikasi.
+
+  Sekarang specifier di-resolve lewat `createRequire(import.meta.url)`, pola yang
+  sudah dipakai untuk `netlify-cli`. Specifier-nya tetap di `awsConstants.js`,
+  jadi tidak ada literal tersisa di module graph. `serverExternalPackages` tetap
+  menjaga paket asli di luar bundle saat runtime, tempat profile/SSO memuatnya
+  secara normal.
+
+  Mode static-key tidak pernah menyentuh SDK, jadi jalur umum tidak berubah.
+  Mode profile tanpa paket sekarang gagal dengan pesan yang sudah ada
+  ("Install it, or switch this connection to static accessKeyId/secretAccessKey
+  credentials") alih-alih menjatuhkan aplikasi.
+
+  Diverifikasi dengan paket **dihapus sementara** dari `node_modules`: suite
+  tetap lulus dan module graph tetap resolve.
+
+## Test
+
+- Test baru mengunci: tidak boleh ada literal `import()` untuk SDK opsional,
+  specifier harus tetap di config, mode static tidak boleh memanggil loader, dan
+  mode profile tanpa paket harus memberi error yang bisa ditindaklanjuti.
+- Suite: **2774 lulus**, 0 regresi baru.
+
 # v0.5.78.2 (2026-10-19)
 
 ## Perbaikan
