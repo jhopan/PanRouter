@@ -246,6 +246,16 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         "codebuddy-intl",
         "qoder",
         "grok-cli",
+        // MiniMax Code uses the device_code flow for both regions and needs a
+        // PKCE code challenge, so it belongs here but NOT in the route's
+        // noPkceDeviceProviders list.
+        "minimax-code",
+        "minimax-code-global",
+        // Device-code providers with no PKCE challenge.
+        "muse",
+        "nous",
+        "qoder-cn",
+        "glm",
       ];
       if (deviceCodeProviders.includes(provider)) {
         setIsDeviceCode(true);
