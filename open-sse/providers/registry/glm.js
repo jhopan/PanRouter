@@ -15,6 +15,12 @@ export default {
     },
   },
   category: "apikey",
+  // GLM Coding supports two sign-in paths: a plain API key (open.bigmodel.cn)
+  // and the Z.ai CLI OAuth polling flow. Without authModes the providers page
+  // computed isOAuth=false and never opened the OAuth modal, so the OAuth
+  // provider (src/lib/oauth/providers/glm.js) was unreachable from the UI.
+  authModes: ["apikey", "oauth"],
+  hasOAuth: true,
   oauth: {
     providerId: "zai",
     cliInitUrl: "https://zcode.z.ai/api/v1/oauth/cli/init",

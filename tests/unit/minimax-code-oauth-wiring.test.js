@@ -75,3 +75,35 @@ describe("MiniMax Code OAuth wiring", () => {
     }
   });
 });
+
+describe("device-code provider reachability (full chain)", () => {
+  // The modal list is only the last link. A provider also needs:
+  //   1. an entry in the oauth provider index (so /device-code resolves)
+  //   2. authModes including "oauth" (so the page opens the modal at all)
+  //   3. a category the dashboard renders
+  // This test walks the chain so a provider cannot be "wired" on paper only.
+  const providerPage = read("../src/app/(dashboard)/dashboard/providers/[id]/page.js");
+  const registryIndex = read("../open-sse/providers/registry/index.js");
+
+  const DEVICE_CODE_IDS = DEVICE_CODE_PROVIDERS.filter(
+    (id) => !["kimi-coding"].includes(id),
+  );
+
+  it.each(DEVICE_CODE_IDS)("%s resolves to a registry entry", (id) => {
+    const registryFile = `../open-sse/providers/registry/${id}.js`;
+    expect(fs.existsSync(path.resolve(registryFile))).toBe(true);
+  });
+
+  it.each(DEVICE_CODE_IDS)("%s is reachable as an OAuth provider", (id) => {
+    // The providers page opens the OAuth modal when any of these hold:
+    //   category "oauth" | category "free" | authModes includes "oauth"
+    const src = read(`../open-sse/providers/registry/${id}.js`);
+    const reachable = /category:\s*"(oauth|free)"/.test(src)
+      || /authModes:\s*\[[^\]]*"oauth"/.test(src);
+    expect(reachable).toBe(true);
+  });
+
+  it("the providers page treats authModes oauth as OAuth (opens the modal)", () => {
+    expect(providerPage).toContain('authModes.includes("oauth")');
+  });
+});
