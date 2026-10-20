@@ -1,3 +1,33 @@
+# v0.5.80.0 (2026-10-20)
+
+## Fitur
+
+- **Pilih model auto-ping CodeBuddy dari dashboard.** Sebelumnya model di-hardcode.
+  Sekarang ada dropdown **"Auto-ping: ..."** di samping judul *Available Models*
+  pada halaman provider CodeBuddy — **satu pilihan untuk semua akun**.
+
+  Nilainya disimpan di `codebuddyIntlAutoPing.model`. Kosong = pakai default
+  bawaan (`fast-model`).
+
+  Urutan pemilihan model di service:
+  1. `codebuddyIntlAutoPing.model` (dropdown)
+  2. `C.pingModel` (`fast-model`)
+  3. `pingModelFallbacks` — hanya dicoba kalau ditolak karena model
+     (11158 / 11101 / "not allowed for user type")
+
+  Fallback selalu ditambahkan di belakang, jadi memilih model yang ter-gate plan
+  tidak akan menggagalkan ping seperti kasus `gpt-5.6-luna` sebelumnya.
+
+  Dropdown hanya muncul untuk provider yang mendukung auto-ping
+  (`claude`, `codex`, `codebuddy-intl`).
+
+## Test
+
+- 6 test baru: service membaca `cfg.model`, satu model global tanpa pin per-akun,
+  fallback tetap ada setelah model pilihan, dropdown ada di halaman provider,
+  state menyimpan `model`, dan dropdown hanya muncul untuk provider yang cocok.
+- Suite: **2800 lulus**, 0 regresi baru.
+
 # v0.5.79.1 (2026-10-20)
 
 ## Perbaikan
