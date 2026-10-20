@@ -2,11 +2,19 @@
  * Antigravity live quota cache — in-memory, refreshed on demand.
  * Used by auth.js pre-filter to skip accounts with exhausted model quota.
  * Also triggered by 409/429 error handler to sync exact resetAt from upstream.
+ *
+ * Exhausted entries (remainingPercentage === 0, resetAt in the future) are
+ * persisted to the KV store so CACHE_BLOCKs survive server restarts and
+ * PanRouter updates. Non-exhausted quota (remaining > 0) and strike blocks
+ * (15-min synthetic) are kept in memory only.
  */
 
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { getAntigravityUsage } from "open-sse/services/usage/google.js";
+import { makeKv } from "@/lib/db/helpers/kvStore";
 import * as log from "../utils/logger.js";
+
+const kv = makeKv("ag_quota");
 
 // In-memory cache: connectionId → { [modelId]: { remainingPercentage, resetAt } }
 const quotaCache = new Map();
@@ -27,6 +35,78 @@ const STRIKE_THRESHOLD = 3;
 const STRIKE_BLOCK_MS = 15 * 60_000;
 const strikeCounts = new Map(); // "connectionId|model" → { count, windowStart (anchored at first strike) }
 const strikeBlocks = new Map(); // "connectionId|model" → blockedUntil ms
+
+// ── KV persistence ────────────────────────────────────────────────────────────
+// Only UPSTREAM_429 entries with a future resetAt are worth persisting — they
+// can block for days/weeks and must survive restarts. Strike blocks (15m) and
+// healthy quota readings are kept in memory only.
+
+/** Persist exhausted entries for a connection to SQLite. Fail-open. */
+async function persistExhausted(connectionId, quotas) {
+  try {
+    const now = Date.now();
+    const toSave = {};
+    for (const [model, entry] of Object.entries(quotas || {})) {
+      if (entry.remainingPercentage === 0 && entry.resetAt) {
+        const resetMs = new Date(entry.resetAt).getTime();
+        if (resetMs > now) toSave[model] = entry;
+      }
+    }
+    if (Object.keys(toSave).length > 0) {
+      await kv.set(connectionId, toSave);
+    }
+  } catch {
+    // KV write failure must never block the request path.
+  }
+}
+
+/** Remove persisted entries for a connection (quota refreshed / no longer exhausted). */
+async function removePersistedIfHealthy(connectionId, quotas) {
+  try {
+    const hasExhausted = Object.values(quotas || {}).some(
+      (e) => e.remainingPercentage === 0 && e.resetAt && new Date(e.resetAt).getTime() > Date.now()
+    );
+    if (!hasExhausted) await kv.remove(connectionId);
+  } catch {
+    // fail-open
+  }
+}
+
+/**
+ * Load persisted exhausted entries into the in-memory cache at startup.
+ * Call once from initializeApp / bootstrap. Expired entries are silently dropped.
+ */
+export async function loadPersistedAntigravityQuota() {
+  try {
+    const all = await kv.getAll();
+    const now = Date.now();
+    for (const [connectionId, quotas] of Object.entries(all || {})) {
+      if (typeof quotas !== "object" || !quotas) continue;
+      const live = {};
+      let kept = 0;
+      for (const [model, entry] of Object.entries(quotas)) {
+        if (entry.remainingPercentage === 0 && entry.resetAt) {
+          const resetMs = new Date(entry.resetAt).getTime();
+          if (resetMs > now) {
+            live[model] = entry;
+            kept++;
+          }
+        }
+      }
+      if (kept > 0) {
+        quotaCache.set(connectionId, live);
+        log.info("AG_QUOTA", `restored ${kept} exhausted bucket(s) for ${connectionId.slice(0, 8)} from DB`);
+      } else {
+        // All entries expired — clean up the KV row.
+        await kv.remove(connectionId).catch(() => {});
+      }
+    }
+  } catch (e) {
+    log.warn("AG_QUOTA", `loadPersistedAntigravityQuota failed (non-fatal): ${e.message}`);
+  }
+}
+
+// ── rest of module ─────────────────────────────────────────────────────────────
 
 /**
  * Re-apply active strike blocks onto a fresh quotas snapshot so the auth
@@ -128,7 +208,15 @@ async function _doRefresh(connectionId, accessToken, providerSpecificData, now) 
     // Update in-memory cache. Caller logs CACHE_BLOCK only if requested model is exhausted.
     // Strike blocks are re-asserted after every refresh so an optimistic
     // upstream reading cannot resurrect a pair we just circuit-broke.
-    quotaCache.set(connectionId, applyActiveStrikeBlocks(connectionId, usage.quotas));
+    const mergedQuotas = applyActiveStrikeBlocks(connectionId, usage.quotas);
+    quotaCache.set(connectionId, mergedQuotas);
+
+    // Mirror the fresh reading into the KV store: persist exhausted buckets,
+    // clear the row once the account is healthy again. Sequential so the
+    // cleanup cannot delete what the persist just wrote.
+    persistExhausted(connectionId, mergedQuotas).then(() =>
+      removePersistedIfHealthy(connectionId, mergedQuotas)
+    );
 
     return usage.quotas;
   } catch (e) {
@@ -210,5 +298,7 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
   if (resetMs <= Date.now()) return null;
 
   log.warn("AG_QUOTA", `${connectionId.slice(0, 8)} | UPSTREAM_${status} ${model} — quota exhausted; CACHE_BLOCK until ${quota.resetAt}`);
+  // Persist so the block survives server restarts / PanRouter updates.
+  persistExhausted(connectionId, quotaCache.get(connectionId) || {});
   return resetMs;
 }

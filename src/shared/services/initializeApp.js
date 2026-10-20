@@ -118,6 +118,13 @@ async function runHeavyStartup() {
     .then(({ configureCodebuddyAutoPing }) => configureCodebuddyAutoPing(settings))
     .catch((e) => console.log("[CB_PING] scheduler start failed:", e.message));
 
+  // Restore persisted Antigravity CACHE_BLOCKs so quota exhaustion survives
+  // server restarts and PanRouter updates. Fail-open: a DB error is logged but
+  // never prevents startup.
+  import("@/sse/services/antigravityQuota.js")
+    .then(({ loadPersistedAntigravityQuota }) => loadPersistedAntigravityQuota())
+    .catch((e) => console.log("[AG_QUOTA] restore failed (non-fatal):", e.message));
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")
