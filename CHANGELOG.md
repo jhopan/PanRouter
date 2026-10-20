@@ -1,3 +1,42 @@
+# v0.5.79.1 (2026-10-20)
+
+## Perbaikan
+
+- **Auto-ping CodeBuddy gagal terus karena model terlarang.**
+  Ping harian memakai `gpt-5.6-luna` yang di-hardcode, padahal akun gratis
+  tidak boleh memakainya:
+
+  ```
+  400 {"code":11158,"msg":"model [gpt-5.6-luna] is not allowed for
+       user type [personal_free_user]"}
+  ```
+
+  Akibatnya setiap ping gagal dan aktivitas harian tidak pernah tercatat.
+
+  Perbaikan:
+  - `pingModel` sekarang `fast-model` — alias murah generik yang bisa dipakai
+    semua tier akun
+  - `pingModelFallbacks` (`default-model`, `balanced-model`) dicoba berurutan
+  - fallback hanya jalan kalau penolakannya karena model (11158 / 11101 /
+    "not allowed for user type"); kalau 429 credits exhausted langsung berhenti
+    karena model lain tidak akan menolong
+
+## Catatan audit
+
+- **Cline block harian sudah benar dan sudah persist.** `quotaWindowFor("cline")`
+  = `DAILY` reset `00:00 UTC`; karena tidak ada usage reader untuk Cline, jalur
+  reset memakai kalender, lalu ditulis sebagai `modelLock_<model>` di tabel
+  `connections` — jadi bertahan lintas restart/update.
+- Provider lain (TokenHarbor, Claude, Codex, Kiro, GLM, Grok CLI, Kimi,
+  CodeBuddy, Qoder) juga lewat jalur `modelLock_*` yang sama.
+- Antigravity satu-satunya yang dulu in-memory; sudah ditutup di v0.5.79.0.
+
+## Test
+
+- 5 test baru untuk pemilihan model ping: alias bukan model ter-gate, ada
+  fallback chain, retry hanya saat model-gating, dan 429 langsung berhenti.
+- Suite: **2794 lulus**, 0 regresi baru.
+
 # v0.5.79.0 (2026-10-20)
 
 ## Fitur
