@@ -182,5 +182,18 @@ export const QUOTA_EXHAUSTED_SIGNALS = [
  */
 export function isQuotaExhaustedError(errorText) {
   const lower = String(errorText || "").toLowerCase();
+  if (!lower) return false;
+
+  // A per-model FREQUENCY limit is a burst rate limit, not a quota refusal.
+  // CodeBuddy 6004 says "usage exceeds frequency limit, but don't worry, your
+  // usage will reset at <date>" — the word "limit" is there, but parking the
+  // account on the provider's MONTHLY calendar (next 1st of month) because of a
+  // 15-minute throttle is wrong: the account still serves other models and the
+  // window reopens in minutes. Check this BEFORE the generic signals so a
+  // message that also mentions "quota" cannot be misclassified.
+  if (/frequency limit|rate.?limit|too many requests|exceeds? frequency|请求过于频繁/i.test(lower)) {
+    return false;
+  }
+
   return QUOTA_EXHAUSTED_SIGNALS.some((sig) => lower.includes(sig));
 }
