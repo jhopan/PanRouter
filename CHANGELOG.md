@@ -1,3 +1,43 @@
+# v0.5.80.1 (2026-10-20)
+
+## Perbaikan penting
+
+- **Rate limit frekuensi salah dianggap quota habis → akun diparkir sampai bulan depan.**
+
+  CodeBuddy 6004 membalas:
+
+  ```
+  usage exceeds frequency limit, but don't worry, your usage will reset at
+  2026-10-19 15:00:56  (reset after 12m 22s)
+  ```
+
+  Pesan itu mengandung kata `limit`, dan daftar sinyal quota punya entri seperti
+  `daily limit`, sehingga `isQuotaExhaustedError()` menganggapnya **quota habis**.
+  `auth.js` lalu memakai fallback kalender `MONTHLY` milik provider — tanggal 1
+  bulan berikutnya — dan menampilkannya di dashboard sebagai:
+
+  ```
+  Quota exhausted — resets 2026-10-31T16:59:59.000Z
+  ```
+
+  Tanggal itu **bukan dari upstream**. Itu `2026-11-01T00:00:00Z` dikurangi 1ms,
+  alias batas bulan WIB. Padahal akunnya masih melayani model lain dengan normal,
+  persis seperti yang terlihat di log.
+
+  Perbaikan: deteksi kata `frequency limit` / `rate limit` / `too many requests`
+  **sebelum** sinyal quota generik, sehingga pesan yang menyebut quota sekaligus
+  frekuensi tidak salah kelas. Rate limit frekuensi sekarang lewat jalur backoff
+  biasa (menit), bukan parkir berhari-hari.
+
+## Test
+
+- 6 test baru: pesan 6004 bukan quota, rate-limit generik bukan quota, pesan
+  campuran "quota + frequency" bukan quota, sedangkan refusal asli
+  ("Credits exhausted", "daily free limit reached", "Individual quota reached")
+  tetap terdeteksi. Satu test mengunci matematika kalender bulanan supaya tanggal
+  `2026-10-31T16:59:59Z` tidak pernah muncul tanpa sengaja.
+- Suite: **2801 lulus**, 0 regresi baru.
+
 # v0.5.80.0 (2026-10-20)
 
 ## Fitur
