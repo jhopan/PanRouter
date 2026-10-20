@@ -69,7 +69,7 @@ export default function ProviderDetailPage() {
   const [providerStrategy, setProviderStrategy] = useState(null);
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
-  const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
+  const [autoPing, setAutoPing] = useState({ enabled: false, connections: {}, model: "" });
   const [suggestedModels, setSuggestedModels] = useState([]);
   const [liveModels, setLiveModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
@@ -327,7 +327,7 @@ export default function ProviderDetailPage() {
       setThinkingMode(thinkingCfg.mode || "auto");
       const autoPingSettingsKey = AUTO_PING_SETTINGS_KEYS[providerId];
       const apCfg = autoPingSettingsKey ? settingsData[autoPingSettingsKey] || {} : {};
-      setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {} });
+      setAutoPing({ enabled: apCfg.enabled === true, connections: apCfg.connections || {}, model: apCfg.model || "" });
       if (nodesRes.ok) {
         let node = (nodesData.nodes || []).find((entry) => entry.id === providerId) || null;
 
@@ -1682,6 +1682,21 @@ export default function ProviderDetailPage() {
                 {providerThinkingLevels.map((opt) => (
                   <option key={opt} value={opt}>{`Thinking: ${opt.charAt(0).toUpperCase() + opt.slice(1)}`}</option>
                 ))}
+              </select>
+            )}
+            {AUTO_PING_SETTINGS_KEYS[providerId] && (
+              <select
+                value={autoPing.model || ""}
+                onChange={(e) => saveAutoPing({ ...autoPing, model: e.target.value })}
+                title="Model used for the daily auto-ping on every enabled account"
+                className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+              >
+                <option value="">Auto-ping: default (fast-model)</option>
+                {(models || []).map((m) => {
+                  const id = m.id || m;
+                  if (!id) return null;
+                  return <option key={id} value={id}>{`Auto-ping: ${id}`}</option>;
+                })}
               </select>
             )}
           </div>

@@ -66,7 +66,7 @@ function pingedToday(connection, dKey) {
   return false;
 }
 
-async function runPingForConnection(conn, proxyOptions) {
+async function runPingForConnection(conn, proxyOptions, modelOverride = null) {
   const dKey = dailySlotKey();
   const connId = conn.id;
 
@@ -85,12 +85,17 @@ async function runPingForConnection(conn, proxyOptions) {
 
   const executor = getExecutor("codebuddy-intl");
 
-  // `fast-model` is a generic alias available to every tier, but plan gating can
-  // still reject a specific model with 11158 ("model X is not allowed for user
-  // type personal_free_user"). Try the fallback chain so one rejected model does
-  // not fail the whole daily ping.
+  // One model for every account: the global selection from Auto-ping settings,
+  // else the built-in default. `fast-model` is a generic alias available to every
+  // tier, but plan gating can still reject a specific model with 11158 ("model X
+  // is not allowed for user type personal_free_user"), so the fallback chain is
+  // always appended.
+  const preferred = typeof modelOverride === "string" && modelOverride.trim()
+    ? modelOverride.trim()
+    : null;
+
   const candidates = [
-    C.pingModel || "fast-model",
+    preferred || C.pingModel || "fast-model",
     ...(Array.isArray(C.pingModelFallbacks) ? C.pingModelFallbacks : []),
   ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
@@ -201,7 +206,7 @@ async function processConnections(now = new Date()) {
     };
 
     try {
-      const r = await runPingForConnection(conn, proxyOptions);
+      const r = await runPingForConnection(conn, proxyOptions, cfg.model || null);
       if (r.skipped) {
         console.log(`[CB_PING] ${conn.displayName || conn.name || conn.id}: skip — ${r.reason}`);
       } else {
