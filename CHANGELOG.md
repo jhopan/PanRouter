@@ -1,3 +1,41 @@
+# v0.5.79.0 (2026-10-20)
+
+## Fitur
+
+- **`CACHE_BLOCK` Antigravity bertahan setelah update / restart.**
+  Sebelumnya status quota hanya hidup di `Map` memori:
+
+  ```
+  ⚠️ [AG_QUOTA] 58053aac | UPSTREAM_429 claude-sonnet-4-6 — quota exhausted;
+     CACHE_BLOCK until 2026-10-26T00:20:34.000Z
+  ```
+
+  Begitu PanRouter di-update, Map itu hilang. Akun yang masih diblokir sampai
+  26 Oktober langsung dicoba lagi, kena 429 lagi, dan strike counter mulai dari
+  nol — persis yang bikin log penuh 429 berulang setelah update.
+
+  Sekarang bucket yang exhausted (`remainingPercentage: 0` + `resetAt` di masa
+  depan) dicerminkan ke KV store (scope `ag_quota`) dan dipulihkan saat startup
+  lewat `initializeApp`. Entry yang `resetAt`-nya sudah lewat dibuang dan
+  barisnya dihapus otomatis.
+
+  **Sengaja tidak dipersist:**
+  - bacaan sehat (`remainingPercentage > 0`) — akan refresh sendiri
+  - strike block 15 menit — sintetis, memang harus mulai dari nol
+
+  Tulis KV bersifat fail-open: error database dicatat, tidak pernah memblokir
+  request.
+
+  Catatan: `modelLock_*` yang dipakai CodeBuddy/Claude 429 memang sudah persist
+  di DB lewat `connectionsRepo`. Antigravity satu-satunya yang masih in-memory.
+
+## Test
+
+- 5 test baru: restore setelah restart, buang entry kadaluarsa + bersihkan baris,
+  tidak pernah restore bacaan sehat, persist bacaan exhausted lalu bersihkan saat
+  sehat, dan tetap aman saat KV error.
+- Suite: **2784 lulus**, 0 regresi baru.
+
 # v0.5.78.4 (2026-10-20)
 
 ## Perbaikan penting
