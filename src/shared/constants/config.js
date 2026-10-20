@@ -100,7 +100,13 @@ export const CODEBUDDY_AUTOPING_CONFIG = {
   resetHourWIB: 7,               // 07:00 WIB daily reset boundary (00:00 UTC)
   slotStartMin: 1,               // 07:01 WIB (1 min after reset)
   slotEndMin: 1438,              // 06:58 WIB next day (2 min before next reset)
-  pingModel: "gpt-5.6-luna",
+  // `fast-model` is the gateway's generic cheap alias and is available to every
+  // account tier. A concrete id such as `gpt-5.6-luna` is gated per plan and
+  // answers 11158 ("model ... is not allowed for user type personal_free_user")
+  // for free accounts, which failed the whole daily ping.
+  pingModel: "fast-model",
+  // Tried in order when the primary ping model is rejected (11158 / 11101).
+  pingModelFallbacks: ["default-model", "balanced-model"],
   pingText: "hi",
   pingMaxTokens: 16,             // upstream CodeBuddy GPT-family requires min 16 tokens
   failureCooldownMs: 3600000,    // 1h cooldown after a failure

@@ -84,35 +84,61 @@ async function runPingForConnection(conn, proxyOptions) {
   }
 
   const executor = getExecutor("codebuddy-intl");
-  const model = C.pingModel || "gpt-5.6-luna";
 
-  const { response } = await executor.execute({
-    model,
-    stream: true,
-    credentials: {
-      accessToken: connection.accessToken,
-      apiKey: connection.apiKey,
-      connectionId: connId,
-      providerSpecificData: connection.providerSpecificData,
-    },
-    proxyOptions,
-    log: console,
-    body: {
+  // `fast-model` is a generic alias available to every tier, but plan gating can
+  // still reject a specific model with 11158 ("model X is not allowed for user
+  // type personal_free_user"). Try the fallback chain so one rejected model does
+  // not fail the whole daily ping.
+  const candidates = [
+    C.pingModel || "fast-model",
+    ...(Array.isArray(C.pingModelFallbacks) ? C.pingModelFallbacks : []),
+  ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+
+  let model = candidates[0];
+  let response = null;
+  let lastText = "";
+  let lastStatus = 0;
+
+  for (const candidate of candidates) {
+    model = candidate;
+    const result = await executor.execute({
       model,
       stream: true,
-      max_tokens: C.pingMaxTokens || 16,
-      messages: [{ role: "user", content: C.pingText || "hi" }],
-    },
-  });
+      credentials: {
+        accessToken: connection.accessToken,
+        apiKey: connection.apiKey,
+        connectionId: connId,
+        providerSpecificData: connection.providerSpecificData,
+      },
+      proxyOptions,
+      log: console,
+      body: {
+        model,
+        stream: true,
+        max_tokens: C.pingMaxTokens || 16,
+        messages: [{ role: "user", content: C.pingText || "hi" }],
+      },
+    });
+
+    response = result.response;
+    if (response?.ok) break;
+
+    lastText = await response?.text?.().catch(() => "");
+    lastStatus = response?.status || 0;
+
+    // Credits exhausted — stop immediately, no model will help.
+    if (lastStatus === 429) {
+      g.failureCache[connId] = Date.now();
+      return { skipped: true, reason: `upstream 429 credits exhausted: ${lastText.slice(0, 100)}` };
+    }
+
+    // Only a model-gating rejection is worth retrying on another model.
+    const modelGated = /11158|11101|not allowed for user type|model.*not allowed/i.test(lastText);
+    if (!modelGated) break;
+  }
 
   if (!response?.ok) {
-    const text = await response?.text?.().catch(() => "");
-    // If upstream returns 429 Credits exhausted, mark failure cache so we don't spam.
-    if (response?.status === 429) {
-      g.failureCache[connId] = Date.now();
-      return { skipped: true, reason: `upstream 429 credits exhausted: ${text.slice(0, 100)}` };
-    }
-    throw new Error(`codebuddy-intl ping failed (${response?.status}): ${text.slice(0, 160)}`);
+    throw new Error(`codebuddy-intl ping failed (${lastStatus}): ${lastText.slice(0, 160)}`);
   }
 
   // Drain response body cleanly
