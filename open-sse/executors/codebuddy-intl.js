@@ -1,16 +1,73 @@
+import { createHash, randomUUID } from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 
 /**
  * CodeBuddyIntlExecutor — talks to https://www.codebuddy.ai/v2/chat/completions
  *
- * Same OpenAI-compatible-but-stream-only gateway behavior as codebuddy-cn:
- * non-stream requests are rejected, and reasoning is surfaced only when the
- * request carries the IDE's OpenAI-style reasoning params. Force stream and
- * mirror reasoning_summary exactly like CodeBuddyExecutor.
+ * Since 2026-10-15 the intl gateway rejects any request without the
+ * X-Conversation-* header family (code 11128 "request illegal", channel
+ * verification). Verified A/B: same credentials + body, headers absent → 400,
+ * headers present → 200 SSE. Ported from upstream 9router PR #4928 / #5032.
  */
+
+// Deterministic RFC-4122-v5-shaped UUID derived from a session key, mirroring
+// the official client's per-conversation id (uuid5 over the session key).
+// Stable across retries of the same turn and across account failovers.
+function stableUuidFrom(key) {
+  const hash = createHash("sha1").update(String(key)).digest("hex");
+  const timeHigh = ((parseInt(hash.slice(12, 16), 16) & 0x0fff) | 0x5000)
+    .toString(16)
+    .padStart(4, "0");
+  const clockSeq = ((parseInt(hash.slice(16, 20), 16) & 0x3fff) | 0x8000)
+    .toString(16)
+    .padStart(4, "0");
+  return [
+    hash.slice(0, 8),
+    hash.slice(8, 12),
+    timeHigh,
+    clockSeq,
+    hash.slice(20, 32),
+  ].join("-");
+}
+
 export class CodeBuddyIntlExecutor extends DefaultExecutor {
   constructor() {
     super("codebuddy-intl");
+  }
+
+  buildHeaders(credentials, stream = true, url, model, body = null) {
+    const headers = super.buildHeaders(credentials, stream, url, model, body);
+
+    // Stable per-conversation id: prefer whatever session key the client sent,
+    // else derive from the opening user message (stable across retries of the
+    // same turn and across account failovers), else fall back to a random UUID.
+    const sessionKey =
+      (typeof body?.session_id === "string" && body.session_id) ||
+      (typeof body?.prompt_cache_key === "string" && body.prompt_cache_key) ||
+      (typeof body?.conversation_id === "string" && body.conversation_id) ||
+      null;
+
+    const firstUser = Array.isArray(body?.messages)
+      ? body.messages.find((m) => m?.role === "user")
+      : null;
+    const userText =
+      typeof firstUser?.content === "string"
+        ? firstUser.content
+        : Array.isArray(firstUser?.content)
+          ? firstUser.content
+              .map((b) => (b && typeof b.text === "string" ? b.text : ""))
+              .join("\n")
+          : "";
+
+    const conversationKey = sessionKey || (userText ? `cbai:${userText}` : null);
+
+    headers["X-Conversation-ID"] = conversationKey
+      ? stableUuidFrom(conversationKey)
+      : randomUUID();
+    headers["X-Conversation-Request-ID"] = randomUUID();
+    headers["X-Conversation-Message-ID"] = randomUUID();
+
+    return headers;
   }
 
   transformRequest(model, body, stream, credentials) {

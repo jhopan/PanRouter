@@ -1,3 +1,32 @@
+# v0.5.78.4 (2026-10-20)
+
+## Perbaikan penting
+
+- **CodeBuddy Intl 400 code 11128 "request illegal"** — sejak 2026-10-15 gateway
+  intl (`www.codebuddy.ai`) menolak semua request yang tidak membawa header family
+  `X-Conversation-*`. Semua akun (termasuk auto-ping) kena 400.
+
+  Header yang ditambahkan:
+
+  | Header | Nilai |
+  |---|---|
+  | `X-Conversation-ID` | UUID stabil dari session key / opening user message |
+  | `X-Conversation-Request-ID` | UUID segar per request |
+  | `X-Conversation-Message-ID` | UUID segar per message |
+
+  `X-Conversation-ID` di-derive secara deterministik (sha1 UUID-v5-shaped) dari
+  `session_id` / `prompt_cache_key` / `conversation_id` body jika ada, lalu dari
+  isi pesan user pertama, lalu fallback random. Ini membuat ID stabil lintas retry
+  satu turn dan lintas failover akun.
+
+  Ported dari upstream 9router PR #4928 / #5032. Diverifikasi A/B live: header
+  tidak ada → 400, header ada → 200 SSE.
+
+## Test
+
+- Test baru (5 kasus): header selalu hadir, conversation ID stabil lintas retry,
+  prioritas session_id > pesan, support typed-block content, fallback random.
+
 # v0.5.78.3 (2026-10-19)
 
 ## Perbaikan penting
