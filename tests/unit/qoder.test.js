@@ -42,10 +42,20 @@ describe("QODER_MODEL_MAP", () => {
     expect(QODER_MODEL_MAP.qmodel_latest).toBe("qmodel_latest");
   });
 
-  it("exposes only the verified FREE models in the static intl catalog", () => {
-    // qfmodel  = Qwen3.8-Flash (free)
-    // dfmodel_v41 = DeepSeek-V4.1-Flash-1017 (free on Qoder)
-    expect(PROVIDER_MODELS.qd.map((model) => model.id)).toEqual(["qfmodel", "dfmodel_v41"]);
+  it("exposes the full catalog on the static intl provider", () => {
+    const ids = PROVIDER_MODELS.qd.map((model) => model.id);
+    // Free tier
+    expect(ids).toContain("qfmodel");
+    expect(ids).toContain("dfmodel_v41");
+    // Premium + frontier families
+    for (const id of [
+      "auto", "lite", "efficient", "performance", "ultimate",
+      "qmodel", "qmodel_latest", "qmodel_38max",
+      "dfmodel", "dmodel", "kmodel", "kmodel_latest",
+      "gmodel", "gfmodel", "mmodel",
+    ]) {
+      expect(ids).toContain(id);
+    }
   });
 });
 

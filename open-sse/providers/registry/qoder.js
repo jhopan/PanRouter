@@ -26,13 +26,28 @@ export default {
       url: "https://openapi.qoder.sh/api/v2/quota/usage",
     },
   },
-  // Deliberately pin only the verified free model. Qoder's signed live
-  // catalog remains internal for model_config, never a UI/API model source.
+  // Mirrors the CN catalog. Qoder's signed live catalog is still used for
+  // model_config (wire parameters), but it is never the UI/API model source —
+  // these entries are. Order runs cheap/fast first, premium last.
   models: [
+    { id: "auto", name: "Auto" },
+    { id: "lite", name: "Lite" },
+    { id: "efficient", name: "Efficient" },
+    { id: "performance", name: "Performance" },
+    { id: "ultimate", name: "Ultimate" },
     { id: "qfmodel", name: "Qwen3.8-Flash (Free)" },
-    // DeepSeek's official release (DeepSeek-V4.1-Flash-1017), currently free on
-    // Qoder. 200K context, max thinking level.
+    { id: "qmodel", name: "Qwen3.7-Plus" },
+    { id: "qmodel_latest", name: "Qwen3.7-Max" },
+    { id: "qmodel_38max", name: "Qwen3.8-Max" },
+    // DeepSeek's official release (DeepSeek-V4.1-Flash-1017), free on Qoder.
     { id: "dfmodel_v41", name: "DeepSeek-Flash (Free)" },
+    { id: "dfmodel", name: "DeepSeek-V4-Flash" },
+    { id: "dmodel", name: "DeepSeek-V4-Pro" },
+    { id: "kmodel", name: "Kimi-K2.7-Code" },
+    { id: "kmodel_latest", name: "Kimi-K3" },
+    { id: "gmodel", name: "GLM-5.3" },
+    { id: "gfmodel", name: "GLM-5.3-Flash" },
+    { id: "mmodel", name: "MiniMax-M3" },
   ],
   oauth: {
     openApiBaseUrl: "https://openapi.qoder.sh",
