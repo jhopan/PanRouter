@@ -30,6 +30,9 @@ export default {
   // catalog remains internal for model_config, never a UI/API model source.
   models: [
     { id: "qfmodel", name: "Qwen3.8-Flash (Free)" },
+    // DeepSeek's official release (DeepSeek-V4.1-Flash-1017), currently free on
+    // Qoder. 200K context, max thinking level.
+    { id: "dfmodel_v41", name: "DeepSeek-Flash (Free)" },
   ],
   oauth: {
     openApiBaseUrl: "https://openapi.qoder.sh",

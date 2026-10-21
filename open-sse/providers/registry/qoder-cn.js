@@ -41,6 +41,8 @@ export default {
     { id: "gfmodel", name: "GLM-5.3-Flash" },
     { id: "dmodel", name: "DeepSeek-V4-Pro" },
     { id: "dfmodel", name: "DeepSeek-V4-Flash" },
+    // DeepSeek-V4.1-Flash-1017 — the free-tier flash model.
+    { id: "dfmodel_v41", name: "DeepSeek-Flash (Free)" },
     { id: "mmodel", name: "MiniMax-M3" },
   ],
   oauth: {

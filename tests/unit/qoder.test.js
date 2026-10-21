@@ -42,8 +42,10 @@ describe("QODER_MODEL_MAP", () => {
     expect(QODER_MODEL_MAP.qmodel_latest).toBe("qmodel_latest");
   });
 
-  it("exposes only the verified free Qwen3.8-Flash pin in the static provider catalog", () => {
-    expect(PROVIDER_MODELS.qd.map((model) => model.id)).toEqual(["qfmodel"]);
+  it("exposes only the verified FREE models in the static intl catalog", () => {
+    // qfmodel  = Qwen3.8-Flash (free)
+    // dfmodel_v41 = DeepSeek-V4.1-Flash-1017 (free on Qoder)
+    expect(PROVIDER_MODELS.qd.map((model) => model.id)).toEqual(["qfmodel", "dfmodel_v41"]);
   });
 });
 

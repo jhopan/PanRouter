@@ -162,6 +162,7 @@ export const QODER_MODEL_MAP = {
   qmodel_38max: "qmodel_38max",
   dmodel: "dmodel",
   dfmodel: "dfmodel",
+  dfmodel_v41: "dfmodel_v41",
   gmodel: "gmodel",
   gfmodel: "gfmodel",
   kmodel: "kmodel",
