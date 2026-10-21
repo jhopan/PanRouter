@@ -1,3 +1,44 @@
+# v0.5.81.1 (2026-10-21)
+
+## Perbaikan
+
+- **Qoder 10605 (`isQueued`) dianggap billing block → akun diparkir sampai bulan depan.**
+
+  Upstream membalas:
+
+  ```json
+  403 {"code":"10605","message":"{\"isQueued\":true,\"modelKey\":\"qfmodel\",
+       \"queueCount\":0}"}
+  ```
+
+  `isBillingBlock()` mencocokkan kode `10605`, jadi executor mengembalikan 403
+  keras dan chatCore memarkir koneksi sampai reset bulanan — padahal itu cuma
+  **antrean masuk** ("model sedang sibuk, kamu masuk antrean") yang selesai
+  sendiri dalam hitungan detik.
+
+  Perbaikan:
+  - flag `{"isQueued": true}` sekarang langsung menyimpulkan **bukan** billing
+  - kode `10605` tidak lagi dipetakan ke billing (`110` dan `112` tetap billing)
+  - regex legacy tidak lagi memuat `10605`
+
+- **Validasi Qoder tidak lagi fetch katalog model.**
+  `resolveQoderModels()` memanggil endpoint katalog dengan `forceRefresh`, yang
+  membalas `10605` setiap kali model sedang sibuk — membuat API key yang valid
+  terlihat tidak valid. Daftar model di registry sudah statis, jadi cukup
+  pertukaran credential untuk membuktikan key-nya bekerja:
+
+  ```js
+  isValid = !!resolved?.accessToken
+  ```
+
+## Test
+
+- `qoder-billing.test.js` diperbarui dua arah: `10605` dan `isQueued` **bukan**
+  billing, sedangkan `110`/`112`/`pricingUrl` tetap billing. Frame antrean tidak
+  lagi menghasilkan 403 keras.
+- 7 test baru di `qoder-queue-vs-billing.test.js`.
+- Suite: **2824 lulus**, 0 regresi baru.
+
 # v0.5.81.0 (2026-10-21)
 
 ## Fitur
