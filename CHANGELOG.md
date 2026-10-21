@@ -1,3 +1,40 @@
+# v0.5.81.0 (2026-10-21)
+
+## Fitur
+
+- **Kontrol log console: sembunyikan refresh token, filter, dan pause.**
+  Log `TOKEN_REFRESH` / `BG_TOKEN_REFRESH` muncul di setiap tick dan menenggelamkan
+  baris request yang sebenarnya ingin dibaca.
+
+  **Dua lapis kontrol:**
+
+  **1. Server** (`src/sse/utils/logger.js`) — lewat `.env`:
+  - `LOG_SUPPRESS_TAGS` — daftar tag yang disembunyikan, default
+    `TOKEN_REFRESH,BG_TOKEN_REFRESH`. Kosongkan untuk menampilkan semua lagi.
+  - `LOG_ONLY_TAGS` — allow-list yang menimpa suppress list, berguna untuk
+    memantau satu subsistem saja (mis. `CHAT,AUTH`).
+  - Berlaku untuk `line`/`debug`/`info`/`warn`. **`error` sengaja tidak pernah
+    disaring** — error harus selalu sampai ke operator.
+
+  **2. Dashboard** (`/dashboard/console-log`):
+  - checkbox **"Hide refresh logs"**, aktif secara default
+  - **Pause / Resume** — stream SSE tetap buffering saat pause, dan resume
+    mem-flush semua yang masuk selama pause, jadi tidak ada yang hilang.
+    Auto-scroll juga berhenti saat pause supaya tampilan tidak bergerak.
+  - dropdown **tag** yang dibangun otomatis dari tag yang ada di buffer
+  - filter teks bebas
+  - penghitung live / shown / hidden
+
+  `.env.example` sudah mendokumentasikan kedua variabel.
+
+## Test
+
+- 9 test baru: logger menyembunyikan tag refresh secara default, membaca kedua
+  env, menerapkan filter ke line/debug/info/warn, dan **tidak** menyaring error;
+  UI punya pause yang buffering, hide-noise aktif default, filter tag + teks,
+  auto-scroll berhenti saat pause, dan penghitung hidden.
+- Suite: **2809 lulus**, 0 regresi baru.
+
 # v0.5.80.1 (2026-10-20)
 
 ## Perbaikan penting
