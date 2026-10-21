@@ -9,6 +9,27 @@ const LOG_LEVELS = {
 
 const LEVEL = LOG_LEVELS[process.env.LOG_LEVEL?.toUpperCase?.()] ?? LOG_LEVELS.INFO;
 
+// Comma-separated tag allow/deny lists. Background token-refresh lines fire on
+// every tick and bury the request lines, so they can be silenced without
+// dropping the whole level (which would also hide real warnings).
+//   LOG_SUPPRESS_TAGS=TOKEN_REFRESH,BG_TOKEN_REFRESH   (default)
+//   LOG_ONLY_TAGS=CHAT,AUTH                            (empty = allow all)
+function parseTagList(raw) {
+  if (!raw) return null;
+  const list = String(raw).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+  return list.length ? new Set(list) : null;
+}
+
+const SUPPRESS_TAGS = parseTagList(process.env.LOG_SUPPRESS_TAGS) ?? new Set(["TOKEN_REFRESH", "BG_TOKEN_REFRESH"]);
+const ONLY_TAGS = parseTagList(process.env.LOG_ONLY_TAGS);
+
+/** True when a line with this tag should be printed. */
+function tagAllowed(tag) {
+  const t = String(tag || "").toUpperCase();
+  if (ONLY_TAGS) return ONLY_TAGS.has(t);
+  return !SUPPRESS_TAGS.has(t);
+}
+
 function formatTime() {
   return new Date().toLocaleTimeString("en-US", { hour12: false });
 }
@@ -35,6 +56,7 @@ export function tagForSession(seed) {
 // Print one correlated line: [time] tag symbol message
 export function line(tag, symbol, message) {
   if (LEVEL > LOG_LEVELS.INFO) return;
+  if (!tagAllowed(tag)) return;
   console.log(`[${formatTime()}] ${tag} ${symbol} ${message}`);
 }
 
@@ -67,21 +89,21 @@ function formatData(data) {
 }
 
 export function debug(tag, message, data) {
-  if (LEVEL <= LOG_LEVELS.DEBUG) {
+  if (LEVEL <= LOG_LEVELS.DEBUG && tagAllowed(tag)) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     console.log(`[${formatTime()}] 🔍 [${tag}] ${message}${dataStr}`);
   }
 }
 
 export function info(tag, message, data) {
-  if (LEVEL <= LOG_LEVELS.INFO) {
+  if (LEVEL <= LOG_LEVELS.INFO && tagAllowed(tag)) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     console.log(`[${formatTime()}] ℹ️  [${tag}] ${message}${dataStr}`);
   }
 }
 
 export function warn(tag, message, data) {
-  if (LEVEL <= LOG_LEVELS.WARN) {
+  if (LEVEL <= LOG_LEVELS.WARN && tagAllowed(tag)) {
     const dataStr = data ? ` ${formatData(data)}` : "";
     console.warn(`[${formatTime()}] ⚠️  [${tag}] ${message}${dataStr}`);
   }
