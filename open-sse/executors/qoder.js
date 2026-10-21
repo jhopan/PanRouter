@@ -337,20 +337,30 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
 /**
  * Check if a qoder error message indicates a billing/quota block.
  * Signatures: code 110 (billing daily count exceeded), code 112 (quota
- * exhausted), code 10605 (queue throttle), pricingUrl field.
+ * exhausted), pricingUrl field.
+ *
+ * NOT a billing block: code 10605 with `isQueued: true` is the ADMISSION QUEUE
+ * ("model is busy, you are queued"), which clears on its own within seconds.
+ * Treating it as billing parked the whole account until the monthly reset for
+ * what is really a transient wait — the caller should retry instead.
  */
 function isBillingBlock(inner) {
   if (!inner || typeof inner !== "string") return false;
   const lowerMsg = inner.toLowerCase();
   if (lowerMsg.includes("pricingurl")) return true;
+
+  // Queue throttle: explicit isQueued flag wins over the numeric code.
+  if (/"isQueued"\s*:\s*true/i.test(inner)) return false;
+
   // Parsed code preferred over regex: matches numeric or string "110"/"112"/"10605".
   try {
     const parsed = JSON.parse(inner);
     const code = String(parsed?.code ?? "");
-    if (code === "110" || code === "112" || code === "10605") return true;
+    if (code === "10605") return false; // queue throttle, not billing
+    if (code === "110" || code === "112") return true;
   } catch { /* not JSON — fall through to legacy shape match */ }
-  // Match legacy exact shapes: {"code":"112",...}, {"code":"10605",...}.
-  return /"code"\s*:\s*"(112|10605)"/.test(inner);
+  // Match legacy exact shapes: {"code":"112",...}. 10605 is deliberately absent.
+  return /"code"\s*:\s*"112"/.test(inner);
 }
 
 /**

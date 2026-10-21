@@ -1,9 +1,13 @@
 /**
  * Unit tests for qoder billing error detection.
  *
- * Ensures that billing blocks (code 112, 10605, pricingUrl) are detected
- * on the first SSE frame and returned as 403 responses so chatCore can
- * mark the connection unavailable and trigger combo failover.
+ * Ensures that real billing blocks (code 110/112, pricingUrl) are detected on
+ * the first SSE frame and returned as 403 so chatCore can mark the connection
+ * unavailable and trigger combo failover.
+ *
+ * Code 10605 is NOT billing: it is the admission queue ({"isQueued":true}),
+ * which clears in seconds. Classifying it as billing parked the account until
+ * the monthly reset for a transient wait.
  */
 
 import { describe, it, expect } from "vitest";
@@ -17,9 +21,17 @@ describe("isBillingBlock", () => {
     expect(isBillingBlock(msg)).toBe(true);
   });
 
-  it("detects code 10605 (queue throttle)", () => {
-    const msg = '{"code":"10605","message":"Queue limit"}';
-    expect(isBillingBlock(msg)).toBe(true);
+  it("does NOT treat code 10605 as billing (it is the admission queue)", () => {
+    expect(isBillingBlock('{"code":"10605","message":"Queue limit"}')).toBe(false);
+    expect(isBillingBlock('{"code":"10605","isQueued":true,"queueCount":0}')).toBe(false);
+  });
+
+  it("does NOT treat an explicit isQueued flag as billing", () => {
+    expect(isBillingBlock('{"isQueued":true,"modelKey":"qfmodel","queueCount":3}')).toBe(false);
+  });
+
+  it("still detects code 110 (daily billing count exceeded)", () => {
+    expect(isBillingBlock('{"code":"110","message":"Daily count exceeded"}')).toBe(true);
   });
 
   it("detects pricingUrl field", () => {
@@ -69,17 +81,17 @@ describe("wrapQoderSSE billing detection", () => {
     expect(json.error.message).toContain("112");
   });
 
-  it("returns 403 response when first frame is billing block (code 10605)", async () => {
-    const billingEnv = JSON.stringify({
+  it("passes a code 10605 queue frame through instead of failing the account", async () => {
+    const queueEnv = JSON.stringify({
       statusCodeValue: 429,
-      body: '{"code":"10605","message":"Queue limit"}',
+      body: '{"code":"10605","message":"Queue limit","isQueued":true,"queueCount":0}',
     });
-    const upstream = `data: ${billingEnv}\n\n`;
+    const upstream = `data: ${queueEnv}\n\n`;
 
     const wrapped = await wrapQoderSSE(makeResponse([upstream]), "qoder/ultimate");
 
-    expect(wrapped.status).toBe(403);
-    expect(wrapped.ok).toBe(false);
+    // Not a billing block -> not a hard 403. The request is retryable.
+    expect(wrapped.status).not.toBe(403);
   });
 
   it("returns 403 response when first frame is billing block (code 110 string)", async () => {

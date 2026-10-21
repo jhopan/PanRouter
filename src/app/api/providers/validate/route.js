@@ -4,7 +4,7 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbe
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
-import { resolveQoderCredentials, resolveQoderModels } from "open-sse/services/qoderModels.js";
+import { resolveQoderCredentials } from "open-sse/services/qoderModels.js";
 import {
   createNousApiKeyProbe,
   getNousApiKeyValidationError,
@@ -603,10 +603,16 @@ export async function POST(request) {
         case "qoder": {
           // PAT (pt-...) needs the job-token exchange before it can sign
           // anything — the generic OpenAI-compat probe below can't validate it.
+          //
+          // Validation deliberately does NOT fetch the live model catalog:
+          // resolveQoderModels() hit the upstream catalog endpoint, which
+          // answers 10605 {"isQueued":true} whenever the model is busy and made
+          // a perfectly valid key look invalid. The model list is static in the
+          // registry, so a credential exchange is enough to prove the key works.
           try {
             const resolved = await resolveQoderCredentials({ apiKey, providerSpecificData }, null, AbortSignal.timeout(8000));
-            const result = await resolveQoderModels(resolved, { forceRefresh: true });
-            isValid = !!result?.models?.length;
+            isValid = !!resolved?.accessToken;
+            if (!isValid) error = "Qoder credential exchange returned no access token";
           } catch (err) {
             isValid = false;
             error = err.message;
