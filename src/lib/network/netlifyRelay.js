@@ -13,10 +13,10 @@
 // Manual digest deploys run no build step, so the function is served from its
 // default endpoint: <site>/.netlify/functions/relay.
 //
-// Ported from upstream 9router. Two relay variants live side by side:
-//   NETLIFY_RELAY_FUNCTION_CODE      — upstream: buffers the whole response
-//   NETLIFY_RELAY_STREAM_FUNCTION_CODE — PanRouter: streams SSE, SSRF-guarded
-// The deploy route picks one via `?variant=`.
+// Deploy plumbing ported from upstream 9router (REST API + hand-built ZIP).
+// The relay function itself is PanRouter's own: CORS preflight, SSRF guard,
+// explicit upstream timeout. The 9router relay (buffered, no guards) was
+// dropped — it is strictly weaker and the PanRouter relay is live-verified.
 
 import { createHash } from "node:crypto";
 
@@ -24,90 +24,14 @@ export const NETLIFY_API = "https://api.netlify.com/api/v1";
 export const NETLIFY_FUNCTION_NAME = "relay";
 export const NETLIFY_FUNCTION_PATH = "/.netlify/functions/relay";
 
-// ─── Variant 1: upstream 9router relay ────────────────────────────────
-// Digest-deployed functions (no build step) run on the Lambda-compatible
-// runtime, so the bundle must use exports.handler(event) with a string body,
-// not the modern export-default streaming syntax. Live-verified failure
-// modes: ESM syntax -> Runtime.UserCodeSyntaxError (502); stream body ->
-// cannot-unmarshal-object-into-Go-struct-field (502).
-//
-// Consequence: SSE is buffered. The response stays valid SSE, but the client
-// receives nothing until upstream finishes. Fine for non-streaming calls and
-// short answers; a coding agent sees the whole latency at once.
-export const NETLIFY_RELAY_FUNCTION_CODE = `exports.handler = async (event) => {
-  const headers = {};
-  for (const [k, v] of Object.entries(event.headers || {})) {
-    headers[k.toLowerCase()] = v;
-  }
-
-  const target = headers["x-relay-target"];
-  const relayPath = headers["x-relay-path"] || "/";
-
-  if (!target) {
-    return {
-      statusCode: 400,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ error: "Missing x-relay-target header" }),
-    };
-  }
-
-  const targetUrl = target.replace(/\\\\/$/, "") + relayPath;
-  const forwardHeaders = { ...event.headers };
-  for (const k of Object.keys(forwardHeaders)) {
-    const lower = k.toLowerCase();
-    if (lower === "x-relay-target" || lower === "x-relay-path" || lower === "host") {
-      delete forwardHeaders[k];
-    }
-  }
-
-  try {
-    const upstream = await fetch(targetUrl, {
-      method: event.httpMethod,
-      headers: forwardHeaders,
-      body: event.httpMethod !== "GET" && event.httpMethod !== "HEAD" && event.body
-        ? event.isBase64Encoded
-          ? Buffer.from(event.body, "base64")
-          : event.body
-        : undefined,
-    });
-    // Lambda response body must be a string: returning the stream object
-    // fails with cannot-unmarshal-object-into-Go-struct-field (live 502).
-    // So buffer here: text for API payloads (JSON/SSE), base64 for binary.
-    // Tradeoff vs the other relays: SSE arrives buffered, stays valid SSE.
-    const responseHeaders = {};
-    upstream.headers.forEach((value, key) => {
-      responseHeaders[key] = value;
-    });
-    const contentType = upstream.headers.get("content-type") || "";
-    const isText = new RegExp("^(text/|[^;]*json|[^;]*event-stream|[^;]*javascript|[^;]*xml|[^;]*urlencoded)", "i").test(contentType);
-    const rawBody = await upstream.arrayBuffer();
-    const responseBody = isText
-      ? Buffer.from(rawBody).toString("utf8")
-      : Buffer.from(rawBody).toString("base64");
-    return {
-      statusCode: upstream.status,
-      headers: responseHeaders,
-      body: responseBody,
-      isBase64Encoded: !isText,
-    };
-  } catch (error) {
-    return {
-      statusCode: 502,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ error: error.message || "Relay fetch failed" }),
-    };
-  }
-};
-`;
-
-// ─── Variant 2: PanRouter relay ───────────────────────────────────────
+// ─── Relay function ───────────────────────────────────────────────────
 // Same header contract, plus:
 //   - CORS preflight (OPTIONS) + Access-Control-* headers
 //   - SSRF guard: refuses loopback, link-local, RFC1918, and Netlify's own hosts
 //   - explicit 9s upstream timeout
 // It still has to buffer (the Lambda body is a string), but it returns a
 // status/body shape that the OpenAI SSE translator can consume unchanged.
-export const NETLIFY_RELAY_STREAM_FUNCTION_CODE = `exports.handler = async function(event) {
+export const NETLIFY_RELAY_FUNCTION_CODE = `exports.handler = async function(event) {
   const corsHeaders = () => ({
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -291,11 +215,8 @@ export function buildStoredZip(files) {
 }
 
 /** Zipped single-file bundle Netlify expects for `runtime=js` uploads. */
-export function buildRelayFunctionZip(variant = "upstream") {
-  const code = variant === "panrouter"
-    ? NETLIFY_RELAY_STREAM_FUNCTION_CODE
-    : NETLIFY_RELAY_FUNCTION_CODE;
-  const content = new TextEncoder().encode(code);
+export function buildRelayFunctionZip() {
+  const content = new TextEncoder().encode(NETLIFY_RELAY_FUNCTION_CODE);
   const zip = buildStoredZip([{ name: `${NETLIFY_FUNCTION_NAME}.js`, data: content }]);
   return { zip, sha256: sha256Hex(zip) };
 }

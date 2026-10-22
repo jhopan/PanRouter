@@ -3,7 +3,7 @@ import { getProxyPoolById, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
 
-async function testVercelRelay(relayUrl, timeoutMs = 10000) {
+async function testVercelRelay(relayUrl, timeoutMs = 20000) {
   const controller = new AbortController();
   const startedAt = Date.now();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -14,7 +14,7 @@ async function testVercelRelay(relayUrl, timeoutMs = 10000) {
     const ipRes = await undiciFetch(relayUrl, {
       method: "GET",
       headers: { "x-relay-target": "https://icanhazip.com" },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(8000),
     });
     if (ipRes.ok) {
       egressIp = (await ipRes.text()).trim().replace(/[^0-9a-f:.]/gi, "") || null;
@@ -22,26 +22,32 @@ async function testVercelRelay(relayUrl, timeoutMs = 10000) {
   } catch { /* non-fatal */ }
 
   try {
+    // Probe a host that is fast and reliable. httpbin.org was the original
+    // target but it is frequently slow or down, so a healthy relay reported
+    // "failed". api.ipify.org answers in ~50ms and needs no path handling.
     const res = await undiciFetch(relayUrl, {
       method: "GET",
       headers: {
-        "x-relay-target": "https://httpbin.org",
-        "x-relay-path": "/get",
+        "x-relay-target": "https://api.ipify.org",
+        "x-relay-path": "/?format=text",
       },
       signal: controller.signal,
     });
+    const body = await res.text().catch(() => "");
     return {
       ok: res.ok,
       status: res.status,
       statusText: res.statusText,
       elapsedMs: Date.now() - startedAt,
-      egressIp,
+      egressIp: egressIp || (res.ok ? body.trim().replace(/[^0-9a-f:.]/gi, "") || null : null),
     };
   } catch (err) {
     return {
       ok: false,
       status: 500,
-      error: err?.name === "AbortError" ? "Relay test timed out" : (err?.message || String(err)),
+      error: err?.name === "AbortError"
+        ? `Relay test timed out after ${Math.round(timeoutMs / 1000)}s`
+        : (err?.message || String(err)),
       egressIp,
     };
   } finally {

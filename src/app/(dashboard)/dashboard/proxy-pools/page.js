@@ -83,7 +83,7 @@ export default function ProxyPoolsPage() {
   const [batchImportText, setBatchImportText] = useState("");
   const [vercelForm, setVercelForm] = useState({ vercelToken: "", projectName: "vercel-relay" });
   const [cloudflareForm, setCloudflareForm] = useState({ accountId: "", apiToken: "", projectName: "cloudflare-relay" });
-  const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay", deployMode: "api", variant: "upstream" });
+  const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay", deployMode: "api" });
   const [netlifyProgress, setNetlifyProgress] = useState(null); // null | { step, msg }
   const [netlifyDeployResult, setNetlifyDeployResult] = useState(null); // null | { deployUrl, siteName, accessUrl, adminUrl }
   const [activeLockMenuId, setActiveLockMenuId] = useState(null);
@@ -440,7 +440,7 @@ export default function ProxyPoolsPage() {
     if (netlifyForm.deployMode === "api") {
       try {
         const res = await fetch(
-          `/api/proxy-pools/netlify-deploy-api?variant=${encodeURIComponent(netlifyForm.variant || "upstream")}`,
+          "/api/proxy-pools/netlify-deploy-api",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -450,9 +450,15 @@ export default function ProxyPoolsPage() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Deploy failed (${res.status})`);
         await fetchProxyPools();
-        setNetlifyDeployResult({ step: "done", deployUrl: data.deployUrl });
+        setNetlifyDeployResult({
+          step: "done",
+          deployUrl: data.deployUrl,
+          siteName: data.siteName,
+          accessUrl: data.accessUrl,
+          adminUrl: data.adminUrl,
+        });
         setNetlifyProgress(null);
-        notify.success(`Deployed via API (${data.variant}): ${data.deployUrl}`);
+        notify.success(`Deployed via API: ${data.deployUrl}`);
       } catch (error) {
         notify.error(error.message || "Deploy failed");
         setNetlifyProgress(null);
@@ -1346,8 +1352,7 @@ export default function ProxyPoolsPage() {
             hint="Unique site name. Relay URL: https://<name>.netlify.app/.netlify/functions/relay"
           />
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-text-main">Deploy method</label>
               <select
                 value={netlifyForm.deployMode}
@@ -1364,25 +1369,6 @@ export default function ProxyPoolsPage() {
               </span>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-text-main">Relay function</label>
-              <select
-                value={netlifyForm.variant}
-                onChange={(e) => setNetlifyForm((prev) => ({ ...prev, variant: e.target.value }))}
-                disabled={netlifyForm.deployMode !== "api"}
-                className="rounded-md border border-border bg-background px-2 py-2 text-xs focus:border-primary focus:outline-none disabled:opacity-50"
-              >
-                <option value="upstream">9router — buffered, no guards</option>
-                <option value="panrouter">PanRouter — CORS + SSRF guard</option>
-              </select>
-              <span className="text-[11px] text-text-muted">
-                {netlifyForm.deployMode !== "api"
-                  ? "CLI mode always deploys the PanRouter relay."
-                  : netlifyForm.variant === "upstream"
-                    ? "Upstream code as-is. SSE arrives buffered; no CORS/SSRF guard."
-                    : "Adds CORS preflight, SSRF guard, 9s upstream timeout."}
-              </span>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

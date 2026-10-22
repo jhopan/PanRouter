@@ -10,15 +10,13 @@ import {
   pollDeployReady,
 } from "@/lib/network/netlifyRelay.js";
 
-// Netlify relay deploy via the Netlify API (no CLI, no extra dependencies).
-// Ported from upstream 9router. The CLI variant lives at
-// /api/proxy-pools/netlify-deploy-cli so both can be tested side by side.
+// Netlify relay deploy via the Netlify REST API — no CLI, no extra packages.
+// Deploy plumbing ported from upstream 9router (fast: ~5s vs 60-180s for the
+// netlify-cli route at /api/proxy-pools/netlify-deploy).
 //
-// Query: ?variant=upstream (default) | panrouter
-//   upstream  — 9router relay: buffers the whole response (SSE arrives at once)
-//   panrouter — PanRouter relay: CORS + SSRF guard + 9s upstream timeout
-//               (still buffered — the Lambda body must be a string — but the
-//               response shape is what the OpenAI SSE translator expects)
+// The relay function deployed is PanRouter's own: CORS preflight, SSRF guard,
+// 9s upstream timeout. It still buffers the body because a digest-deployed
+// Lambda function must return a string, not a stream.
 
 function sanitizeSiteName(raw) {
   const name = typeof raw === "string" ? raw.trim().toLowerCase() : "";
@@ -28,19 +26,51 @@ function sanitizeSiteName(raw) {
   return cleaned || `relay-${Date.now().toString(36)}`;
 }
 
+/** Append a short random suffix so a taken name does not abort the deploy. */
+function withUniqueSuffix(base) {
+  const suffix = Math.random().toString(36).slice(2, 7);
+  const trimmed = base.length > 40 ? base.slice(0, 40) : base;
+  return `${trimmed}-${suffix}`;
+}
+
+/**
+ * Create a Netlify site, retrying with a unique suffix when the name is taken.
+ * Netlify answers 422 for a duplicate name; the old code turned that into a
+ * hard 409 and the user had to invent a name by hand every time.
+ */
+async function createSite(headers, siteName) {
+  const attempt = async (name) =>
+    fetch(`${NETLIFY_API}/sites`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name }),
+    });
+
+  let res = await attempt(siteName);
+  let usedName = siteName;
+  let created = res.ok;
+
+  // Only retry when the NAME collided — a 401/403/500 must surface as-is.
+  for (let i = 0; i < 3 && !created && res.status === 422; i += 1) {
+    usedName = withUniqueSuffix(siteName);
+    res = await attempt(usedName);
+    created = res.ok;
+  }
+
+  return { res, usedName, created };
+}
+
 async function readError(res, fallback) {
   const data = await res.json().catch(() => ({}));
   return data.message || data.error || fallback;
 }
 
-// POST /api/proxy-pools/netlify-deploy?<variant>
+// POST /api/proxy-pools/netlify-deploy-api
 export async function POST(request) {
   try {
     const body = await request.json();
     const netlifyToken = body.netlifyToken?.trim?.() ?? body.netlifyToken;
     const siteName = sanitizeSiteName(body.projectName ?? body.siteName);
-    const url = new URL(request.url);
-    const variant = url.searchParams.get("variant") === "panrouter" ? "panrouter" : "upstream";
 
     if (!netlifyToken) {
       return NextResponse.json({ error: "Netlify API token is required" }, { status: 400 });
@@ -51,19 +81,16 @@ export async function POST(request) {
       "Content-Type": "application/json",
     };
 
-    // 1. Create site (name → <name>.netlify.app; random if taken → 422).
-    const siteRes = await fetch(`${NETLIFY_API}/sites`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ name: siteName }),
-    });
+    // 1. Create site (name → <name>.netlify.app). A taken name retries with a
+    // random suffix instead of failing the whole deploy.
+    const { res: siteRes, usedName, created } = await createSite(headers, siteName);
 
-    if (!siteRes.ok) {
+    if (!created) {
       const message = await readError(siteRes, "Failed to create Netlify site");
       const status = siteRes.status === 422 ? 409 : siteRes.status;
       const hint =
         siteRes.status === 422
-          ? ` Site name "${siteName}" is taken — choose a different name.`
+          ? ` Site name "${siteName}" is taken and every generated suffix collided too.`
           : "";
       return NextResponse.json({ error: `${message}.${hint}` }, { status });
     }
@@ -76,7 +103,7 @@ export async function POST(request) {
     }
 
     // 2. Digest deploy: index.html (SHA1) + relay function bundle (SHA256).
-    const { zip, sha256 } = buildRelayFunctionZip(variant);
+    const { zip, sha256 } = buildRelayFunctionZip();
     const { content: indexContent, sha1 } = buildIndexFile();
 
     const deployRes = await fetch(`${NETLIFY_API}/sites/${siteId}/deploys`, {
@@ -142,7 +169,7 @@ export async function POST(request) {
 
     // Create proxy pool entry with type netlify
     const proxyPool = await createProxyPool({
-      name: siteName,
+      name: usedName,
       proxyUrl: relayUrl,
       type: "netlify",
       noProxy: "",
@@ -150,7 +177,20 @@ export async function POST(request) {
       strictProxy: false,
     });
 
-    return NextResponse.json({ proxyPool, deployUrl: relayUrl, variant }, { status: 201 });
+    // The dashboard result modal reads deployUrl + accessUrl + siteName; the
+    // upstream 9router route only returned deployUrl, which left "Salin Link
+    // Pengaturan" copying `undefined`.
+    return NextResponse.json(
+      {
+        proxyPool,
+        deployUrl: relayUrl,
+        siteName: usedName,
+        siteUrl,
+        accessUrl: `https://app.netlify.com/projects/${usedName}/overview`,
+        adminUrl: `https://app.netlify.com/sites/${usedName}`,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     console.log("Error deploying Netlify relay:", error);
     return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });

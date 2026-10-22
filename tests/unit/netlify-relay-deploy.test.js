@@ -16,7 +16,6 @@ import {
   NETLIFY_FUNCTION_NAME,
   NETLIFY_FUNCTION_PATH,
   NETLIFY_RELAY_FUNCTION_CODE,
-  NETLIFY_RELAY_STREAM_FUNCTION_CODE,
   buildStoredZip,
   buildRelayFunctionZip,
   buildIndexFile,
@@ -62,7 +61,7 @@ describe("netlifyRelay — ZIP builder", () => {
   });
 
   it("produces the relay bundle Netlify expects (relay.js, runtime=js)", () => {
-    const { zip, sha256 } = buildRelayFunctionZip("upstream");
+    const { zip, sha256 } = buildRelayFunctionZip();
     const entry = readStoredZip(zip);
     expect(entry.name).toBe(`${NETLIFY_FUNCTION_NAME}.js`);
     expect(entry.size).toBe(new TextEncoder().encode(NETLIFY_RELAY_FUNCTION_CODE).length);
@@ -70,45 +69,39 @@ describe("netlifyRelay — ZIP builder", () => {
   });
 });
 
-describe("netlifyRelay — variants", () => {
-  it("upstream variant buffers the body (documented Lambda constraint)", () => {
+describe("netlifyRelay — relay function", () => {
+  it("buffers the body (Lambda requires a string, not a stream)", () => {
     expect(NETLIFY_RELAY_FUNCTION_CODE).toContain("arrayBuffer()");
     expect(NETLIFY_RELAY_FUNCTION_CODE).toContain("isBase64Encoded");
-    // Upstream ships no SSRF guard and no CORS handling.
-    expect(NETLIFY_RELAY_FUNCTION_CODE).not.toContain("access-control-allow-origin");
-    expect(NETLIFY_RELAY_FUNCTION_CODE).not.toContain("Target not allowed");
   });
 
-  it("panrouter variant adds CORS preflight", () => {
-    expect(NETLIFY_RELAY_STREAM_FUNCTION_CODE).toContain("OPTIONS");
-    expect(NETLIFY_RELAY_STREAM_FUNCTION_CODE).toContain("access-control-allow-origin");
+  it("handles CORS preflight", () => {
+    expect(NETLIFY_RELAY_FUNCTION_CODE).toContain("OPTIONS");
+    expect(NETLIFY_RELAY_FUNCTION_CODE).toContain("access-control-allow-origin");
   });
 
-  it("panrouter variant refuses loopback / private / metadata targets", () => {
-    const code = NETLIFY_RELAY_STREAM_FUNCTION_CODE;
+  it("refuses loopback / private / metadata targets", () => {
+    const code = NETLIFY_RELAY_FUNCTION_CODE;
     expect(code).toContain("169.254.");
     expect(code).toContain("127.");
     expect(code).toContain("192.168.");
     expect(code).toContain("Target not allowed");
   });
 
-  it("panrouter variant sets an explicit upstream timeout", () => {
-    expect(NETLIFY_RELAY_STREAM_FUNCTION_CODE).toContain("AbortSignal.timeout(9000)");
+  it("sets an explicit upstream timeout", () => {
+    expect(NETLIFY_RELAY_FUNCTION_CODE).toContain("AbortSignal.timeout(9000)");
   });
 
-  it("both variants strip the relay headers before forwarding", () => {
-    for (const code of [NETLIFY_RELAY_FUNCTION_CODE, NETLIFY_RELAY_STREAM_FUNCTION_CODE]) {
-      expect(code).toContain("x-relay-target");
-      expect(code).toContain("x-relay-path");
-    }
+  it("strips the relay headers before forwarding", () => {
+    expect(NETLIFY_RELAY_FUNCTION_CODE).toContain("x-relay-target");
+    expect(NETLIFY_RELAY_FUNCTION_CODE).toContain("x-relay-path");
   });
 
-  it("picks the right bundle per variant", () => {
-    const up = buildRelayFunctionZip("upstream");
-    const pr = buildRelayFunctionZip("panrouter");
-    expect(up.sha256).not.toBe(pr.sha256);
-    expect(readStoredZip(up.zip).data.toString()).toContain("arrayBuffer()");
-    expect(readStoredZip(pr.zip).data.toString()).toContain("Target not allowed");
+  it("ships exactly one relay bundle", () => {
+    const { zip } = buildRelayFunctionZip();
+    const entry = readStoredZip(zip);
+    expect(entry.data.toString()).toContain("Target not allowed");
+    expect(entry.data.toString()).toContain("access-control-allow-origin");
   });
 });
 
