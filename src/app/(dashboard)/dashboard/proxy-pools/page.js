@@ -83,7 +83,7 @@ export default function ProxyPoolsPage() {
   const [batchImportText, setBatchImportText] = useState("");
   const [vercelForm, setVercelForm] = useState({ vercelToken: "", projectName: "vercel-relay" });
   const [cloudflareForm, setCloudflareForm] = useState({ accountId: "", apiToken: "", projectName: "cloudflare-relay" });
-  const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay", deployMode: "api" });
+  const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay", deployMode: "cli" });
   const [netlifyProgress, setNetlifyProgress] = useState(null); // null | { step, msg }
   const [netlifyDeployResult, setNetlifyDeployResult] = useState(null); // null | { deployUrl, siteName, accessUrl, adminUrl }
   const [activeLockMenuId, setActiveLockMenuId] = useState(null);
@@ -458,7 +458,14 @@ export default function ProxyPoolsPage() {
           adminUrl: data.adminUrl,
         });
         setNetlifyProgress(null);
-        notify.success(`Deployed via API: ${data.deployUrl}`);
+        if (data.relayOk === false) {
+          notify.warning(
+            `Site dibuat tapi relay belum merespons (HTTP ${data.relayStatus || "timeout"}). ` +
+            `Coba deploy ulang dengan metode CLI.`,
+          );
+        } else {
+          notify.success(`Deployed via API: ${data.deployUrl}`);
+        }
       } catch (error) {
         notify.error(error.message || "Deploy failed");
         setNetlifyProgress(null);
@@ -1359,13 +1366,13 @@ export default function ProxyPoolsPage() {
                 onChange={(e) => setNetlifyForm((prev) => ({ ...prev, deployMode: e.target.value }))}
                 className="rounded-md border border-border bg-background px-2 py-2 text-xs focus:border-primary focus:outline-none"
               >
-                <option value="api">API — fast, no dependencies (9router)</option>
-                <option value="cli">CLI — netlify-cli (PanRouter legacy)</option>
+                <option value="cli">CLI — netlify-cli (recommended)</option>
+                <option value="api">API — fast, but function deploy can fail</option>
               </select>
               <span className="text-[11px] text-text-muted">
-                {netlifyForm.deployMode === "api"
-                  ? "Pure Netlify REST API + hand-built ZIP. ~5s, zero packages."
-                  : "Spawns netlify-cli. First run installs ~1200 packages (60-180s)."}
+                {netlifyForm.deployMode === "cli"
+                  ? "Spawns netlify-cli. First run installs ~1200 packages (60-180s), then ~20s per deploy. Reliable."
+                  : "Pure Netlify REST API. ~5s and no packages, but the function upload can silently no-op and leave a dead relay."}
               </span>
             </div>
 

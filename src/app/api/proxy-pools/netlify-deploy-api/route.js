@@ -129,8 +129,24 @@ export async function POST(request) {
     }
 
     // 3. Upload only what Netlify asks for (dedupe via `required` lists).
+    //
+    // Netlify returns `required_functions` only for digests it does not already
+    // have. When the list is empty the upload is skipped — which is correct for
+    // a re-deploy of identical bytes, but it also means a silent no-op if the
+    // function was never stored. Verify the function actually exists after the
+    // deploy is ready, and upload it once more if it does not.
     const requiredFiles = new Set(deploy.required || []);
     const requiredFunctions = new Set(deploy.required_functions || []);
+
+    const uploadFunction = () =>
+      fetch(
+        `${NETLIFY_API}/deploys/${deployId}/functions/${NETLIFY_FUNCTION_NAME}?runtime=js`,
+        {
+          method: "PUT",
+          headers: { ...netlifyHeaders(netlifyToken), "Content-Type": "application/octet-stream" },
+          body: zip,
+        }
+      );
 
     if (requiredFiles.has(sha1)) {
       const fileRes = await fetch(`${NETLIFY_API}/deploys/${deployId}/files/index.html`, {
@@ -146,25 +162,53 @@ export async function POST(request) {
       }
     }
 
+    // Netlify asks for the function digest unless it already has those exact
+    // bytes. Upload when asked; the post-deploy check below covers the case
+    // where the list was empty but the function is not actually served.
+    let functionUploaded = false;
     if (requiredFunctions.has(sha256)) {
-      const fnRes = await fetch(
-        `${NETLIFY_API}/deploys/${deployId}/functions/${NETLIFY_FUNCTION_NAME}?runtime=js`,
-        {
-          method: "PUT",
-          headers: { ...netlifyHeaders(netlifyToken), "Content-Type": "application/octet-stream" },
-          body: zip,
-        }
-      );
+      const fnRes = await uploadFunction();
       if (!fnRes.ok) {
         return NextResponse.json(
           { error: await readError(fnRes, "Failed to upload relay function to Netlify") },
           { status: fnRes.status }
         );
       }
+      functionUploaded = true;
     }
 
     // 4. Poll until the deploy is live.
     await pollDeployReady(deployId, netlifyToken);
+
+    // 5. Verify the relay function is actually reachable. A digest deploy can
+    // report "ready" while the function was never stored (empty
+    // required_functions on a brand-new site), and the pool would then be
+    // created pointing at a 404. Probe once, re-upload once, then probe again.
+    const relayUrl = buildRelayUrl(siteUrl);
+    const probeRelay = async () => {
+      try {
+        const res = await fetch(relayUrl, {
+          method: "GET",
+          headers: {
+            "x-relay-target": "https://api.ipify.org",
+            "x-relay-path": "/?format=text",
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+        return res.status;
+      } catch {
+        return 0;
+      }
+    };
+
+    let probeStatus = await probeRelay();
+    if (probeStatus === 404 || probeStatus === 0) {
+      // Give Netlify a moment, then retry the upload and probe again.
+      await new Promise((r) => setTimeout(r, 4000));
+      if (!functionUploaded) await uploadFunction().catch(() => {});
+      await new Promise((r) => setTimeout(r, 4000));
+      probeStatus = await probeRelay();
+    }
     const relayUrl = buildRelayUrl(siteUrl);
 
     // Create proxy pool entry with type netlify
@@ -188,6 +232,10 @@ export async function POST(request) {
         siteUrl,
         accessUrl: `https://app.netlify.com/projects/${usedName}/overview`,
         adminUrl: `https://app.netlify.com/sites/${usedName}`,
+        // Reported so the dashboard can warn when the pool points at a relay
+        // that never actually got stored.
+        relayStatus: probeStatus,
+        relayOk: probeStatus === 200,
       },
       { status: 201 },
     );
