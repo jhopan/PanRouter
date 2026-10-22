@@ -89,11 +89,23 @@ export async function GET() {
     });
   }
 
+  // A runtime dir that exists but has no entry point is debris from a killed
+  // install (OOM, timeout). Report it so the user knows why the next attempt
+  // might be slow — the deploy route wipes it before reinstalling.
+  const lazyDir = path.join(runtimeBase(), "netlify-cli");
+  let staleInstall = false;
+  try {
+    staleInstall = fs.existsSync(lazyDir);
+  } catch {
+    staleInstall = false;
+  }
+
   return NextResponse.json({
     available: false,
     // The deploy route installs it automatically on first use; this is the
     // manual fallback when that fails (offline, restricted npm registry, ...).
     autoInstall: true,
+    staleInstall,
     manualCommand: "npm i -g netlify-cli",
     installUrl: "https://docs.netlify.com/api-and-cli-guides/cli-guides/get-started-with-cli/",
     checked: checked.map((c) => ({ source: c.source, path: c.path, exists: false })),

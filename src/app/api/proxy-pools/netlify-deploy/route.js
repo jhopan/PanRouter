@@ -58,6 +58,34 @@ function resolveNetlifyCmd() {
 }
 
 /**
+ * Remove a half-finished install so a failed attempt cannot poison the next
+ * one. npm leaves node_modules/.package-lock.json and partial trees behind when
+ * it is killed mid-unpack (OOM, timeout, Ctrl-C); a later `npm install --prefix`
+ * then sees a lockfile that disagrees with disk and can fail in confusing ways.
+ * Best-effort: any error is swallowed, because cleanup must never mask the
+ * original failure.
+ */
+function cleanupFailedInstall(lazyDir) {
+  try {
+    if (fs.existsSync(lazyDir)) {
+      fs.rmSync(lazyDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Is `lazyRun` a usable netlify-cli entry point right now? */
+function hasUsableLazyInstall(lazyRun) {
+  try {
+    return fs.existsSync(lazyRun) && fs.statSync(lazyRun).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Ensure a runnable netlify-cli exists. Returns { runScript } when found/installed,
  * { cmd } for PATH commands, or null when installation failed.
  * On the very first deploy it auto-installs into the runtime dir so the global
@@ -73,6 +101,13 @@ async function ensureNetlifyCli(send) {
   const lazyDir = path.join(netlifyRuntimeBase(), "netlify-cli");
   const lazyRun = path.join(lazyDir, "node_modules", "netlify-cli", "bin", "run.js");
   const manualCmd = `npm i -g netlify-cli`;
+
+  // A leftover directory that is not a working install is debris from a killed
+  // attempt. Clear it before installing so npm starts from a clean slate.
+  if (fs.existsSync(lazyDir) && !hasUsableLazyInstall(lazyRun)) {
+    send({ step: "installing", msg: "Membersihkan sisa instalasi netlify-cli yang gagal…" });
+    cleanupFailedInstall(lazyDir);
+  }
 
   send({ step: "installing", msg: `netlify-cli belum terpasang — menginstall otomatis (sekali saja).\nPerintah manual: ${manualCmd}` });
 
@@ -100,12 +135,28 @@ async function ensureNetlifyCli(send) {
       });
     });
   } catch (e) {
-    send({ step: "error", msg: `Install netlify-cli gagal: ${e.message}\nSilakan jalankan manual lalu klik Deploy lagi:\n  ${manualCmd}` });
+    // Wipe the debris so the next Deploy starts clean instead of tripping over
+    // a partial node_modules tree.
+    const cleaned = cleanupFailedInstall(lazyDir);
+    send({
+      step: "error",
+      msg: `Install netlify-cli gagal: ${e.message}\n` +
+        (cleaned ? "Sisa instalasi sudah dibersihkan.\n" : "") +
+        `Silakan jalankan manual lalu klik Deploy lagi:\n  ${manualCmd}`,
+    });
     return null;
   }
 
-  if (!fs.existsSync(lazyRun)) {
-    send({ step: "error", msg: `netlify-cli terinstall tapi tidak ditemukan di ${lazyRun}\nCoba manual: ${manualCmd}` });
+  // npm can exit 0 while the binary is still missing (postinstall skipped by a
+  // sandbox, disk full at the last step). Treat that as a failure and clean up.
+  if (!hasUsableLazyInstall(lazyRun)) {
+    cleanupFailedInstall(lazyDir);
+    send({
+      step: "error",
+      msg: `netlify-cli terinstall tapi binary tidak ditemukan di ${lazyRun}\n` +
+        "Sisa instalasi sudah dibersihkan.\n" +
+        `Coba manual: ${manualCmd}`,
+    });
     return null;
   }
 

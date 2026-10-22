@@ -1355,6 +1355,11 @@ export default function ProxyPoolsPage() {
                       Deploy akan menginstall otomatis saat pertama kali dijalankan (sekali saja, ~1-2 menit).
                       Kalau gagal, install manual:
                     </p>
+                    {netlifyCli.staleInstall && (
+                      <p className="mt-1 text-amber-600 dark:text-amber-400">
+                        Ada sisa instalasi sebelumnya yang gagal — akan dibersihkan otomatis sebelum install ulang.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 pl-7">
