@@ -83,9 +83,10 @@ export default function ProxyPoolsPage() {
   const [batchImportText, setBatchImportText] = useState("");
   const [vercelForm, setVercelForm] = useState({ vercelToken: "", projectName: "vercel-relay" });
   const [cloudflareForm, setCloudflareForm] = useState({ accountId: "", apiToken: "", projectName: "cloudflare-relay" });
-  const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay", deployMode: "cli" });
+  const [netlifyForm, setNetlifyForm] = useState({ netlifyToken: "", projectName: "panrouter-relay" });
   const [netlifyProgress, setNetlifyProgress] = useState(null); // null | { step, msg }
   const [netlifyDeployResult, setNetlifyDeployResult] = useState(null); // null | { deployUrl, siteName, accessUrl, adminUrl }
+  const [netlifyCli, setNetlifyCli] = useState(null); // null | { available, source, manualCommand, installUrl }
   const [activeLockMenuId, setActiveLockMenuId] = useState(null);
   const [denoForm, setDenoForm] = useState({ denoToken: "", orgDomain: "", projectName: "" });
   const [saving, setSaving] = useState(false);
@@ -432,49 +433,6 @@ export default function ProxyPoolsPage() {
     setNetlifyProgress({ step: "starting", msg: "Starting deploy..." });
     setNetlifyDeployResult(null);
 
-    // Two independent deploy paths, both creating a type:"netlify" pool:
-    //   "cli" — spawns netlify-cli (heavy: installs ~1200 packages on first run,
-    //           streams progress over SSE)
-    //   "api" — pure Netlify REST API + a hand-built ZIP (zero dependencies,
-    //           a few seconds, returns JSON)
-    if (netlifyForm.deployMode === "api") {
-      try {
-        const res = await fetch(
-          "/api/proxy-pools/netlify-deploy-api",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(netlifyForm),
-          },
-        );
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `Deploy failed (${res.status})`);
-        await fetchProxyPools();
-        setNetlifyDeployResult({
-          step: "done",
-          deployUrl: data.deployUrl,
-          siteName: data.siteName,
-          accessUrl: data.accessUrl,
-          adminUrl: data.adminUrl,
-        });
-        setNetlifyProgress(null);
-        if (data.relayOk === false) {
-          notify.warning(
-            `Site dibuat tapi relay belum merespons (HTTP ${data.relayStatus || "timeout"}). ` +
-            `Coba deploy ulang dengan metode CLI.`,
-          );
-        } else {
-          notify.success(`Deployed via API: ${data.deployUrl}`);
-        }
-      } catch (error) {
-        notify.error(error.message || "Deploy failed");
-        setNetlifyProgress(null);
-      } finally {
-        setDeploying(false);
-      }
-      return;
-    }
-
     try {
       const res = await fetch("/api/proxy-pools/netlify-deploy", {
         method: "POST",
@@ -804,9 +762,19 @@ export default function ProxyPoolsPage() {
                   Deno Relay
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setShowNetlifyModal(true);
                     setShowRelayMenu(false);
+                    // Pre-flight: find out whether netlify-cli is present before
+                    // the user clicks Deploy, so a missing CLI surfaces here
+                    // instead of 60s into an install.
+                    setNetlifyCli(null);
+                    try {
+                      const res = await fetch("/api/proxy-pools/netlify-cli-status", { cache: "no-store" });
+                      setNetlifyCli(await res.json());
+                    } catch {
+                      setNetlifyCli({ available: false, manualCommand: "npm i -g netlify-cli" });
+                    }
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-text-main transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                 >
@@ -1359,22 +1327,62 @@ export default function ProxyPoolsPage() {
             hint="Unique site name. Relay URL: https://<name>.netlify.app/.netlify/functions/relay"
           />
 
-          <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-text-main">Deploy method</label>
-              <select
-                value={netlifyForm.deployMode}
-                onChange={(e) => setNetlifyForm((prev) => ({ ...prev, deployMode: e.target.value }))}
-                className="rounded-md border border-border bg-background px-2 py-2 text-xs focus:border-primary focus:outline-none"
-              >
-                <option value="cli">CLI — netlify-cli (recommended)</option>
-                <option value="api">API — fast, but function deploy can fail</option>
-              </select>
-              <span className="text-[11px] text-text-muted">
-                {netlifyForm.deployMode === "cli"
-                  ? "Spawns netlify-cli. First run installs ~1200 packages (60-180s), then ~20s per deploy. Reliable."
-                  : "Pure Netlify REST API. ~5s and no packages, but the function upload can silently no-op and leave a dead relay."}
-              </span>
-            </div>
+          {/* netlify-cli pre-flight: deploy only works through the CLI, so tell
+              the user up front whether it is installed. */}
+          <div className="rounded-lg border border-black/10 bg-black/5 p-3 dark:border-white/10 dark:bg-white/5">
+            {netlifyCli === null ? (
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                Memeriksa netlify-cli…
+              </div>
+            ) : netlifyCli.available ? (
+              <div className="flex items-start gap-2">
+                <span className="material-symbols-outlined text-[18px] text-green-500">check_circle</span>
+                <div className="text-xs">
+                  <p className="font-medium text-text-main">netlify-cli terpasang</p>
+                  <p className="text-text-muted">
+                    Sumber: <code className="break-all">{netlifyCli.source}</code>
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[18px] text-amber-500">warning</span>
+                  <div className="text-xs">
+                    <p className="font-medium text-text-main">netlify-cli belum terpasang</p>
+                    <p className="text-text-muted">
+                      Deploy akan menginstall otomatis saat pertama kali dijalankan (sekali saja, ~1-2 menit).
+                      Kalau gagal, install manual:
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pl-7">
+                  <code className="rounded bg-black/10 px-2 py-1 font-mono text-[11px] dark:bg-white/10">
+                    {netlifyCli.manualCommand || "npm i -g netlify-cli"}
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon="content_copy"
+                    onClick={() => copyText(netlifyCli.manualCommand || "npm i -g netlify-cli", notify)}
+                  >
+                    Salin
+                  </Button>
+                  {netlifyCli.installUrl && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon="open_in_new"
+                      onClick={() => window.open(netlifyCli.installUrl, "_blank", "noopener,noreferrer")}
+                    >
+                      Panduan install
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button
