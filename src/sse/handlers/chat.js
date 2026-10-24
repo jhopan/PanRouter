@@ -350,6 +350,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       if (quotaResetMs) resetsAtMs = quotaResetMs;
     }
 
+    // A request-level rejection (prompt too long, malformed body) is not the
+    // account's fault: the identical request fails on every account, so
+    // falling back would park all of them in a row. Return immediately.
+    if (result.fatal === true) {
+      log.warn("CHAT", `[${provider}/${model}] fatal request error (${result.status}): ${String(result.error || "").slice(0, 120)}`);
+      return errorResponse(result.status || HTTP_STATUS.BAD_REQUEST, result.error || "Request rejected by upstream");
+    }
+
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
     // Do not persist a modelLock_* for this path.
     const shouldFallback = provider === "antigravity" && quotaResetMs

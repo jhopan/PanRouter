@@ -70,7 +70,16 @@ export async function parseUpstreamError(response, executor = null) {
       const parsed = executor.parseError(response, bodyText);
       if (parsed && typeof parsed === "object") {
         const msg = parsed.message || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
-        return { statusCode: parsed.status || response.status, message: msg, resetsAtMs: parsed.resetsAtMs };
+        return {
+          statusCode: parsed.status || response.status,
+          message: msg,
+          resetsAtMs: parsed.resetsAtMs,
+          // Request-level rejections (prompt too long, malformed body) must not
+          // lock the account: the same request fails on every account, so the
+          // caller has to stop instead of walking the whole pool.
+          fatal: parsed.fatal === true,
+          accountRestricted: parsed.accountRestricted === true,
+        };
       }
     } catch { /* fall through to default parsing */ }
   }
@@ -94,14 +103,19 @@ export async function parseUpstreamError(response, executor = null) {
  * @param {number} statusCode - HTTP status code
  * @param {string} message - Error message
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
+ * @param {Headers|null} [extraHeaders]
+ * @param {{fatal?: boolean, accountRestricted?: boolean}} [flags] - `fatal` marks a
+ *   request-level rejection that must not lock or rotate accounts.
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
-export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders = null) {
+export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders = null, flags = null) {
   return {
     success: false,
     status: statusCode,
     error: message,
     resetsAtMs,
+    ...(flags?.fatal ? { fatal: true } : {}),
+    ...(flags?.accountRestricted ? { accountRestricted: true } : {}),
     response: errorResponse(statusCode, message, extraHeaders)
   };
 }

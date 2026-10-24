@@ -183,11 +183,11 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
         const data = JSON.parse(bodyText);
         const msg = data?.msg || data?.message || data?.error?.message || "";
 
-        // 11140: the ACCOUNT is flagged ("restricted due to unusual activity"),
-        // not the request. Retrying on the same account is pointless and makes
-        // the flag worse, so park it for a long window instead of the usual
-        // 2-minute burst cooldown.
-        if (data?.code === 11140 || /unusual activity|账号存在异常行为|帳號存在異常行為/i.test(msg)) {
+        // 11140: the ACCOUNT is flagged ("restricted due to unusual activity").
+        // Checked FIRST: the body also carries msg:"request illegal", so the
+        // 11128 branch below would swallow it and lose the account-level
+        // classification.
+        if (data?.code === 11140 || /unusual activity|账号存在异常行为|帳號存在異常行為/i.test(JSON.stringify(data))) {
           return {
             status: 403,
             message: msg || "CodeBuddy account restricted (11140) — unusual activity",
@@ -197,6 +197,38 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
             accountRestricted: true,
           };
         }
+
+        // 11128: "request illegal" — the request failed channel verification.
+        // The account is fine; the request shape is not. Escalating backoff on
+        // this parks a healthy account for 30 minutes (observed: modelLock
+        // 1800s on a 403 with body "request illegal"), so treat it as a
+        // request-level rejection: surface it, do not lock, do not rotate.
+        if (data?.code === 11128 || /^request illegal$/i.test(String(data?.msg || "").trim())) {
+          return {
+            status: 403,
+            message: msg || "CodeBuddy: request rejected by channel verification (11128)",
+            fatal: true,
+            requestRejected: true,
+          };
+        }
+
+        // 11115: the REQUEST is too large for the model ("prompt is too long:
+        // 1054321 tokens > 1048576 maximum"). Nothing is wrong with the account,
+        // so it must not be locked — the same prompt fails on every account and
+        // the router would park all of them in a row. Surface it as a client
+        // error so chatCore returns 400 without touching account state.
+        if (data?.code === 11115 || /prompt is too long|content too long|内容过长|內容過長/i.test(msg)) {
+          return {
+            status: 400,
+            message: msg || "CodeBuddy: prompt exceeds the model context window",
+            // Signals to the caller: do not retry, do not lock the account.
+            fatal: true,
+            requestTooLarge: true,
+          };
+        }
+
+        // 11140 handled above (before 11128) — the body also says "request
+        // illegal", so it must be classified before the generic rejection.
 
         if (data?.code === 6004 || /超出频率限制|frequency limit|限额/i.test(msg)) {
           let resetsAtMs = null;
