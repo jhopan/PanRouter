@@ -120,3 +120,58 @@ describe("codebuddy-intl — 11140 account restriction", () => {
     expect(parsed.accountRestricted).toBeUndefined();
   });
 });
+
+describe("codebuddy-intl — cross-platform fingerprint", () => {
+  // The executor reads process.platform/process.arch, so the same build must
+  // produce a coherent fingerprint on Windows, macOS and Linux (x64 or arm64).
+  // These assertions exercise the normalization rules directly so the mapping
+  // is pinned regardless of where the suite runs.
+  const normalizePlatform = (p) => {
+    const v = String(p || "").toLowerCase();
+    if (v === "darwin") return "MacOS";
+    if (v === "win32") return "Windows";
+    if (v === "linux") return "Linux";
+    if (v === "freebsd") return "FreeBSD";
+    if (v === "openbsd") return "OpenBSD";
+    return v ? `Other:${v}` : "Unknown";
+  };
+  const normalizeArch = (a) => {
+    if (a === "arm") return "arm32";
+    if (a === "ppc") return "ppc32";
+    if (a === "x64") return "amd64";
+    return a || "unknown";
+  };
+
+  it.each([
+    ["win32", "x64", "Windows", "amd64"],
+    ["darwin", "arm64", "MacOS", "arm64"],
+    ["darwin", "x64", "MacOS", "amd64"],
+    ["linux", "x64", "Linux", "amd64"],
+    ["linux", "arm64", "Linux", "arm64"],
+    ["linux", "arm", "Linux", "arm32"],
+    ["freebsd", "x64", "FreeBSD", "amd64"],
+  ])("%s/%s → %s/%s", (platform, arch, os, cpu) => {
+    expect(normalizePlatform(platform)).toBe(os);
+    expect(normalizeArch(arch)).toBe(cpu);
+  });
+
+  it("never emits the raw x64 token (CLI normalizes it to amd64)", () => {
+    expect(normalizeArch("x64")).not.toBe("x64");
+  });
+
+  it("falls back to Other:<platform> for an unknown OS instead of lying", () => {
+    expect(normalizePlatform("sunos")).toBe("Other:sunos");
+  });
+
+  it("reports the real runtime version, not a hardcoded one", () => {
+    const h = build();
+    expect(h["X-Stainless-Runtime-Version"]).toBe(process.version);
+    expect(h["X-Stainless-Runtime"]).toBe("node");
+  });
+
+  it("OS and arch always agree with the host process", () => {
+    const h = build();
+    expect(h["X-Stainless-OS"]).toBe(normalizePlatform(process.platform));
+    expect(h["X-Stainless-Arch"]).toBe(normalizeArch(process.arch));
+  });
+});
