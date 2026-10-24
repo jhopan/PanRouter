@@ -1,3 +1,40 @@
+# v0.5.82.1 (2026-10-22)
+
+## Perbaikan penting
+
+- **Error request-level tidak lagi mengunci akun.** Satu prompt 1.054.321 token
+  (limit 1.048.576) memicu dua bug sekaligus:
+
+  **`11115` "prompt is too long"** dianggap error provider biasa, jadi `chat.js`
+  memanggil `markAccountUnavailable` dan router menelusuri **semua 18 akun**,
+  mengunci tiap-tiap 30 detik. Prompt yang sama gagal di semua akun, jadi loop
+  itu tidak akan pernah berhasil.
+
+  **`11128` "request illegal"** tidak cocok dengan sinyal quota mana pun,
+  sehingga jatuh ke backoff generik dan naik sampai **`modelLock` 1800 detik**
+  pada akun yang sehat.
+
+  Keduanya sekarang bertanda `fatal: true`, dan `chat.js` langsung mengembalikan
+  error **sebelum** `markAccountUnavailable` — tidak ada akun yang dikunci.
+
+- **Urutan klasifikasi diperbaiki.** Body `11140` juga membawa
+  `msg: "request illegal"`, jadi pengecekan restriksi akun sekarang dijalankan
+  **lebih dulu**; kalau tidak, cabang `11128` akan menelannya dan klasifikasi
+  tingkat akun hilang.
+
+- **Field `fatal` sebelumnya hilang di tengah jalan.** `parseUpstreamError` dan
+  `createErrorResult` hanya meneruskan field yang dikenal, sehingga `fatal` tidak
+  pernah sampai ke `chat.js`. Keduanya sekarang meneruskan `fatal` dan
+  `accountRestricted`.
+
+## Test
+
+- 17 test baru: `11115` fatal + tidak ada `resetsAtMs`, `11128` fatal tanpa
+  cooldown panjang, `11140` menang atas `11128`, `chat.js` mengecek `fatal`
+  sebelum `markAccountUnavailable`, dan plumbing `fatal` di
+  `parseUpstreamError`/`createErrorResult`/`chatCore`.
+- Suite: **2883 lulus**, 0 regresi baru.
+
 # v0.5.82.0 (2026-10-22)
 
 ## CodeBuddy Intl — akun tidak lagi mudah di-restrict
