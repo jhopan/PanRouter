@@ -4,11 +4,22 @@ import { DefaultExecutor } from "./default.js";
 /**
  * CodeBuddyIntlExecutor — talks to https://www.codebuddy.ai/v2/chat/completions
  *
- * Since 2026-10-15 the intl gateway rejects any request without the
- * X-Conversation-* header family (code 11128 "request illegal", channel
- * verification). Verified A/B: same credentials + body, headers absent → 400,
- * headers present → 200 SSE. Ported from upstream 9router PR #4928 / #5032.
+ * Two separate gates on the intl gateway:
+ *   11128 "request illegal" (channel verification) — request did not carry the
+ *         X-Conversation-* family. Fixed by the headers below.
+ *   11140 "account restricted due to unusual activity" — the ACCOUNT is flagged.
+ *         Reached when the request set looks automated: a handful of static
+ *         headers, one IDE/version string forever, huge repeated payloads.
+ *
+ * The official CLI 2.170.0 sends ~25 headers, not 6. X-Stainless-* is the SDK
+ * fingerprint, and X-Agent-Intent/Purpose/Type/Runtime describe the caller. A
+ * request missing them still passes 11128 but looks like a bot, which is what
+ * trips 11140. Values below mirror the installed CLI.
  */
+
+// From the installed @tencent-ai/codebuddy-code 2.170.0 bundle.
+const CB_IDE_VERSION = "2.170.0";
+const CB_UA = `IDE/${CB_IDE_VERSION} CodeBuddy/${CB_IDE_VERSION}`;
 
 // Deterministic RFC-4122-v5-shaped UUID derived from a session key, mirroring
 // the official client's per-conversation id (uuid5 over the session key).
@@ -60,12 +71,63 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
           : "";
 
     const conversationKey = sessionKey || (userText ? `cbai:${userText}` : null);
+    const requestId = randomUUID();
+
+    // The registry ships lowercase duplicates of two headers; sending both
+    // spellings looks like a hand-rolled client. Drop the lowercase variants
+    // before adding the canonical ones.
+    delete headers["x-codebuddy-request"];
+    delete headers["x-requested-with"];
 
     headers["X-Conversation-ID"] = conversationKey
       ? stableUuidFrom(conversationKey)
       : randomUUID();
-    headers["X-Conversation-Request-ID"] = randomUUID();
-    headers["X-Conversation-Message-ID"] = randomUUID();
+    headers["X-Conversation-Request-ID"] = requestId;
+    // The CLI sends the same id for the request and the message on a chat turn.
+    headers["X-Conversation-Message-ID"] = requestId;
+
+    // ── CLI identity ──────────────────────────────────────────────────────
+    // Everything below is sent by the official CLI on every chat call. The
+    // static registry headers cover only the bare minimum; without the rest
+    // the gateway still accepts the request (11128 passes) but treats the
+    // caller as third-party automation and eventually returns 11140.
+    headers["User-Agent"] = CB_UA;
+    headers["X-Product"] = "SaaS";
+    headers["X-Product-Version"] = CB_IDE_VERSION;
+    headers["X-App"] = "cli";
+    headers["X-IDE-Type"] = "IDE";
+    headers["X-IDE-Name"] = "IDE";
+    headers["X-IDE-Version"] = CB_IDE_VERSION;
+    // The CLI sets this from the user's data-sharing preference; "false" is the
+    // conservative value it sends for a normal account.
+    headers["X-Private-Data"] = "false";
+    headers["X-Requested-With"] = "XMLHttpRequest";
+    headers["X-CodeBuddy-Request"] = "1";
+
+    // Agent identity: the CLI describes every chat turn as a "craft" intent for
+    // a "conversation" purpose, attributed to the IDE agent type.
+    headers["X-Agent-Intent"] = "craft";
+    headers["X-Agent-Purpose"] = "conversation";
+    headers["X-Agent-Type"] = "ide";
+    headers["X-Agent-Runtime"] = "ide";
+
+    // Per-request id, mirrored into the conversation-message id like the CLI.
+    headers["X-Request-ID"] = requestId;
+
+    // Stainless SDK fingerprint. These are what make the call look like it came
+    // from the official Node SDK rather than a bare fetch().
+    headers["X-Stainless-Lang"] = "js";
+    headers["X-Stainless-Package-Version"] = "6.25.0";
+    headers["X-Stainless-OS"] = process.platform === "win32" ? "Windows"
+      : process.platform === "darwin" ? "MacOS" : "Linux";
+    headers["X-Stainless-Arch"] = process.arch === "arm64" ? "arm64" : "x64";
+    headers["X-Stainless-Runtime"] = "node";
+    headers["X-Stainless-Runtime-Version"] = process.version || "v22.0.0";
+    headers["X-Stainless-Retry-Count"] = "0";
+    headers["X-Stainless-Helper-Method"] = "stream";
+
+    // Domain tells the gateway which product surface the call belongs to.
+    if (!headers["X-Domain"]) headers["X-Domain"] = "www.codebuddy.ai";
 
     return headers;
   }
@@ -102,6 +164,22 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
       try {
         const data = JSON.parse(bodyText);
         const msg = data?.msg || data?.message || data?.error?.message || "";
+
+        // 11140: the ACCOUNT is flagged ("restricted due to unusual activity"),
+        // not the request. Retrying on the same account is pointless and makes
+        // the flag worse, so park it for a long window instead of the usual
+        // 2-minute burst cooldown.
+        if (data?.code === 11140 || /unusual activity|账号存在异常行为|帳號存在異常行為/i.test(msg)) {
+          return {
+            status: 403,
+            message: msg || "CodeBuddy account restricted (11140) — unusual activity",
+            // 12h: long enough to stop hammering, short enough that a manually
+            // appealed account comes back on its own the same day.
+            resetsAtMs: Date.now() + 12 * 60 * 60 * 1000,
+            accountRestricted: true,
+          };
+        }
+
         if (data?.code === 6004 || /超出频率限制|frequency limit|限额/i.test(msg)) {
           let resetsAtMs = null;
           const match = msg.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\s*UTC\+?([0-9:]+))?/i);
