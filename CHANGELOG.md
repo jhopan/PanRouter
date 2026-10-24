@@ -1,3 +1,137 @@
+# v0.5.82.0 (2026-10-22)
+
+## CodeBuddy Intl — akun tidak lagi mudah di-restrict
+
+Error `11140` ("Your account has been restricted due to unusual activity") adalah
+gate **berbeda** dari `11128` (channel verification). Request-nya valid; yang
+di-flag adalah **akunnya**. Muncul ketika pola request terbaca sebagai automation.
+
+Penyebabnya: executor hanya mengirim **6 header statis**, sementara CLI resmi
+2.170.0 mengirim **~30**. Header yang hilang:
+
+| Kelompok | Header |
+|---|---|
+| SDK fingerprint | `X-Stainless-Lang`, `-Package-Version`, `-OS`, `-Arch`, `-Runtime`, `-Runtime-Version`, `-Retry-Count`, `-Helper-Method` |
+| Identitas agent | `X-Agent-Intent: craft`, `-Purpose: conversation`, `-Type: ide`, `-Runtime: ide` |
+| Identitas klien | `X-Product-Version`, `X-App: cli`, `X-IDE-Version`, `X-Private-Data`, `X-Domain`, `X-Request-ID` |
+
+Tanpa header itu, request tetap lolos `11128` tapi terbaca sebagai pihak ketiga —
+yang memicu `11140`.
+
+**Yang diperbaiki:**
+
+- Semua header di atas dikirim, nilainya diambil dari bundle CLI 2.170.0
+- `X-Stainless-Arch` mengikuti normalisasi CLI (`x64` → `amd64`, `arm` → `arm32`),
+  bukan nilai mentah `process.arch`
+- `X-Stainless-OS` mengikuti `normalizePlatform()` (`win32` → `Windows`,
+  `darwin` → `MacOS`, `linux` → `Linux`, lainnya `Other:<nama>`)
+- Duplikat case (`X-CodeBuddy-Request` + `x-codebuddy-request`) dihapus — dua
+  ejaan sekaligus terlihat hand-rolled
+- `X-Conversation-Request-ID`, `X-Conversation-Message-ID`, dan `X-Request-ID`
+  kini bernilai sama per turn (seperti CLI); `X-Conversation-ID` tetap stabil
+  lintas retry
+- `11140` diklasifikasi sebagai **restriksi akun**: 403 dengan park 12 jam dan
+  `accountRestricted: true`, bukan cooldown 2 menit yang justru menghantam akun
+  yang sudah kena flag
+
+> Catatan: ini mencegah akun **baru** kena flag. Akun yang **sudah** di `11140`
+> harus melalui banding di CodeBuddy — tidak ada perubahan header yang bisa
+> membukanya.
+
+## Qoder — katalog lengkap + DeepSeek V4.1 Flash
+
+- **`dfmodel_v41` (DeepSeek-Flash, gratis)** ditambahkan ke Qoder intl dan CN.
+  DeepSeek-V4.1-Flash-1017, 200K context, thinking max.
+- Katalog provider **intl** kini sama lengkap dengan CN — 17 model, bukan hanya
+  `qfmodel`: tier (`auto`/`lite`/`efficient`/`performance`/`ultimate`), Qwen
+  (`qmodel`/`qmodel_latest`/`qmodel_38max`/`qfmodel`), DeepSeek
+  (`dfmodel_v41`/`dfmodel`/`dmodel`), Kimi (`kmodel`/`kmodel_latest`), GLM
+  (`gmodel`/`gfmodel`), MiniMax (`mmodel`)
+- **`10605` bukan billing block lagi.** Balasan `{"isQueued":true}` adalah
+  admission queue yang selesai dalam hitungan detik; dulu dianggap billing dan
+  memarkir akun sampai reset bulanan
+- **Validasi Qoder tidak lagi fetch katalog model.** `resolveQoderModels()` dengan
+  `forceRefresh` memanggil endpoint katalog setiap validasi, dan balasan `10605`
+  saat model sibuk membuat API key valid terlihat invalid. Sekarang cukup
+  pertukaran credential (`isValid = !!resolved?.accessToken`)
+
+## Netlify — deploy CLI saja
+
+Jalur deploy lewat REST API dihapus. Dia berulang kali menghasilkan pool yang
+menunjuk relay yang tidak pernah tersimpan: pada site baru `required_functions`
+bisa kosong, upload dilewati, deploy tetap lapor `ready`, dan URL fungsi 404.
+
+- **Pre-flight check**: modal memeriksa apakah `netlify-cli` tersedia sebelum
+  kamu klik Deploy. Tiga status: memeriksa / terpasang / belum terpasang
+- Kalau belum ada, tampil perintah `npm i -g netlify-cli` dengan tombol salin dan
+  tautan panduan resmi Netlify
+- **Pembersihan otomatis**: install yang mati di tengah (OOM, timeout 10 menit)
+  meninggalkan `node_modules` setengah jadi + lockfile yang tidak cocok. Sisa itu
+  sekarang dihapus sebelum install ulang, dan lagi setelah gagal
+- npm yang `exit 0` tapi binary tidak ada (postinstall dilewati, disk penuh)
+  sekarang dianggap gagal, bukan sukses palsu
+- Nama site yang sudah dipakai otomatis dapat suffix acak, tidak lagi
+  menggagalkan deploy
+- `netlify-cli` tetap **bukan** dependency `npm i -g panrouter` — hanya
+  ter-install saat Deploy pertama, ke `~/.9router/runtime/`, jadi RAM tidak
+  terpakai kalau fitur ini tidak dipakai
+
+## Quota — block tidak hilang saat update
+
+- **`CACHE_BLOCK` Antigravity bertahan setelah restart/update.** Bucket yang
+  exhausted (`remainingPercentage: 0` + `resetAt` di masa depan) dicerminkan ke
+  KV store dan dipulihkan saat startup. Sebelumnya state hanya di `Map` memori,
+  jadi update menghapusnya dan akun yang masih diblokir langsung dicoba lagi
+- **Rate limit frekuensi bukan quota habis.** Pesan `6004` berbunyi "usage
+  exceeds frequency limit ... will reset at ..." — kata "limit" membuatnya
+  diklasifikasi quota, lalu diparkir ke kalender `MONTHLY` (tanggal 1 bulan
+  depan). Sekarang `frequency limit` / `rate limit` / `too many requests`
+  dideteksi lebih dulu dan lewat jalur backoff biasa
+
+## Log console — bisa difilter dan di-pause
+
+- Checkbox **"Hide refresh logs"** (aktif default) menyembunyikan
+  `TOKEN_REFRESH` dan `BG_TOKEN_REFRESH`
+- **Pause / Resume**: stream SSE tetap buffering saat pause, dan resume
+  mem-flush semuanya — tidak ada yang hilang. Auto-scroll berhenti saat pause
+- Dropdown tag (dibangun dari tag yang ada di buffer) + filter teks
+- Server: `LOG_SUPPRESS_TAGS` dan `LOG_ONLY_TAGS` di `.env`. `error()` sengaja
+  **tidak pernah** disaring
+
+## Auto-ping CodeBuddy
+
+- Model auto-ping kini bisa dipilih dari dashboard — **satu pilihan untuk semua
+  akun**, disimpan di `codebuddyIntlAutoPing.model`
+- Default `fast-model` (alias generik semua tier), dengan rantai fallback
+  `default-model` → `balanced-model` bila ditolak karena model (`11158`/`11101`)
+- `gpt-5.6-luna` yang dulu di-hardcode tidak bisa dipakai akun
+  `personal_free_user` dan menggagalkan seluruh ping
+
+## Perbaikan lain
+
+- `@aws-sdk/credential-providers` yang opsional tidak lagi mematahkan build —
+  literal `import()` membuat webpack resolve saat build, dan karena
+  `executors/index.js` menarik `bedrock.js` ke semua route, satu dependency
+  opsional hilang menjatuhkan `/v1/models`, `/models`, dan root layout
+- Provider device-code yang tidak pernah bisa login (`minimax-code`,
+  `minimax-code-global`, `muse`, `nous`, `qoder-cn`, `glm`) kini terdaftar di
+  list device-code modal; sebelumnya memilih provider itu jatuh ke cabang
+  authorization-code
+- GLM Coding: `authModes: ["apikey", "oauth"]` agar jalur OAuth Z.ai bisa
+  dijangkau dari UI
+- CodeBuddy CN: `kimi-k2.8-preview` masuk (300K/131072), `kimi-k2.6`,
+  `kimi-k2.7`, `glm-5v-turbo` keluar
+- Golden snapshot test tidak lagi menyimpan UUID acak per request
+- Tag JSX `</div>` yatim yang menggagalkan build di halaman proxy-pools
+
+## Test
+
+- Suite: **2873 lulus**, 0 regresi baru
+- Test baru antara lain: header identity CodeBuddy (termasuk 7 kombinasi
+  platform/arch), klasifikasi `11140` vs `6004`, `10605` queue vs billing,
+  persistensi CACHE_BLOCK, pembersihan install netlify-cli, kontrol log console,
+  dan integritas JSX halaman proxy-pools
+
 # v0.5.81.1 (2026-10-21)
 
 ## Perbaikan
