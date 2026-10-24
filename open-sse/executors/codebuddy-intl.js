@@ -115,12 +115,30 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     headers["X-Request-ID"] = requestId;
 
     // Stainless SDK fingerprint. These are what make the call look like it came
-    // from the official Node SDK rather than a bare fetch().
+    // from the official Node SDK rather than a bare fetch(). Values mirror
+    // normalizePlatform()/normalizeArch() from the CLI bundle:
+    //   platform: win32→Windows, darwin→MacOS, linux→Linux
+    //   arch:     x64→amd64, arm→arm32, ppc→ppc32, else passthrough
+    const normalizePlatform = (p) => {
+      const v = String(p || "").toLowerCase();
+      if (v === "darwin") return "MacOS";
+      if (v === "win32") return "Windows";
+      if (v === "linux") return "Linux";
+      if (v === "freebsd") return "FreeBSD";
+      if (v === "openbsd") return "OpenBSD";
+      return v ? `Other:${v}` : "Unknown";
+    };
+    const normalizeArch = (a) => {
+      if (a === "arm") return "arm32";
+      if (a === "ppc") return "ppc32";
+      if (a === "x64") return "amd64";
+      return a || "unknown";
+    };
+
     headers["X-Stainless-Lang"] = "js";
     headers["X-Stainless-Package-Version"] = "6.25.0";
-    headers["X-Stainless-OS"] = process.platform === "win32" ? "Windows"
-      : process.platform === "darwin" ? "MacOS" : "Linux";
-    headers["X-Stainless-Arch"] = process.arch === "arm64" ? "arm64" : "x64";
+    headers["X-Stainless-OS"] = normalizePlatform(process.platform);
+    headers["X-Stainless-Arch"] = normalizeArch(process.arch);
     headers["X-Stainless-Runtime"] = "node";
     headers["X-Stainless-Runtime-Version"] = process.version || "v22.0.0";
     headers["X-Stainless-Retry-Count"] = "0";

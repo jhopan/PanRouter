@@ -39,6 +39,12 @@ describe("codebuddy-intl — CLI identity headers", () => {
     }
     expect(h["X-Stainless-Lang"]).toBe("js");
     expect(h["X-Stainless-Runtime"]).toBe("node");
+    // Values must match the CLI's normalizePlatform()/normalizeArch(), not the
+    // raw process values: x64 is advertised as "amd64", arm as "arm32".
+    expect(h["X-Stainless-Package-Version"]).toBe("6.25.0");
+    expect(h["X-Stainless-OS"]).toMatch(/^(Windows|MacOS|Linux|FreeBSD|OpenBSD|Unknown|Other:.+)$/);
+    expect(h["X-Stainless-Arch"]).toMatch(/^(amd64|arm32|ppc32|arm64|x64|ia32)$/);
+    expect(h["X-Stainless-Arch"]).not.toBe("x64"); // CLI normalizes x64 -> amd64
   });
 
   it("sends the agent identity the CLI declares", () => {
