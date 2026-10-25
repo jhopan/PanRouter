@@ -195,5 +195,41 @@ export function isQuotaExhaustedError(errorText) {
     return false;
   }
 
+  // A SITE-WIDE capacity limit is shared by every key on the provider, so it is
+  // not this account's quota either. BazaarLink returns
+  // `code:"free_global_rate_limited"` with "Free models share a limited
+  // site-wide capacity and it is currently full — this is not your personal
+  // quota. Retry after 30 seconds". The body literally says the account is fine,
+  // yet the phrase "quota" is present and would otherwise park every key until
+  // the monthly calendar boundary.
+  if (/site-wide|global_rate_limit|free_global_rate_limited|not your personal quota/i.test(lower)) {
+    return false;
+  }
+
   return QUOTA_EXHAUSTED_SIGNALS.some((sig) => lower.includes(sig));
+}
+
+/**
+ * Detect a provider-wide capacity limit: the pool is saturated for EVERY key,
+ * so rotating to the next account cannot help. Callers use this to stop the
+ * account loop instead of locking each key in turn.
+ *
+ * BazaarLink: `code:"free_global_rate_limited"`, "Free models share a limited
+ * site-wide capacity ... Retry after 30 seconds".
+ *
+ * @param {number} status - HTTP status from upstream
+ * @param {string} errorText - raw upstream body
+ * @returns {{ globalLimit: true, retryAfterMs: number } | null}
+ */
+export function globalCapacityLimit(status, errorText) {
+  if (Number(status) !== 429) return null;
+  const text = String(errorText || "");
+  const lower = text.toLowerCase();
+  const isGlobal = /free_global_rate_limited|site-wide|shared capacity|全站共用/i.test(lower);
+  if (!isGlobal) return null;
+
+  // Prefer the provider's own retry hint so we do not guess.
+  const secs = lower.match(/retry after (\d+)\s*(?:second|sec|s\b)/);
+  const retryAfterMs = secs ? Math.min(parseInt(secs[1], 10), 300) * 1000 : 30 * 1000;
+  return { globalLimit: true, retryAfterMs };
 }

@@ -16,6 +16,7 @@ import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { globalCapacityLimit } from "open-sse/config/quotaWindows.js";
 import { upstreamResponseHeaders } from "open-sse/utils/upstreamHeaders.js";
 import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
@@ -356,6 +357,23 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (result.fatal === true) {
       log.warn("CHAT", `[${provider}/${model}] fatal request error (${result.status}): ${String(result.error || "").slice(0, 120)}`);
       return errorResponse(result.status || HTTP_STATUS.BAD_REQUEST, result.error || "Request rejected by upstream");
+    }
+
+    // A provider-wide capacity limit is shared by EVERY key, so rotating cannot
+    // help: the next account gets the same 429. BazaarLink says so explicitly
+    // ("Free models share a limited site-wide capacity ... this is not your
+    // personal quota"). Stop here instead of locking all 12 keys in turn.
+    const globalLimit = globalCapacityLimit(result.status, result.error);
+    if (globalLimit) {
+      const retrySec = Math.round(globalLimit.retryAfterMs / 1000);
+      log.warn("CHAT", `[${provider}/${model}] provider-wide capacity limit — not rotating accounts, retry in ${retrySec}s`);
+      return unavailableResponse(
+        HTTP_STATUS.TOO_MANY_REQUESTS,
+        `[${provider}/${model}] ${result.error}`,
+        Math.ceil(globalLimit.retryAfterMs / 1000),
+        `${retrySec}s`,
+        lastHeaders,
+      );
     }
 
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
