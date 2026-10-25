@@ -76,6 +76,17 @@ describe("chat.js — waits and retries instead of locking", () => {
   it("caps the wait so a dead model still fails eventually", () => {
     expect(chat).toMatch(/45_000/);
   });
+
+  it("does not lock the account when the queue persists", () => {
+    // queueCount:0 + serviceAvailable:false means nobody is ahead of us: the
+    // capacity is provider-wide, so rotating accounts cannot help and locking
+    // this one would only hide a healthy account.
+    expect(chat).toMatch(/provider-wide capacity, not locking the account/);
+    const guardIdx = chat.indexOf("provider-wide capacity, not locking the account");
+    const markIdx = chat.indexOf("markAccountUnavailable(credentials.connectionId");
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeLessThan(markIdx);
+  });
 });
 
 describe("error plumbing — queueThrottle survives the round trip", () => {

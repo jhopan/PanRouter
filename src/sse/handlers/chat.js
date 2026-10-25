@@ -395,6 +395,22 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       continue;
     }
 
+    // Still queued after the retries: the capacity is shared by every key on the
+    // provider (Qoder reports queueCount:0 / serviceAvailable:false — nobody is
+    // ahead of us, the model is simply saturated). Rotating to the next account
+    // would get the same answer, so return the 429 WITHOUT locking this one.
+    if (result.queueThrottle) {
+      const retrySec = Math.max(1, Math.round(((result.resetsAtMs || 0) - Date.now()) / 1000)) || 30;
+      log.warn("CHAT", `[${provider}/${model}] still queued after ${QUEUE_MAX_RETRIES} retries — provider-wide capacity, not locking the account`);
+      return unavailableResponse(
+        HTTP_STATUS.TOO_MANY_REQUESTS,
+        `[${provider}/${model}] ${result.error}`,
+        retrySec,
+        `${retrySec}s`,
+        lastHeaders,
+      );
+    }
+
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
     // Do not persist a modelLock_* for this path.
     const shouldFallback = provider === "antigravity" && quotaResetMs
