@@ -1,3 +1,45 @@
+# v0.5.83.0 (2026-10-22)
+
+## Fitur
+
+- **Antrean Qoder ditunggu, bukan mengunci akun.** `10605 isQueued` berarti
+  **model** sedang sibuk, bukan akun bermasalah. PanRouter sekarang menunggu
+  `retryAfterSeconds` dari Qoder (maksimum 45 detik) lalu mencoba **akun yang
+  sama** lagi, paling banyak dua kali. Kalau model masih penuh, `429` tetap
+  muncul seperti sebelumnya agar model yang benar-benar penuh tidak dicoba
+  selamanya.
+
+  Sebelumnya akun sehat dikunci 30 detik dan klien harus mengulang dari awal.
+
+## Bukti pengukuran
+
+Diuji langsung ke API Qoder dengan **satu akun**:
+
+| Skenario | Hasil |
+|---|---|
+| Berurutan | `dfmodel` 2712 ms ok · `qfmodel` 1124 ms ok |
+| Paralel, dua model berbeda | `dfmodel` 906 ms ok ∥ `qfmodel` 1733 ms ok |
+| Paralel, model sama dua kali | `dfmodel` #1 1295 ms ok ∥ #2 1355 ms ok |
+| `qfmodel` enam kali | **6/6 ok** |
+
+Kesimpulan: **satu akun bisa menjalankan beberapa model sekaligus**, dan antrean
+hilang sendiri dalam hitungan detik. Probe disertakan di repo
+(`scripts/probe-qoder-concurrency.mjs`, `scripts/probe-qoder-repeat.mjs`).
+
+## Perbaikan
+
+- **Flag `queueThrottle` sebelumnya hilang di tengah jalan.**
+  `parseUpstreamError` dan `createErrorResult` hanya meneruskan field yang
+  dikenal, sehingga `chat.js` tidak pernah tahu ini antrean dan tetap mengunci
+  akun. Keduanya sekarang meneruskan flag tersebut.
+
+## Test
+
+- 11 test baru: flag antrean, bukan pembatasan akun, bukan `fatal`, nama model
+  dari konteks, urutan retry sebelum `markAccountUnavailable`, batas jumlah
+  percobaan, dan batas waktu tunggu.
+- Suite: **2934 lulus**, 0 regresi baru.
+
 # v0.5.82.7 (2026-10-22)
 
 ## Perbaikan
