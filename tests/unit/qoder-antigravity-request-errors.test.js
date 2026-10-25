@@ -52,6 +52,24 @@ describe("qoder — admission queue 10605", () => {
     expect(p.message).toContain("dfmodel");
   });
 
+  it("falls back to the request model when the payload omits modelKey", () => {
+    // Upstream usually omits modelKey; without the context fallback the log
+    // said `model "?"`, which is useless when several models are queued.
+    const body = JSON.stringify({
+      error: { message: JSON.stringify({ isQueued: true, retryAfterSeconds: 30 }) },
+    });
+    const q = exec.parseError({ status: 403 }, body, { model: "qfmodel", provider: "qoder" });
+    expect(q.message).toContain("qfmodel");
+    expect(q.message).not.toContain('"?"');
+  });
+
+  it("never prints a bare question mark without context", () => {
+    const body = JSON.stringify({ error: { message: JSON.stringify({ isQueued: true }) } });
+    const q = exec.parseError({ status: 403 }, body);
+    expect(q.message).not.toContain('"?"');
+    expect(q.message).toContain("this model");
+  });
+
   it("is flagged as a queue throttle, not a quota block", () => {
     expect(p.queueThrottle).toBe(true);
   });

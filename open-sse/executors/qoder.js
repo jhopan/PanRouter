@@ -639,7 +639,7 @@ export class QoderExecutor extends BaseExecutor {
    * been read yet for this credential. Not an account problem; auth.js already
    * special-cases it so no modelLock is persisted.
    */
-  parseError(response, bodyText) {
+  parseError(response, bodyText, context = null) {
     const text = String(bodyText || "");
     if (!text) return super.parseError(response, bodyText);
 
@@ -668,9 +668,12 @@ export class QoderExecutor extends BaseExecutor {
     if (inner) {
       const secs = Number(inner.retryAfterSeconds ?? inner.waitTime);
       const waitMs = Number.isFinite(secs) && secs > 0 ? secs * 1000 : 30 * 1000;
+      // The upstream payload often omits modelKey; fall back to the model this
+      // request was actually for so the log never says `model "?"`.
+      const name = inner.modelKey || context?.model || "this model";
       return {
         status: 429,
-        message: `Qoder: model "${inner.modelKey || "?"}" is queued (admission queue) — retry in ${Math.round(waitMs / 1000)}s`,
+        message: `Qoder: model "${name}" is queued (admission queue) — retry in ${Math.round(waitMs / 1000)}s`,
         resetsAtMs: Date.now() + waitMs,
         queueThrottle: true,
       };

@@ -56,7 +56,7 @@ export async function writeStreamError(writer, statusCode, message) {
  * @param {object} [executor] - Optional executor with parseError() override for provider-specific parsing
  * @returns {Promise<{statusCode: number, message: string, resetsAtMs?: number}>}
  */
-export async function parseUpstreamError(response, executor = null) {
+export async function parseUpstreamError(response, executor = null, context = null) {
   let bodyText = "";
   try {
     bodyText = await response.text();
@@ -67,7 +67,7 @@ export async function parseUpstreamError(response, executor = null) {
   // Let executor-specific parser extract provider-specific fields (e.g. codex resetsAtMs)
   if (executor && typeof executor.parseError === "function") {
     try {
-      const parsed = executor.parseError(response, bodyText);
+      const parsed = executor.parseError(response, bodyText, context);
       if (parsed && typeof parsed === "object") {
         const msg = parsed.message || DEFAULT_ERROR_MESSAGES[response.status] || `Upstream error: ${response.status}`;
         return {
