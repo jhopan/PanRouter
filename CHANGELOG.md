@@ -1,3 +1,35 @@
+# v0.5.82.2 (2026-10-22)
+
+## Perbaikan penting
+
+- **Limit kapasitas global tidak lagi merotasi akun.** BazaarLink membalas
+  `429` dengan `code: "free_global_rate_limited"`:
+
+  > Free models share a limited site-wide capacity and it is currently full —
+  > this is not your personal quota. Retry after 30 seconds.
+
+  Limitnya ada di **situs**, bukan di key. Semua akun menerima jawaban yang sama.
+  Tapi router tetap menelusuri pool: Key 4, Key 3, Key 2, Key 1 dikunci 4 detik
+  satu per satu, lalu muncul `all 12 accounts locked` — padahal tidak ada satu pun
+  key yang bermasalah.
+
+  `globalCapacityLimit()` sekarang mendeteksi tanda site-wide dan mengambil
+  petunjuk retry dari provider (default 30 detik, maksimum 300 detik). `chat.js`
+  memeriksanya **sebelum** `markAccountUnavailable` dan langsung mengembalikan
+  `429` dengan jendela waktu tersebut.
+
+- **Limit site-wide bukan kuota pribadi.** `isQuotaExhaustedError` dulu
+  mengklasifikasikannya sebagai kuota habis karena body-nya memuat kata "quota"
+  (padahal kalimatnya justru "this is not your personal quota"). Akibatnya semua
+  key diparkir sampai batas bulan kalender. Sekarang dikecualikan.
+
+## Test
+
+- 10 test baru: deteksi site-wide, pembacaan petunjuk retry, default 30 detik,
+  pengabaian 429 biasa, pengabaian status non-429, dan `chat.js` memeriksa
+  global limit sebelum mengunci akun.
+- Suite: **2891 lulus**, 0 regresi baru.
+
 # v0.5.82.1 (2026-10-22)
 
 ## Perbaikan penting
