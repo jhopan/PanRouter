@@ -612,6 +612,59 @@ export class QoderExecutor extends BaseExecutor {
     this.region = provider === "qoder-cn" ? "cn" : "intl";
   }
 
+  /**
+   * Qoder wraps upstream errors in nested JSON strings, so the generic parser
+   * cannot see the real code. Two shapes matter:
+   *
+   * 10605 `isQueued:true` — the ADMISSION QUEUE ("model is busy, you are
+   * queued"). The body carries `retryAfterSeconds` (usually 30). Without
+   * reading it the error falls through to the generic 429 backoff and the model
+   * is locked for 120s instead of the 30s the provider asked for.
+   *
+   * model_config "... not yet known" — the authenticated COSY catalog has not
+   * been read yet for this credential. Not an account problem; auth.js already
+   * special-cases it so no modelLock is persisted.
+   */
+  parseError(response, bodyText) {
+    const text = String(bodyText || "");
+    if (!text) return super.parseError(response, bodyText);
+
+    let inner = null;
+    try {
+      let msg = JSON.parse(text);
+      // Walk down nested {code, message} envelopes until the queue payload.
+      for (let depth = 0; depth < 5 && msg; depth += 1) {
+        if (typeof msg === "string") {
+          try { msg = JSON.parse(msg); } catch { break; }
+          continue;
+        }
+        if (typeof msg !== "object") break;
+        // The envelope itself may carry the queue flags, but the queue payload
+        // (with modelKey/retryAfterSeconds) can sit one level deeper under
+        // `message`. Prefer the deepest object that actually has those fields.
+        if (msg.isQueued === true || String(msg.code) === "10605" || String(msg.subCode) === "RESOURCE_LIMIT") {
+          inner = msg;
+        }
+        const next = msg?.error?.message ?? msg?.message ?? msg?.error;
+        if (next === undefined) break;
+        msg = next;
+      }
+    } catch { /* not JSON — fall through */ }
+
+    if (inner) {
+      const secs = Number(inner.retryAfterSeconds ?? inner.waitTime);
+      const waitMs = Number.isFinite(secs) && secs > 0 ? secs * 1000 : 30 * 1000;
+      return {
+        status: 429,
+        message: `Qoder: model "${inner.modelKey || "?"}" is queued (admission queue) — retry in ${Math.round(waitMs / 1000)}s`,
+        resetsAtMs: Date.now() + waitMs,
+        queueThrottle: true,
+      };
+    }
+
+    return super.parseError(response, bodyText);
+  }
+
   buildUrl(credentials) {
     return `${qoderInferenceBase(credentials, this.region)}/algo${QODER_CHAT_SIG_PATH}?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1`;
   }

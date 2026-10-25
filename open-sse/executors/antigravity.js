@@ -464,6 +464,23 @@ export class AntigravityExecutor extends BaseExecutor {
       }
     }
 
+    // A 400 is a malformed request, not an account problem: Google rejects it
+    // before looking at who is asking, so every account returns the same
+    // "Bad request". Locking them one by one parks the whole pool for a payload
+    // that can never succeed. Mark it fatal so chat.js returns immediately.
+    if (response && response.status === 400) {
+      const parsed = this.extractErrorMessage(
+        (() => { try { return JSON.parse(bodyText); } catch { return null; } })(),
+        bodyText,
+      );
+      return {
+        status: 400,
+        message: parsed || bodyText || "Bad request",
+        fatal: true,
+        requestRejected: true,
+      };
+    }
+
     return super.parseError(response, bodyText);
   }
 
