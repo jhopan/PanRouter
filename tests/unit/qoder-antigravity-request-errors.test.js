@@ -86,6 +86,17 @@ describe("antigravity — 400 is a request problem", () => {
     const p = await exec.parseError({ status: 400 }, "Bad request");
     expect(p.resetsAtMs).toBeUndefined();
   });
+
+  it("surfaces Google field violations so the log says what to fix", async () => {
+    const body = JSON.stringify({
+      error: {
+        message: "Bad request",
+        details: [{ fieldViolations: [{ field: "contents[0].parts[1].inline_data", description: "Invalid value" }] }],
+      },
+    });
+    const p = await exec.parseError({ status: 400 }, body);
+    expect(p.message).toContain("contents[0].parts[1].inline_data");
+  });
 });
 
 describe("chat.js — fatal 400 does not lock accounts", () => {

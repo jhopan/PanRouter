@@ -469,10 +469,20 @@ export class AntigravityExecutor extends BaseExecutor {
     // "Bad request". Locking them one by one parks the whole pool for a payload
     // that can never succeed. Mark it fatal so chat.js returns immediately.
     if (response && response.status === 400) {
-      const parsed = this.extractErrorMessage(
-        (() => { try { return JSON.parse(bodyText); } catch { return null; } })(),
-        bodyText,
-      );
+      let parsed = null;
+      let json = null;
+      try { json = JSON.parse(bodyText); } catch { /* plain text body */ }
+      parsed = this.extractErrorMessage(json, bodyText);
+      // Google often answers 400 with just "Bad request" and puts the real
+      // reason in error.details[] (field violations). Surface those, otherwise
+      // the log gives no clue what to fix.
+      const details = json?.error?.details || json?.details;
+      if (Array.isArray(details)) {
+        const reasons = details
+          .map(d => d?.fieldViolations?.map(v => `${v.field}: ${v.description}`).join("; ") || d?.reason || d?.description)
+          .filter(Boolean);
+        if (reasons.length) parsed = `${parsed} — ${reasons.join(" | ")}`;
+      }
       return {
         status: 400,
         message: parsed || bodyText || "Bad request",

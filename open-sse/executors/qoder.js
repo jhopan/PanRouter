@@ -33,6 +33,7 @@ import { FETCH_CONNECT_TIMEOUT_MS, HTTP_STATUS } from "../config/runtimeConfig.j
 import {
   QODER_CHAT_SIG_PATH,
   QODER_CONTEXT_TIER_ENV,
+  QODER_MODEL_MAP,
   qoderInferenceBase,
 } from "../shared/qoder/constants.js";
 import { getQoderModelConfig, resolveQoderModels, isQoderPat, resolveQoderCredentials } from "../services/qoderModels.js";
@@ -218,12 +219,25 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
     // not be populated yet on first ever call for this credential.
     const refreshed = await resolveQoderModels(credentials, { forceRefresh: true, log, proxyOptions, signal, region });
     const retried = refreshed?.rawConfigs.get(qoderKey);
-    if (!retried) {
-      throw new Error(
-        `qoder: model_config for "${qoderKey}" not yet known (run a model list fetch or check upstream connectivity)`,
-      );
+    if (retried) {
+      modelConfig = { ...retried, key: qoderKey };
+    } else {
+      // Last resort: the static map knows this key but the account's catalog
+      // does not (a model the CLI shows before the API exposes it, or a cached
+      // catalog that predates the release). Build a minimal config so the
+      // request still goes out instead of failing with "not yet known".
+      // The upstream either accepts it or answers with its own error, which is
+      // far more useful than a local refusal.
+      const mapped = QODER_MODEL_MAP[qoderKey];
+      if (mapped) {
+        log?.warn?.("QODER", `model_config for "${qoderKey}" missing from catalog — falling back to static map`);
+        modelConfig = { key: mapped, max_input_tokens: 200_000, max_output_tokens: 65_536 };
+      } else {
+        throw new Error(
+          `qoder: model_config for "${qoderKey}" not yet known (run a model list fetch or check upstream connectivity)`,
+        );
+      }
     }
-    modelConfig = { ...retried, key: qoderKey };
   }
 
   const incoming = Array.isArray(body.messages)
