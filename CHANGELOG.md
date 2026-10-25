@@ -1,3 +1,36 @@
+# v0.5.82.5 (2026-10-22)
+
+## Perbaikan penting
+
+- **Qoder `112` diklasifikasikan sebagai penolakan billing.** Qoder membalas
+  `112` dibungkus tiga tingkat JSON dengan `pricingUrl` — akun harus membeli
+  kredit. Body-nya tidak memuat kata "quota", sehingga
+  `isQuotaExhaustedError` mengembalikan `false` dan error jatuh ke backoff
+  generik: model dikunci **120 detik** dan router mencoba lagi akun yang butuh
+  pembayaran setiap dua menit.
+
+  `112` (dan `110` untuk hitungan harian) sekarang masuk kelas kuota, sehingga
+  durasi kunci memakai batas kuota provider, bukan batas burst 30 menit.
+
+  `10605` (antrean admission), frequency limit, dan limit kapasitas site-wide
+  tetap **bukan** kuota.
+
+## Catatan
+
+- **Header Qoder sudah benar.** `qfmodel` berhasil (2183 ms, IN 62 / OUT 30) pada
+  request yang sama dengan header identik, jadi `112` bukan masalah UA/header
+  melainkan billing per model.
+- `dfmodel_v41` sekarang terkirim berkat fallback peta statis, dan Qoder menjawab
+  `112` — artinya model itu **butuh kredit** untuk akun tersebut, bukan bahwa
+  key-nya salah.
+
+## Test
+
+- 8 test baru: `112` dan `pricingUrl` sebagai kuota, `110` harian, penolakan
+  `10605`/frequency/site-wide tetap non-kuota, dan regresi pada limit harian
+  biasa.
+- Suite: **2916 lulus**, 0 regresi baru.
+
 # v0.5.82.4 (2026-10-22)
 
 ## Perbaikan penting
