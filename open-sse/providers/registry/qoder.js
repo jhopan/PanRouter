@@ -39,9 +39,11 @@ export default {
     { id: "qmodel", name: "Qwen3.7-Plus" },
     { id: "qmodel_latest", name: "Qwen3.7-Max" },
     { id: "qmodel_38max", name: "Qwen3.8-Max" },
-    // DeepSeek's official release (DeepSeek-V4.1-Flash-1017), free on Qoder.
-    { id: "dfmodel_v41", name: "DeepSeek-Flash (Free)" },
-    { id: "dfmodel", name: "DeepSeek-V4-Flash" },
+    // DeepSeek on Qoder: `dfmodel` is the FREE tier model (verified working
+    // through the OAuth API). `dfmodel_v41` answers 112 + pricingUrl for a free
+    // account, i.e. it needs credits — do not label it free.
+    { id: "dfmodel", name: "DeepSeek-Flash (Free)" },
+    { id: "dfmodel_v41", name: "DeepSeek-V4.1-Flash (paid)" },
     { id: "dmodel", name: "DeepSeek-V4-Pro" },
     { id: "kmodel", name: "Kimi-K2.7-Code" },
     { id: "kmodel_latest", name: "Kimi-K3" },

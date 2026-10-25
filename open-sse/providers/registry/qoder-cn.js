@@ -40,9 +40,11 @@ export default {
     { id: "gmodel", name: "GLM-5.3" },
     { id: "gfmodel", name: "GLM-5.3-Flash" },
     { id: "dmodel", name: "DeepSeek-V4-Pro" },
-    { id: "dfmodel", name: "DeepSeek-V4-Flash" },
-    // DeepSeek-V4.1-Flash-1017 — the free-tier flash model.
-    { id: "dfmodel_v41", name: "DeepSeek-Flash (Free)" },
+    // `dfmodel` is the free-tier DeepSeek flash model on Qoder (verified working
+    // through the OAuth API). `dfmodel_v41` needs credits — it answers 112 +
+    // pricingUrl on a free account.
+    { id: "dfmodel", name: "DeepSeek-Flash (Free)" },
+    { id: "dfmodel_v41", name: "DeepSeek-V4.1-Flash (paid)" },
     { id: "mmodel", name: "MiniMax-M3" },
   ],
   oauth: {
