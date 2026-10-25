@@ -206,6 +206,14 @@ export function isQuotaExhaustedError(errorText) {
     return false;
   }
 
+  // Qoder billing refusal: code 112 (and 110 for the daily count) wraps a
+  // `pricingUrl` — the account must buy credits. It carries no "quota" word, so
+  // it fell through to the generic backoff and the model was locked for only
+  // 120s, letting the router hammer a paying-required account every two minutes.
+  if (/"code"\s*:\s*"?11[02]"?/.test(lower) || /pricingurl/.test(lower)) {
+    return true;
+  }
+
   return QUOTA_EXHAUSTED_SIGNALS.some((sig) => lower.includes(sig));
 }
 
