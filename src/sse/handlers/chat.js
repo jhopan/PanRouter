@@ -244,6 +244,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastStatus = null;
   let lastHeaders = null;
 
+  // Admission-queue retry: a 10605 "isQueued" answer means the MODEL is busy,
+  // not that the account is bad. Qoder sends retryAfterSeconds (usually 30), so
+  // waiting once and retrying the same account turns a hard failure into a slow
+  // success. Bounded so a permanently saturated model still surfaces an error.
+  const QUEUE_MAX_RETRIES = 2;
+  let queueRetries = 0;
+
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
@@ -374,6 +381,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         `${retrySec}s`,
         lastHeaders,
       );
+    }
+
+    // Admission queue (10605 isQueued): the model is momentarily busy, the
+    // account is fine. Wait the provider's own retryAfterSeconds and retry the
+    // SAME account instead of locking it — locking would hide a healthy account
+    // for 30s over a queue that usually clears in seconds.
+    if (result.queueThrottle && queueRetries < QUEUE_MAX_RETRIES) {
+      queueRetries += 1;
+      const waitMs = Math.max(1000, Math.min((result.resetsAtMs || 0) - Date.now(), 45_000));
+      log.warn("CHAT", `[${provider}/${model}] queued upstream — waiting ${Math.round(waitMs / 1000)}s then retrying (${queueRetries}/${QUEUE_MAX_RETRIES})`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      continue;
     }
 
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.

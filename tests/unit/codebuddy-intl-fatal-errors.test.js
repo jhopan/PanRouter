@@ -107,6 +107,6 @@ describe("error plumbing — fatal survives the round trip", () => {
   });
 
   it("chatCore passes the flags through", () => {
-    expect(chatCore).toContain("{ fatal, accountRestricted }");
+    expect(chatCore).toMatch(/\{ fatal, accountRestricted(, queueThrottle)? \}/);
   });
 });

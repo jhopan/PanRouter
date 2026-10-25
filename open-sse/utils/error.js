@@ -79,6 +79,9 @@ export async function parseUpstreamError(response, executor = null, context = nu
           // caller has to stop instead of walking the whole pool.
           fatal: parsed.fatal === true,
           accountRestricted: parsed.accountRestricted === true,
+          // Provider admission queue (e.g. Qoder 10605): the model is busy, the
+          // account is fine. The caller waits and retries instead of locking.
+          queueThrottle: parsed.queueThrottle === true,
         };
       }
     } catch { /* fall through to default parsing */ }
@@ -104,7 +107,7 @@ export async function parseUpstreamError(response, executor = null, context = nu
  * @param {string} message - Error message
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
  * @param {Headers|null} [extraHeaders]
- * @param {{fatal?: boolean, accountRestricted?: boolean}} [flags] - `fatal` marks a
+ * @param {{fatal?: boolean, accountRestricted?: boolean, queueThrottle?: boolean}} [flags] - `fatal` marks a
  *   request-level rejection that must not lock or rotate accounts.
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
@@ -116,6 +119,7 @@ export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders 
     resetsAtMs,
     ...(flags?.fatal ? { fatal: true } : {}),
     ...(flags?.accountRestricted ? { accountRestricted: true } : {}),
+    ...(flags?.queueThrottle ? { queueThrottle: true } : {}),
     response: errorResponse(statusCode, message, extraHeaders)
   };
 }
