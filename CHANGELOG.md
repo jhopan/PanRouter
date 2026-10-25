@@ -1,3 +1,35 @@
+# v0.5.82.3 (2026-10-22)
+
+## Perbaikan penting
+
+- **Qoder `10605` — hormati jeda dari provider.** Body-nya membungkus JSON tiga
+  tingkat, jadi tidak ada yang membaca payload aslinya. `isQueued: true` membawa
+  `retryAfterSeconds: 30`, tetapi error-nya jatuh ke backoff generik dan model
+  dikunci **120 detik** — empat kali lebih lama dari yang diminta provider.
+  `parseError` sekarang membuka envelope bersarang dan mengembalikan `429`
+  dengan jeda yang disebut provider.
+
+- **Antigravity `400 Bad request` bukan salah akun.** Google menolak payload
+  yang tidak valid **sebelum** melihat akun mana yang meminta, sehingga semua
+  akun mengembalikan `400` yang sama. Dulu `chat.js` mengunci tiap akun 30 detik
+  satu per satu. Sekarang ditandai `fatal` sehingga request langsung
+  dikembalikan tanpa memarkir pool.
+
+## Catatan
+
+- **`qoder/dfmodel_v41` belum ada di katalog upstream.** Kode sudah benar
+  (fetch katalog + force refresh); model itu memang belum dirilis Qoder untuk
+  akun tersebut. `dfmodel` biasa berjalan normal.
+- `bzl/beam` dan `bzl/glyph-cluster` adalah **combo**, bukan model BazaarLink —
+  keduanya fallback ke `antigravity/gemini-3.8-flash`.
+
+## Test
+
+- 10 test baru: pembacaan `retryAfterSeconds`, fallback 30 detik, `modelKey`
+  dari envelope terdalam, penanganan error biasa, `400` fatal di antigravity,
+  dan urutan cek di `chat.js`.
+- Suite: **2903 lulus**, 0 regresi baru.
+
 # v0.5.82.2 (2026-10-22)
 
 ## Perbaikan penting
