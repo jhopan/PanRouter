@@ -1,3 +1,37 @@
+# v0.5.82.6 (2026-10-22)
+
+## Perbaikan penting
+
+- **`dfmodel` adalah DeepSeek gratis di Qoder, bukan `dfmodel_v41`.** Diuji
+  langsung ke API OAuth dengan akun gratis:
+
+  | Model | Hasil |
+  |---|---|
+  | `dfmodel` | **200 OK** — DONE 1931 ms, IN 31 / OUT 91 |
+  | `dfmodel_v41` | **403** `code 112` + `pricingUrl` |
+
+  Spesifikasi DeepSeek-V4.1-Flash-1017 yang menjadi dasar `dfmodel_v41`
+  menggambarkan tier **IDE**, bukan tier API. Registry menampilkan
+  `dfmodel_v41` sebagai "DeepSeek-Flash (Free)" sementara model yang benar-benar
+  menjawab gratis (`dfmodel`) diberi label "DeepSeek-V4-Flash" — UI menjanjikan
+  model gratis yang ternyata meminta pembayaran.
+
+  Label ditukar di kedua region. `dfmodel_v41` tetap terdaftar untuk akun
+  berbayar dan mempertahankan jendela 200K.
+
+## Catatan
+
+- Model gratis lewat API OAuth: **`qd/dfmodel`** (intl) dan **`qdcn/dfmodel`**
+  (CN). Gunakan itu untuk DeepSeek tanpa biaya.
+- `dfmodel_v41` membutuhkan kredit; error `112` sekarang diparkir sesuai batas
+  kuota provider, bukan 120 detik.
+
+## Test
+
+- 9 test baru mengunci label gratis/berbayar kedua model di dua region,
+  jendela konteks, dan entri peta model.
+- Suite: **2920 lulus**, 0 regresi baru.
+
 # v0.5.82.5 (2026-10-22)
 
 ## Perbaikan penting
