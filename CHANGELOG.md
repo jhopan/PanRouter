@@ -1,3 +1,45 @@
+# v0.5.83.1 (2026-10-22)
+
+## Perbaikan
+
+- **Antrean yang menetap tidak lagi mengunci akun.** Setelah percobaan ulang
+  habis, `chat.js` mengembalikan `429` **tanpa** memanggil
+  `markAccountUnavailable`. Alasannya: kapasitas Qoder dibagi ke semua key, jadi
+  memutar akun akan mendapat jawaban yang sama — mengunci akun hanya
+  menyembunyikan akun sehat.
+
+## Kenapa ini antrean global, bukan antrean biasa
+
+Payload `10605` dari Qoder selalu sama:
+
+| Field | Nilai | Arti |
+|---|---|---|
+| `queueCount` | **0** | tidak ada siapa pun di depan kita |
+| `queueType` | `p3` | kelas prioritas sama untuk semua |
+| `retryAfterSeconds` | `30` | angka tetap, bukan estimasi dinamis |
+| `serviceAvailable` | **false** | layanan model sedang tidak tersedia |
+| `subCode` | `RESOURCE_LIMIT` | kapasitas sumber daya habis |
+
+`queueCount: 0` adalah buktinya: antrean sungguhan akan menunjukkan berapa
+permintaan di depan kita. Angka nol berarti **tidak ada antrean** — kapasitas
+model bersama sedang penuh.
+
+## Pengukuran
+
+Dengan satu akun (`probe-qoder-queue-scope.mjs`):
+
+| Skenario | Hasil |
+|---|---|
+| Enam model berbeda, bersamaan | **semua OK** (534–775 ms) |
+| Empat request model sama, bersamaan | **semua OK** (5,6–5,9 s) |
+
+Jadi akun tidak diserialkan dan batasnya bukan per akun.
+
+## Test
+
+- 1 test baru: `429` dikembalikan tanpa mengunci akun saat antrean menetap.
+- Suite: **2938 lulus**, 0 regresi baru.
+
 # v0.5.83.0 (2026-10-22)
 
 ## Fitur
