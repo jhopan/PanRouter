@@ -1,3 +1,39 @@
+# v0.5.82.4 (2026-10-22)
+
+## Perbaikan penting
+
+- **Qoder `dfmodel_v41` — fallback ke peta model statis.** Qoder CLI menampilkan
+  **DeepSeek-Flash (`dfmodel_v41`)**, tetapi katalog API akun belum
+  mengeksposnya, sehingga `getQoderModelConfig` mengembalikan `null` dan executor
+  menolak secara lokal:
+
+  > qoder: model_config for "dfmodel_v41" not yet known
+
+  `QODER_MODEL_MAP` sudah mengenal key tersebut, jadi saat katalog meleset
+  sekarang dipakai konfigurasi minimal (200K input / 64K output) dan request
+  tetap dikirim. Upstream yang memutuskan — error asli dari Qoder jauh lebih
+  berguna daripada penolakan lokal, dan model langsung berfungsi begitu Qoder
+  mengeksposnya.
+
+- **Antigravity `400` kini menyebut penyebabnya.** Google menjawab
+  `Bad request` dan menaruh alasan sebenarnya di
+  `error.details[].fieldViolations`. Parser hanya membaca `error.message`,
+  sehingga log tidak memberi petunjuk apa pun. Sekarang field violation ikut
+  ditampilkan.
+
+## Catatan
+
+- Katalog Qoder diambil dari `/algo/api/v2/model/list` — endpoint yang sama
+  dipakai CLI resmi. Model ber-`enable:false` tetap di-cache karena chat masih
+  menerimanya meski disembunyikan di IDE.
+- `bzl/beam` dan `bzl/glyph-cluster` adalah **combo**, bukan model BazaarLink.
+
+## Test
+
+- 7 test baru: fallback peta statis, konfigurasi minimal, penolakan key tak
+  dikenal, pembacaan `fieldViolations`, dan verifikasi endpoint katalog.
+- Suite: **2910 lulus**, 0 regresi baru.
+
 # v0.5.82.3 (2026-10-22)
 
 ## Perbaikan penting
