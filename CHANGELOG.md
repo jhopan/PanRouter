@@ -1,3 +1,32 @@
+# v0.5.82.7 (2026-10-22)
+
+## Perbaikan
+
+- **Pesan antrean Qoder tidak lagi menampilkan `model "?"`.** Payload `10605`
+  biasanya tidak memuat `modelKey`, sehingga log berbunyi:
+
+  > Qoder: model "?" is queued (admission queue) — retry in 30s
+
+  `parseError` sekarang menerima konteks `{ model, provider }` yang diteruskan
+  `chatCore` lewat `parseUpstreamError`, dan memakai nama model dari request
+  sebagai cadangan. Tanpa konteks sama sekali ditulis "this model", bukan tanda
+  tanya kosong.
+
+## Catatan
+
+- `qfmodel` kena antrean upstream (`10605`) adalah **perilaku normal**, bukan bug:
+  Qoder membatasi berapa permintaan yang boleh berjalan bersamaan per model.
+  PanRouter sekarang menunggu **30 detik** sesuai `retryAfterSeconds` yang
+  dikirim Qoder, bukan 120 detik seperti sebelumnya.
+- `dfmodel` pada request yang sama berjalan normal (DONE 5736 ms, IN 68 /
+  OUT 328) — jadi antrean itu per model, bukan per akun.
+
+## Test
+
+- 2 test baru: pemakaian nama model dari konteks request, dan jaminan tidak ada
+  tanda tanya kosong di pesan.
+- Suite: **2923 lulus**, 0 regresi baru.
+
 # v0.5.82.6 (2026-10-22)
 
 ## Perbaikan penting
