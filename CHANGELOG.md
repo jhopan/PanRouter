@@ -1,3 +1,31 @@
+# v0.5.83.4 (2026-10-22)
+
+## Perbaikan penting
+
+- **Cache blok Kiro bertahan setelah restart dan update.** Di v0.5.83.3 cache-nya
+  hanya di memori, jadi setiap restart atau pembaruan PanRouter **lupa** bahwa
+  akun sedang limit bulanan — dan mulai mengirim request lagi ke akun itu.
+
+  Sekarang mengikuti pola `CACHE_BLOCK` Antigravity: entri yang habis ditulis ke
+  KV store (`scope: kiro_cap`) dan dipulihkan saat startup dari
+  `initializeApp.js`.
+
+  | Kondisi saat load | Tindakan |
+  |---|---|
+  | Reset masih di depan | dipulihkan, akun tetap dilewati |
+  | Reset sudah lewat | dibuang + dihapus dari store |
+  | Bacaan sehat | entri dihapus |
+  | Error KV | diabaikan (fail-open) |
+
+  Jadi akun yang limit tanggal 1 tidak akan dicoba lagi hanya karena PanRouter
+  di-restart atau di-update di tengah bulan.
+
+## Test
+
+- 5 test baru: penulisan ke KV, pembersihan saat sehat, pemulihan saat startup,
+  pembuangan entri kadaluarsa, dan sifat fail-open.
+- Suite: **2966 lulus**, 0 regresi baru.
+
 # v0.5.83.3 (2026-10-22)
 
 ## Perbaikan penting
