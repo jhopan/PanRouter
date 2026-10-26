@@ -1,3 +1,53 @@
+# v0.5.84.0 (2026-10-22)
+
+## Perbaikan penting
+
+- **CodeBuddy `11140` sekarang diperlakukan sebagai BAN, bukan cooldown.**
+  Pengujian langsung ke endpoint dengan token akun sendiri menunjukkan dua gerbang
+  berbeda yang tersembunyi di balik `msg` generik yang sama:
+
+  | Kode | Pesan sebenarnya | Arti |
+  |---|---|---|
+  | `11128` | first message is not system prompt | bentuk request salah |
+  | `11140` | Your account has been restricted due to unusual activity | **akun di-ban** |
+
+  Body `11140` juga membawa `msg: "request illegal"`, sehingga aturan generik
+  menelannya dan akun hanya dikunci 30 menit — bukan diparkir. Ban yang dicoba
+  ulang tiap 12–30 menit justru adalah pola retry yang memicu ban itu.
+
+  Perubahan:
+
+  - Aturan baru `banned` + `BANNED_ACCOUNT_COOLDOWN_MS` (30 hari)
+  - Executor mengembalikan `{ banned: true }` **tanpa** `resetsAtMs`
+  - `auth.js` mengunci **seluruh akun** (`modelLock___all`), bukan satu model
+  - Pencocokan berdasarkan **kode error provider**, sehingga alias `cbai` juga
+    tertangani (aturan upstream yang berbasis nama provider melewatkan alias)
+
+- **Port upstream 9router PR #5024** (`codebuddy-block-backoff`):
+
+  ```js
+  { provider: "codebuddy-intl", text: "request illegal",          backoff: true },
+  { provider: "codebuddy-intl", text: "conversation id missing", backoff: true },
+  ```
+
+  Backoff eksponensial 2s → 4s → 8s, bukan cooldown 403 yang tetap. Ditambah
+  guard **request-scoped**: error `400` yang disebabkan request itu sendiri
+  (context overflow, body malformed) tidak lagi mendinginkan akun — dengan satu
+  koneksi saja, itu membuat setiap request berikutnya gagal dengan
+  "all 1 accounts locked" dan menyembunyikan penyebab sebenarnya.
+
+- **`open-sse/config/providerAlias.js`** memetakan alias → id dari registry,
+  sehingga aturan berbasis provider bekerja tanpa menambah coupling
+  `open-sse` → `src`.
+
+## Test
+
+- 14 test baru untuk port upstream + ban 11140 (klasifikasi, durasi,alias,
+  `displayMsg`, dan wiring `banned`).
+- 4 test lama diperbarui karena behavior yang berubah sengaja
+  (`11140` bukan lagi cooldown 12 jam; string plumbing berubah).
+- Suite: **2982 lulus**, 0 regresi baru.
+
 # v0.5.83.4 (2026-10-22)
 
 ## Perbaikan penting
