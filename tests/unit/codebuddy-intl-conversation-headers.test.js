@@ -63,3 +63,43 @@ describe("CodeBuddyIntlExecutor sends the X-Conversation-* family (#4892)", () =
     expect(a["X-Conversation-ID"]).not.toBe(b["X-Conversation-ID"]);
   });
 });
+
+// ── UUID v1, matching the official client ──────────────────────────────────
+// The CLI's conversation id is time-based: it encodes a creation timestamp and
+// a node id, so a reader can tell when the conversation opened and which
+// machine opened it. A v5/v7 content hash carries neither.
+describe("CodeBuddyIntlExecutor — v1 time-based ids", () => {
+  const exec = new CodeBuddyIntlExecutor();
+  const creds = { accessToken: "test-token" };
+  const body = { session_id: "sess-v1", messages: [{ role: "user", content: "hi" }] };
+
+  it("uses UUID version 1 for the conversation id", () => {
+    const h = exec.buildHeaders(creds, true, "u", "m", body);
+    expect(h["X-Conversation-ID"][14]).toBe("1");
+  });
+
+  it("uses UUID version 1 for the per-turn ids", () => {
+    const h = exec.buildHeaders(creds, true, "u", "m", body);
+    expect(h["X-Conversation-Message-ID"][14]).toBe("1");
+    expect(h["X-Conversation-Request-ID"][14]).toBe("1");
+    expect(h["X-Request-ID"][14]).toBe("1");
+  });
+
+  it("carries the RFC-4122 variant bits", () => {
+    const h = exec.buildHeaders(creds, true, "u", "m", body);
+    expect(h["X-Conversation-ID"][19]).toMatch(/[89ab]/);
+  });
+
+  it("pins the node id like the official client", () => {
+    const h = exec.buildHeaders(creds, true, "u", "m", body);
+    expect(h["X-Conversation-ID"].endsWith("426614174000")).toBe(true);
+    expect(h["X-Conversation-Message-ID"].endsWith("426614174000")).toBe(true);
+  });
+
+  it("keeps the conversation id stable while the per-turn id rotates", () => {
+    const a = exec.buildHeaders(creds, true, "u", "m", body);
+    const b = exec.buildHeaders(creds, true, "u", "m", body);
+    expect(a["X-Conversation-ID"]).toBe(b["X-Conversation-ID"]);
+    expect(a["X-Conversation-Message-ID"]).not.toBe(b["X-Conversation-Message-ID"]);
+  });
+});

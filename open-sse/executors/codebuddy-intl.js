@@ -21,24 +21,71 @@ import { DefaultExecutor } from "./default.js";
 const CB_IDE_VERSION = "2.170.0";
 const CB_UA = `IDE/${CB_IDE_VERSION} CodeBuddy/${CB_IDE_VERSION}`;
 
-// Deterministic RFC-4122-v5-shaped UUID derived from a session key, mirroring
-// the official client's per-conversation id (uuid5 over the session key).
-// Stable across retries of the same turn and across account failovers.
-function stableUuidFrom(key) {
-  const hash = createHash("sha1").update(String(key)).digest("hex");
-  const timeHigh = ((parseInt(hash.slice(12, 16), 16) & 0x0fff) | 0x5000)
-    .toString(16)
-    .padStart(4, "0");
-  const clockSeq = ((parseInt(hash.slice(16, 20), 16) & 0x3fff) | 0x8000)
-    .toString(16)
-    .padStart(4, "0");
+// ── UUID v1 (time-based), matching the official client ─────────────────────
+// The CLI's conversation id is a time-based UUID: it encodes a creation
+// timestamp and a node identifier, so a reader can tell "when was this
+// conversation opened" and "which machine opened it". A v5/v7 id is a content
+// hash and carries neither. Mirroring the shape costs nothing and removes one
+// thing the gateway could notice.
+const UUID_V1_NODE = "42:66:14:17:40:00"; // constant node id, as the CLI uses
+
+/** Build a time-based UUID (version 1) with a stable timestamp per seed. */
+function uuidV1(seed, nowMs = Date.now()) {
+  // 100-ns intervals since 1582-10-15.
+  const ticks = nowMs * 10000 + 0x01b21dd213814000;
+  const timeLow = ticks % 0x100000000;
+  const timeMid = Math.floor(ticks / 0x100000000) % 0x10000;
+  const timeHigh = Math.floor(ticks / 0x1000000000000) & 0x0fff;
+
+  // Deterministic clock sequence from the seed so the same conversation keeps
+  // the same id across retries and account failovers.
+  const seedHash = createHash("md5").update(String(seed)).digest("hex");
+  const clockSeq = (parseInt(seedHash.slice(0, 4), 16) & 0x3fff) | 0x8000;
+
+  const nodeHex = UUID_V1_NODE.replace(/:/g, "");
+  const hex = (n, w) => n.toString(16).padStart(w, "0");
+
   return [
-    hash.slice(0, 8),
-    hash.slice(8, 12),
-    timeHigh,
-    clockSeq,
-    hash.slice(20, 32),
+    hex(timeLow, 8),
+    hex(timeMid, 4),
+    hex((timeHigh & 0x0fff) | 0x1000, 4), // version 1
+    hex(clockSeq, 4),
+    nodeHex,
   ].join("-");
+}
+
+/**
+ * Conversation id: stable for the lifetime of a conversation, time-based like
+ * the official client.
+ *
+ * A v1 uuid encodes its creation timestamp, so the timestamp must be pinned to
+ * the moment the conversation was first seen — not "now" on every request, or
+ * the id would change on every turn and stop being a conversation id at all.
+ * The seed's hash carries that pinned timestamp.
+ */
+const conversationTimestamps = new Map();
+
+function stableConversationId(seed) {
+  const key = String(seed);
+  let pinned = conversationTimestamps.get(key);
+  if (pinned === undefined) {
+    pinned = Date.now();
+    conversationTimestamps.set(key, pinned);
+    // Bound the map: a long-lived server sees many conversations.
+    if (conversationTimestamps.size > 2000) {
+      const oldest = conversationTimestamps.keys().next().value;
+      conversationTimestamps.delete(oldest);
+    }
+  }
+  return uuidV1(key, pinned);
+}
+
+/**
+ * Per-turn id: fresh every request, like the CLI's message id. The CLI derives
+ * it from the message id, and reuses it for the request id on the same turn.
+ */
+function perTurnId() {
+  return uuidV1(randomUUID(), Date.now());
 }
 
 export class CodeBuddyIntlExecutor extends DefaultExecutor {
@@ -71,7 +118,7 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
           : "";
 
     const conversationKey = sessionKey || (userText ? `cbai:${userText}` : null);
-    const requestId = randomUUID();
+    const requestId = perTurnId();
 
     // The registry ships lowercase duplicates of two headers; sending both
     // spellings looks like a hand-rolled client. Drop the lowercase variants
@@ -80,8 +127,8 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     delete headers["x-requested-with"];
 
     headers["X-Conversation-ID"] = conversationKey
-      ? stableUuidFrom(conversationKey)
-      : randomUUID();
+      ? stableConversationId(conversationKey)
+      : perTurnId();
     headers["X-Conversation-Request-ID"] = requestId;
     // The CLI sends the same id for the request and the message on a chat turn.
     headers["X-Conversation-Message-ID"] = requestId;
