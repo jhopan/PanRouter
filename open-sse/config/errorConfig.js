@@ -43,6 +43,15 @@ export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 // Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at can be 5-6h)
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 
+// ── Banned accounts ─────────────────────────────────────────────────────────
+// A provider that explicitly bans the account ("Your account has been
+// restricted due to unusual activity" / "Submit feedback to appeal this
+// restriction") is not a temporary condition. Retrying it every few hours is
+// pointless and — worse — makes the request pattern look more automated, which
+// is the very thing the ban was issued for. Park it for 30 days; a manually
+// appealed account returns on its own long before that.
+export const BANNED_ACCOUNT_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
 // ── Free-tier quota refusals ───────────────────────────────────────────────
 // Signatures + per-provider reset windows live in config/quotaWindows.js (single
 // source of truth). `checkFallbackError` returns a calendar placeholder here;
@@ -108,6 +117,27 @@ export const ERROR_RULES = [
   // stays active and the retry succeeds after region/profile resolution.
   { text: "user is not authorized to make this call", cooldownMs: COOLDOWN.short },
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
+  // ── CodeBuddy Intl gateway blocks (upstream 9router PR #5024) ───────────
+  // 11140 is an outright BAN ("Your account has been restricted due to unusual
+  // activity" / "Submit feedback to appeal this restriction"). It arrives with
+  // msg:"request illegal" AND the restriction text in displayMsg, so the ban
+  // rules must come FIRST — otherwise the generic "request illegal" rule below
+  // swallows it and the account gets a 2s backoff instead of being parked.
+  //
+  // Retrying a banned account every few hours is pointless and makes the
+  // request pattern look more automated, which is the very thing the ban was
+  // issued for. Upstream 9router has no 11140 handling at all — this is ours.
+  { provider: "codebuddy-intl", code: 11140, banned: true },
+  { provider: "codebuddy-intl", text: "unusual activity",  banned: true },
+  { provider: "codebuddy-intl", text: "restricted due to", banned: true },
+  // The Intl gateway rejects a request with "request illegal" / "conversation
+  // id missing" when its channel verification dislikes the request shape. That
+  // is a per-request refusal, but the gateway also throttles the caller, so
+  // the connection should back off EXPONENTIALLY instead of taking the flat
+  // 403 cooldown below. Provider-scoped on purpose: the same wording from
+  // another provider stays request-scoped and must not cool the account down.
+  { provider: "codebuddy-intl", text: "request illegal",           backoff: true },
+  { provider: "codebuddy-intl", text: "conversation id missing",  backoff: true },
   { text: "request not allowed",      cooldownMs: COOLDOWN.short },
   { text: "improperly formed request", cooldownMs: COOLDOWN.long },
   { text: "rate limit",               backoff: true },

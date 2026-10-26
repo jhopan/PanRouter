@@ -90,24 +90,24 @@ describe("codebuddy-intl — CLI identity headers", () => {
 });
 
 describe("codebuddy-intl — 11140 account restriction", () => {
-  it("classifies 11140 as a long account park, not a burst cooldown", () => {
+  it("classifies 11140 as a BAN, not a timed cooldown", () => {
     const body = JSON.stringify({
       code: 11140,
       msg: "request illegal",
       displayMsg: { en: "Your account has been restricted due to unusual activity" },
     });
-    const before = Date.now();
     const parsed = exec.parseError({ status: 403 }, body);
     expect(parsed.status).toBe(403);
-    expect(parsed.accountRestricted).toBe(true);
-    // 12h window, not the usual 2-minute burst cooldown.
-    expect(parsed.resetsAtMs).toBeGreaterThan(before + 11 * 3600 * 1000);
-    expect(parsed.resetsAtMs).toBeLessThan(before + 13 * 3600 * 1000);
+    expect(parsed.banned).toBe(true);
+    // No resetsAtMs: a ban lasts until the provider lifts it, so a timer would
+    // only re-test the banned account every few hours — exactly the retry
+    // pattern the ban was issued for. auth.js parks the account for weeks.
+    expect(parsed.resetsAtMs).toBeUndefined();
   });
 
   it("detects the restriction from the message alone", () => {
     const body = JSON.stringify({ msg: "账号存在异常行为，已被限制使用" });
-    expect(exec.parseError({ status: 403 }, body).accountRestricted).toBe(true);
+    expect(exec.parseError({ status: 403 }, body).banned).toBe(true);
   });
 
   it("still classifies 6004 as a frequency limit, not a restriction", () => {
@@ -117,6 +117,7 @@ describe("codebuddy-intl — 11140 account restriction", () => {
     });
     const parsed = exec.parseError({ status: 429 }, body);
     expect(parsed.status).toBe(429);
+    expect(parsed.banned).toBeUndefined();
     expect(parsed.accountRestricted).toBeUndefined();
   });
 });

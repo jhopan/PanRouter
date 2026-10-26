@@ -35,6 +35,7 @@ describe("codebuddy-intl — 11115 prompt too long", () => {
 
   it("is not classified as an account restriction", () => {
     expect(parse(body).accountRestricted).toBeUndefined();
+    expect(parse(body).banned).toBeUndefined();
   });
 
   it("maps to 400, the real cause", () => {
@@ -69,9 +70,12 @@ describe("codebuddy-intl — 11140 wins over 11128", () => {
       msg: "request illegal",
       displayMsg: { en: "Your account has been restricted due to unusual activity" },
     });
-    expect(p.accountRestricted).toBe(true);
+    // A ban is not a timed cooldown: no resetsAtMs, and the `banned` flag makes
+    // auth.js park the WHOLE account for weeks instead of re-testing it every
+    // 12 hours (which is the retry pattern the ban was issued for).
+    expect(p.banned).toBe(true);
     expect(p.fatal).toBeUndefined();
-    expect(p.resetsAtMs).toBeGreaterThan(Date.now());
+    expect(p.resetsAtMs).toBeUndefined();
   });
 });
 
@@ -96,9 +100,10 @@ describe("error plumbing — fatal survives the round trip", () => {
   const errorUtil = read("../open-sse/utils/error.js");
   const chatCore = read("../open-sse/handlers/chatCore.js");
 
-  it("parseUpstreamError forwards fatal and accountRestricted", () => {
+  it("parseUpstreamError forwards fatal, accountRestricted and banned", () => {
     expect(errorUtil).toContain("fatal: parsed.fatal === true");
     expect(errorUtil).toContain("accountRestricted: parsed.accountRestricted === true");
+    expect(errorUtil).toContain("banned: parsed.banned === true");
   });
 
   it("createErrorResult accepts and propagates the flags", () => {
@@ -107,6 +112,6 @@ describe("error plumbing — fatal survives the round trip", () => {
   });
 
   it("chatCore passes the flags through", () => {
-    expect(chatCore).toMatch(/\{ fatal, accountRestricted(, queueThrottle)? \}/);
+    expect(chatCore).toMatch(/\{ fatal, accountRestricted, queueThrottle, banned \}/);
   });
 });

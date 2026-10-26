@@ -1,4 +1,5 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, dailyQuotaCooldownMs } from "../config/errorConfig.js";
+import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, dailyQuotaCooldownMs, BANNED_ACCOUNT_COOLDOWN_MS } from "../config/errorConfig.js";
+import { resolveProviderIdFromRegistry } from "../config/providerAlias.js";
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -26,9 +27,63 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
     : "";
 
+  // Upstream rules may key on the provider error CODE (11140) as well as the
+  // text. The body arrives as a JSON string, so the code has to be dug out.
+  const errorCode = (() => {
+    if (!errorText) return null;
+    if (typeof errorText === "object" && errorText !== null) {
+      const c = errorText.code ?? errorText.error?.code;
+      return c === undefined || c === null ? null : Number(c);
+    }
+    try {
+      const parsed = JSON.parse(String(errorText));
+      const c = parsed?.code ?? parsed?.error?.code;
+      return c === undefined || c === null ? null : Number(c);
+    } catch {
+      const m = String(errorText).match(/"code"\s*:\s*"?(\d{3,6})"?/);
+      return m ? Number(m[1]) : null;
+    }
+  })();
+
   for (const rule of ERROR_RULES) {
+    // Provider-scoped rules only apply to their provider. The alias must be
+    // resolved first: requests arrive as "cbai" while the rule says
+    // "codebuddy-intl" (upstream 9router PR #5024 does the same).
+    if (rule.provider) {
+      if (!provider) continue;
+      const canonical = resolveProviderIdFromRegistry(provider);
+      if (rule.provider !== provider && rule.provider !== canonical) continue;
+    }
+    // Code-based rule: match the provider error code exactly.
+    if (rule.code !== undefined) {
+      if (errorCode === null || errorCode !== rule.code) continue;
+      if (rule.banned) {
+        return {
+          shouldFallback: true,
+          cooldownMs: BANNED_ACCOUNT_COOLDOWN_MS,
+          newBackoffLevel: 0,
+          banned: true,
+        };
+      }
+      if (rule.backoff) {
+        const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
+        return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
+      }
+      return { shouldFallback: true, cooldownMs: rule.cooldownMs };
+    }
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
+      // Banned account (CodeBuddy 11140): park it for weeks. A banned account
+      // that is retried every few hours looks exactly like the automation the
+      // ban was issued for.
+      if (rule.banned) {
+        return {
+          shouldFallback: true,
+          cooldownMs: BANNED_ACCOUNT_COOLDOWN_MS,
+          newBackoffLevel: 0,
+          banned: true,
+        };
+      }
       // Daily free-tier quota: park the model until the provider's quota day
       // rolls over. Auto-recovers — no manual re-enable, no retry storm.
       if (rule.dailyQuota) {
@@ -54,6 +109,20 @@ export function checkFallbackError(status, errorText, backoffLevel = 0, provider
       }
       return { shouldFallback: true, cooldownMs: rule.cooldownMs };
     }
+  }
+
+  // Request-scoped client errors that matched no rule above: a 400 caused by the
+  // request itself (context overflow, malformed body, unsupported parameter) says
+  // nothing about the credential, so cooling the account down only removes a
+  // healthy connection from rotation. With a single connection it is worse: every
+  // later request in the window fails with a copy of this very error
+  // ("all 1 accounts locked for <model> | lastError=[400]: ..."), which hides the
+  // real cause from the caller and makes unrelated sessions look like they hit the
+  // same limit. Hand the upstream error back for this request instead.
+  // Account-scoped statuses keep their rules above (401/402/403/404/429), and the
+  // text rules still win for rate-limit / quota / capacity wording.
+  if (status >= 400 && status < 500 && status !== 401 && status !== 402 && status !== 403 && status !== 429) {
+    return { shouldFallback: false, cooldownMs: 0, requestScoped: true };
   }
 
   // Default: transient cooldown for any unmatched error

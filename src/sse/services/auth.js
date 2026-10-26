@@ -360,7 +360,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const quotaExhausted = isQuotaExhaustedError(errorText) || !!thResetAtMs;
 
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
-  let shouldFallback, cooldownMs, newBackoffLevel;
+  let shouldFallback, cooldownMs, newBackoffLevel, banned = false;
   const preciseResetAtMs = githubResetAtMs || thResetAtMs;
   if (preciseResetAtMs) {
     shouldFallback = true;
@@ -383,7 +383,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     cooldownMs = Math.min(resetsAtMs - Date.now(), ceiling);
     newBackoffLevel = 0;
   } else {
-    ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel, provider));
+    ({ shouldFallback, cooldownMs, newBackoffLevel, banned } = checkFallbackError(status, errorText, backoffLevel, provider));
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
@@ -407,9 +407,10 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
-  // Account-level lock for caps that refuse EVERY model on the account
-  // (github monthly, kiro monthly). Model-level lock otherwise.
-  const lockUpdate = buildModelLockUpdate((githubResetAtMs || kiroMonthly) ? null : model, cooldownMs);
+  // Account-level lock for conditions that refuse EVERY model on the account:
+  // github monthly, kiro monthly, and a provider BAN (CodeBuddy 11140).
+  // Model-level lock otherwise.
+  const lockUpdate = buildModelLockUpdate((githubResetAtMs || kiroMonthly || banned) ? null : model, cooldownMs);
 
   await updateProviderConnection(connectionId, {
     ...lockUpdate,

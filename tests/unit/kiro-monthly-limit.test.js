@@ -64,7 +64,7 @@ describe("account-level lock for account-wide caps", () => {
     // MONTHLY_REQUEST_COUNT refuses every model on the account; a model-level
     // lock let the router retry the same capped account on the next model.
     expect(auth).toContain("kiroMonthly");
-    expect(auth).toMatch(/githubResetAtMs \|\| kiroMonthly\) \? null : model/);
+    expect(auth).toMatch(/githubResetAtMs \|\| kiroMonthly \|\| banned\) \? null : model/);
   });
 
   it("only triggers for kiro with the monthly signature", () => {

@@ -82,6 +82,9 @@ export async function parseUpstreamError(response, executor = null, context = nu
           // Provider admission queue (e.g. Qoder 10605): the model is busy, the
           // account is fine. The caller waits and retries instead of locking.
           queueThrottle: parsed.queueThrottle === true,
+          // Explicit provider ban (CodeBuddy 11140). Not a timed cooldown: the
+          // account must be parked for weeks, not re-tested every few hours.
+          banned: parsed.banned === true,
         };
       }
     } catch { /* fall through to default parsing */ }
@@ -107,8 +110,9 @@ export async function parseUpstreamError(response, executor = null, context = nu
  * @param {string} message - Error message
  * @param {number} [resetsAtMs] - Optional precise cooldown expiry (ms epoch) for provider-specific quota errors
  * @param {Headers|null} [extraHeaders]
- * @param {{fatal?: boolean, accountRestricted?: boolean, queueThrottle?: boolean}} [flags] - `fatal` marks a
- *   request-level rejection that must not lock or rotate accounts.
+ * @param {{fatal?: boolean, accountRestricted?: boolean, queueThrottle?: boolean, banned?: boolean}} [flags] -
+ *   `fatal` marks a request-level rejection that must not lock or rotate accounts;
+ *   `banned` marks an account the provider has blocked outright.
  * @returns {{ success: false, status: number, error: string, response: Response, resetsAtMs?: number }}
  */
 export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders = null, flags = null) {
@@ -120,6 +124,7 @@ export function createErrorResult(statusCode, message, resetsAtMs, extraHeaders 
     ...(flags?.fatal ? { fatal: true } : {}),
     ...(flags?.accountRestricted ? { accountRestricted: true } : {}),
     ...(flags?.queueThrottle ? { queueThrottle: true } : {}),
+    ...(flags?.banned ? { banned: true } : {}),
     response: errorResponse(statusCode, message, extraHeaders)
   };
 }

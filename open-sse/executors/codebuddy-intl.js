@@ -183,18 +183,22 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
         const data = JSON.parse(bodyText);
         const msg = data?.msg || data?.message || data?.error?.message || "";
 
-        // 11140: the ACCOUNT is flagged ("restricted due to unusual activity").
+        // 11140: the ACCOUNT is BANNED ("Your account has been restricted due to
+        // unusual activity" / "Submit feedback to appeal this restriction").
         // Checked FIRST: the body also carries msg:"request illegal", so the
         // 11128 branch below would swallow it and lose the account-level
         // classification.
+        //
+        // No resetsAtMs on purpose. A ban is not a timed cooldown — it lasts
+        // until the provider lifts it, so a 12h timer would just re-test the
+        // banned account every 12 hours, which is exactly the retry pattern
+        // that looks like automation. The `banned` flag makes auth.js park the
+        // whole account for weeks instead.
         if (data?.code === 11140 || /unusual activity|账号存在异常行为|帳號存在異常行為/i.test(JSON.stringify(data))) {
           return {
             status: 403,
             message: msg || "CodeBuddy account restricted (11140) — unusual activity",
-            // 12h: long enough to stop hammering, short enough that a manually
-            // appealed account comes back on its own the same day.
-            resetsAtMs: Date.now() + 12 * 60 * 60 * 1000,
-            accountRestricted: true,
+            banned: true,
           };
         }
 

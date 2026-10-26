@@ -102,6 +102,6 @@ describe("error plumbing — queueThrottle survives the round trip", () => {
   });
 
   it("chatCore passes it through", () => {
-    expect(chatCore).toContain("{ fatal, accountRestricted, queueThrottle }");
+    expect(chatCore).toMatch(/\{ fatal, accountRestricted, queueThrottle(, banned)? \}/);
   });
 });
