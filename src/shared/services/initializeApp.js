@@ -125,6 +125,13 @@ async function runHeavyStartup() {
     .then(({ loadPersistedAntigravityQuota }) => loadPersistedAntigravityQuota())
     .catch((e) => console.log("[AG_QUOTA] restore failed (non-fatal):", e.message));
 
+  // Restore persisted Kiro monthly caps for the same reason: a cap that lasts
+  // until the 1st of next month must not be forgotten by a restart.
+  import("open-sse/services/kiroCapCache.js")
+    .then(({ loadPersistedKiroCaps }) => loadPersistedKiroCaps())
+    .then((n) => { if (n > 0) console.log(`[KIRO_QUOTA] restored ${n} monthly cap(s)`); })
+    .catch((e) => console.log("[KIRO_QUOTA] restore failed (non-fatal):", e.message));
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")

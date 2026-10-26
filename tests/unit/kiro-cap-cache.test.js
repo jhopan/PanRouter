@@ -19,6 +19,7 @@ import {
   clearKiroCap,
   resetKiroCapCache,
   getKiroCapCache,
+  loadPersistedKiroCaps,
 } from "../../open-sse/services/kiroCapCache.js";
 
 const read = (rel) => fs.readFileSync(path.resolve(rel), "utf8");
@@ -106,5 +107,34 @@ describe("wiring", () => {
     expect(filterStart).toBeGreaterThan(-1);
     expect(cacheIdx).toBeGreaterThan(filterStart);
     expect(cacheIdx).toBeGreaterThan(lockIdx);
+  });
+});
+
+describe("persistence — a monthly cap survives a restart", () => {
+  const mod = read("../open-sse/services/kiroCapCache.js");
+  const init = read("../src/shared/services/initializeApp.js");
+
+  it("writes exhausted entries to the KV store", () => {
+    expect(mod).toContain('makeKv("kiro_cap")');
+    expect(mod).toMatch(/kv\.set\(connectionId/);
+  });
+
+  it("clears the KV entry when the account is healthy again", () => {
+    expect(mod).toMatch(/kv\.remove\(connectionId\)/);
+  });
+
+  it("restores persisted caps at startup", () => {
+    expect(mod).toContain("loadPersistedKiroCaps");
+    expect(init).toContain("loadPersistedKiroCaps()");
+  });
+
+  it("drops a cap whose reset already passed on load", () => {
+    // A month could roll over while the server is down; a dead cap must not block.
+    expect(mod).toMatch(/until <= now/);
+    expect(mod).toMatch(/capCache\.delete|kv\.remove\(connectionId\)\.catch/);
+  });
+
+  it("is fail-open — a KV error never breaks the request path", () => {
+    expect(mod).toMatch(/catch \{ \/\* fail-open \*\/ \}/);
   });
 });

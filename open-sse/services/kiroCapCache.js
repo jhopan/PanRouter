@@ -15,9 +15,18 @@
  * So we remember that reading per connection and skip the account BEFORE the
  * request goes out. Same idea as the Antigravity bucket cache.
  *
+ * A cap that lasts until next month is useless if it disappears on restart, so
+ * an exhausted entry is persisted to the KV store (same as Antigravity's
+ * CACHE_BLOCK) and restored at startup. Entries whose reset has already passed
+ * are dropped on load.
+ *
  * The cache is advisory: a missing/expired/stale entry simply means "no opinion"
  * and the account stays eligible. We never block on a guess.
  */
+
+import { makeKv } from "@/lib/db/helpers/kvStore";
+
+const kv = makeKv("kiro_cap");
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -29,9 +38,63 @@ export function getKiroCapCache() {
   return capCache;
 }
 
+/**
+ * Write an exhausted entry to the KV store so it survives restarts and updates.
+ * A healthy reading removes the entry instead. Fail-open: a KV error must never
+ * touch the request path.
+ */
+async function persistEntry(connectionId, entry) {
+  try {
+    if (entry?.exhausted && entry.cappedUntil) {
+      await kv.set(connectionId, {
+        exhausted: true,
+        cappedUntil: entry.cappedUntil,
+        resetAt: entry.resetAt,
+        source: entry.source,
+      });
+    } else {
+      await kv.remove(connectionId);
+    }
+  } catch { /* fail-open */ }
+}
+
+/**
+ * Restore persisted caps at startup. Entries whose reset already passed are
+ * dropped (and removed from the store), so a long-dead cap never blocks.
+ * @returns {Promise<number>} how many caps were restored
+ */
+export async function loadPersistedKiroCaps(now = Date.now()) {
+  try {
+    const all = await kv.getAll();
+    let restored = 0;
+    for (const [connectionId, entry] of Object.entries(all || {})) {
+      if (!entry || typeof entry !== "object") continue;
+      const until = Number(entry.cappedUntil) || 0;
+      if (!entry.exhausted || until <= now) {
+        // Stale: the month rolled over while the server was down.
+        await kv.remove(connectionId).catch(() => {});
+        continue;
+      }
+      capCache.set(connectionId, {
+        exhausted: true,
+        cappedUntil: until,
+        resetAt: Number(entry.resetAt) || until,
+        checkedAt: now,
+        source: entry.source || "persisted",
+      });
+      restored += 1;
+    }
+    return restored;
+  } catch {
+    return 0; // fail-open: no persisted caps is the same as none
+  }
+}
+
 /** Forget one connection (after a successful request, or a token change). */
 export function clearKiroCap(connectionId) {
-  if (connectionId) capCache.delete(connectionId);
+  if (!connectionId) return;
+  capCache.delete(connectionId);
+  kv.remove(connectionId).catch(() => {});
 }
 
 /** Forget everything (tests / settings change). */
@@ -82,6 +145,8 @@ export function recordKiroUsage(connectionId, usage, now = Date.now()) {
     checkedAt: now,
     source: "usage",
   });
+  // Persist so the cap survives a restart; a healthy reading clears the entry.
+  persistEntry(connectionId, capCache.get(connectionId));
 }
 
 /**
@@ -130,4 +195,5 @@ export function markKiroCapped(connectionId, resetAtMs = null, now = Date.now())
     checkedAt: now,
     source: resetAtMs ? "usage" : "calendar",
   });
+  persistEntry(connectionId, capCache.get(connectionId));
 }
