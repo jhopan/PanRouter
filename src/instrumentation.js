@@ -1,5 +1,11 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Install the process-level safety net FIRST: a dropped client socket
+    // (Node's `abortIncoming`) otherwise kills the whole server, and the CLI
+    // restarts it and prints the stderr tail as a "crash log".
+    const { installProcessGuards } = await import("@/lib/processGuards");
+    installProcessGuards();
+
     const { initConsoleLogCapture } = await import("@/lib/consoleLogBuffer");
     initConsoleLogCapture();
 
