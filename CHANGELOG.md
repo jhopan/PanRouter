@@ -1,3 +1,44 @@
+# v0.5.84.1 (2026-10-22)
+
+## Perbaikan
+
+- **ID percakapan CodeBuddy sekarang UUID v1 (time-based), sama seperti CLI
+  resmi.** CLI membuat id percakapan sebagai UUID v1: id itu meng-*encode*
+  timestamp pembuatan dan node id, sehingga pembaca bisa tahu **kapan**
+  percakapan dibuka dan **mesin mana** yang membukanya. UUID v5/v7 (content hash)
+  tidak membawa informasi itu.
+
+  Contoh yang gegeben operator persis format itu:
+
+  ```
+  6ba7b810-9dad-11d3-a456-426614174000
+  version 1 · timestamp 1999-11-18 · node 42:66:14:17:40:00
+  ```
+
+  Perubahan:
+
+  - `uuidV1()` membangun UUID versi 1 yang benar: `ticks = unixMs * 10000 +
+    0x01b21dd213814000`, nibble versi `1`, bit varian RFC-4122, node id konstan
+  - `X-Conversation-ID` **dipin** ke saat percakapan pertama terlihat (di-cache
+    per seed). Tanpa pin, timestamp v1 berubah tiap giliran — jadi id itu
+    bukan lagi id percakapan
+  - `X-Conversation-Message-ID` / `-Request-ID` / `X-Request-ID` adalah id v1
+    baru tiap giliran, dengan `request-id == message-id` seperti CLI
+
+  Pola CLI terverifikasi dari bundle yang terpasang:
+
+  ```js
+  CONVERSATION_ID         = el.id               // stabil per percakapan
+  CONVERSATION_MESSAGE_ID = randomUUID()        // baru tiap giliran
+  CONVERSATION_REQUEST_ID = CONVERSATION_MESSAGE_ID
+  ```
+
+## Test
+
+- 5 test baru: versi UUID 1 untuk conversation-id dan per-turn id, bit varian
+  RFC-4122, node id tetap, dan stabilitas conversation-id vs rotasi per-turn id.
+- Suite: **2987 lulus**, 0 regresi baru.
+
 # v0.5.84.0 (2026-10-22)
 
 ## Perbaikan penting
