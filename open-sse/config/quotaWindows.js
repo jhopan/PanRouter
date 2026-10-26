@@ -214,6 +214,16 @@ export function isQuotaExhaustedError(errorText) {
     return true;
   }
 
+  // Kiro monthly cap: {"message":"You have reached the limit.",
+  // "reason":"MONTHLY_REQUEST_COUNT"}. No "quota" keyword, so it fell through to
+  // the generic 402 cooldown (120s) and the router retried a monthly-capped
+  // account every two minutes for the rest of the month. Kiro declares scope
+  // MONTHLY and its usage API reports `nextDateReset`, so classifying it as
+  // quota-class lets auth.js read the real reset instead of guessing.
+  if (/monthly_request_count/.test(lower) || /you have reached the limit/i.test(lower)) {
+    return true;
+  }
+
   return QUOTA_EXHAUSTED_SIGNALS.some((sig) => lower.includes(sig));
 }
 

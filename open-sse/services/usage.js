@@ -9,6 +9,7 @@ import { getCodexUsage, consumeCodexRateLimitResetCredit, getCodexRateLimitReset
 
 export { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits, consumeClaudeResetGrant };
 import { getKiroUsage } from "./usage/kiro.js";
+import { recordKiroUsage } from "./kiroCapCache.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getMiniMaxCodeUsage } from "./minimaxCodeUsage.js";
 import { getCursorUsage } from "./usage/cursor.js";
@@ -92,7 +93,7 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
 
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
-  return await handler({
+  const result = await handler({
     provider,
     accessToken,
     apiKey,
@@ -101,4 +102,13 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
     proxyOptions,
     force: options.force === true,
   });
+
+  // Feed the Kiro cap cache from the same reading the quota tracker shows, so a
+  // capped account is skipped BEFORE a request goes upstream instead of being
+  // discovered via 402 on every model.
+  if (provider === "kiro" && connection.id && result && !result.error) {
+    try { recordKiroUsage(connection.id, result); } catch { /* advisory only */ }
+  }
+
+  return result;
 }

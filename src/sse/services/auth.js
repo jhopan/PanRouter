@@ -6,6 +6,7 @@ import { isQuotaExhaustedError, resolveQuotaResetAt } from "open-sse/services/qu
 import { quotaWindowFor } from "open-sse/config/quotaWindows.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, antigravityFamilyKey } from "./antigravityQuota.js";
+import { shouldSkipKiroAccount, markKiroCapped, recordKiroUsage } from "open-sse/services/kiroCapCache.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -141,11 +142,22 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Antigravity quota cache is lazy: only populated after that account returns 409/429.
     const isAntigravity = providerId === "antigravity";
     const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
+    // Kiro monthly cap: the usage API already reports used/total/nextDateReset, so
+    // an account that is capped can be skipped BEFORE the request goes upstream
+    // instead of discovering it via 402 on every model.
+    const isKiro = providerId === "kiro";
 
     // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      if (isKiro) {
+        const verdict = shouldSkipKiroAccount(c.id);
+        if (verdict.skip) {
+          log.debug("KIRO_QUOTA", `${c.id?.slice(0, 8) || "unknown"} | monthly cap reached — skip upstream until ${new Date(verdict.until).toISOString()}`);
+          return false;
+        }
+      }
       // Antigravity: family-only routing. Plus/free accounts share ONE weekly
       // limit per family (gemini_weekly / claude_gpt_weekly); the per-model rows
       // on Plus just mirror that weekly bucket — only Pro/Ultra add a real 5h
@@ -334,6 +346,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // TokenHarbor free allowance: exact reset timestamp parsed out of the 429 body.
   const thResetAtMs = tokenharborResetMs(status, errorText, provider);
 
+  // Kiro's MONTHLY_REQUEST_COUNT is an ACCOUNT-wide monthly cap: every model on
+  // that account is refused, not just the one that happened to trigger it.
+  // Locking only `modelLock_<model>` let the router try the same capped account
+  // again on the next model, one 120s lock at a time. Use the account-level lock
+  // (`modelLock___all`) so the account is skipped entirely until it resets.
+  const kiroMonthly = resolveProviderId(provider) === "kiro"
+    && (Number(status) === 402 || Number(status) === 429)
+    && /monthly_request_count|you have reached the limit/i.test(String(errorText || ""));
+
   // Free-tier quota refusal (daily/weekly/monthly/session)? Decided up front
   // because it changes how a provider-supplied timestamp is bounded below.
   const quotaExhausted = isQuotaExhaustedError(errorText) || !!thResetAtMs;
@@ -379,8 +400,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     quotaResetSource = resolved.source;
   }
 
+  // Remember the Kiro monthly cap so later requests skip this account before
+  // going upstream instead of re-discovering it with a 402 on every model.
+  if (kiroMonthly) {
+    markKiroCapped(connectionId, resetsAtMs || (Date.now() + cooldownMs));
+  }
+
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
-  const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
+  // Account-level lock for caps that refuse EVERY model on the account
+  // (github monthly, kiro monthly). Model-level lock otherwise.
+  const lockUpdate = buildModelLockUpdate((githubResetAtMs || kiroMonthly) ? null : model, cooldownMs);
 
   await updateProviderConnection(connectionId, {
     ...lockUpdate,
