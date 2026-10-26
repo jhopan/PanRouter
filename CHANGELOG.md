@@ -1,3 +1,48 @@
+# v0.5.83.3 (2026-10-22)
+
+## Perbaikan penting
+
+- **Kiro: akun yang limit bulanan di-skip SEBELUM request dikirim.** Sebelumnya
+  PanRouter baru tahu setelah mendapat `402`:
+
+  ```
+  [AUTH] Adelia locked modelLock_claude-sonnet-4.5-thinking-agentic for 120s [402]
+  ❌ kiro [402]: {"message":"You have reached the limit.","reason":"MONTHLY_REQUEST_COUNT"}
+  ```
+
+  Dua bug sekaligus:
+
+  1. **Sinyalnya tidak dikenali.** Body-nya tidak memuat kata "quota", jadi
+     `isQuotaExhaustedError` mengembalikan `false` dan error jatuh ke cooldown
+     generik **120 detik**. Router mencoba lagi akun yang sudah habis sebulan
+     setiap dua menit.
+
+  2. **Kuncinya per model, padahal limitnya seluruh akun.**
+     `MONTHLY_REQUEST_COUNT` menolak **semua** model di akun itu, tapi yang
+     dikunci hanya `modelLock_<model>`. Akibatnya akun yang sama dicoba lagi
+     untuk model berikutnya, satu per satu.
+
+  Perbaikan:
+
+  - `MONTHLY_REQUEST_COUNT` dan "You have reached the limit." sekarang masuk
+    kelas kuota, sehingga `auth.js` membaca reset asli dari usage API Kiro
+    (`nextDateReset`); cadangan kalender adalah tanggal 1 bulan berikutnya
+    dengan batas 40 hari.
+  - Kunci menjadi **tingkat akun** (`modelLock___all`), sama seperti limit
+    bulanan GitHub.
+  - `open-sse/services/kiroCapCache.js` menyimpan bacaan quota tracker
+    (`used`/`total`/`resetAt`) per koneksi, dan `auth.js` melewati akun itu
+    **di dalam filter akun tersedia** — jadi akun yang limit tidak pernah
+    mencapai upstream sama sekali. Bersifat advisory dengan TTL 5 menit: tanpa
+    bacaan, akun tetap dianggap layak.
+
+## Test
+
+- 21 test baru: klasifikasi `MONTHLY_REQUEST_COUNT`, kunci tingkat akun, skip
+  sebelum request, TTL kadaluarsa, reset yang sudah lewat, dan akun tanpa
+  bacaan tetap dipakai.
+- Suite: **2963 lulus**, 0 regresi baru.
+
 # v0.5.83.2 (2026-10-22)
 
 ## Perbaikan penting
