@@ -1,3 +1,52 @@
+# v0.5.83.2 (2026-10-22)
+
+## Perbaikan penting
+
+- **Koneksi klien yang terputus tidak lagi mematikan server.** Log crash:
+
+  ```
+  Error: aborted
+      at abortIncoming (node:_http_server:796:17)
+      at socketOnClose (node:_http_server:790:3)
+  ```
+
+  `abortIncoming` adalah jalur internal Node untuk *"klien menutup socket saat
+  request masih berjalan"*. Browser melakukan ini terus-menerus: pindah
+  halaman, tutup tab, `fetch` dibatalkan, stream SSE dihentikan. Itu lalu lintas
+  normal, bukan kerusakan router.
+
+  Server **tidak punya handler tingkat proses sama sekali**, sehingga satu
+  koneksi terputus menjadi *unhandled rejection*, mematikan proses, lalu CLI
+  me-restart dan mencetak seluruh stderr sebagai "crash log".
+
+  `src/lib/processGuards.js` memasang penjaga `uncaughtException` dan
+  `unhandledRejection` dari `instrumentation.js` (hanya runtime `nodejs`):
+
+  - error socket/abort yang wajar dicatat **sekali** (dedupe 60 detik) lalu
+    diabaikan
+  - error lain tetap dicatat beserta stack-nya, dan proses **tetap hidup**
+
+  Sengaja fail-open: mematikan semua request yang sedang berjalan karena satu
+  kegagalan jauh lebih buruk daripada mencatatnya.
+
+## Verifikasi
+
+`scripts/verify-process-guards.mjs` menguji end-to-end dengan stack asli dari log:
+
+| Pemeriksaan | Hasil |
+|---|---|
+| Stack `abortIncoming` dikenali sebagai disconnect | ✅ |
+| Peringatan dicatat tepat sekali | ✅ |
+| Bug asli tetap dilaporkan | ✅ |
+| Proses bertahan | ✅ PASS |
+
+## Test
+
+- 7 test baru: handler terpasang, hanya di runtime `nodejs`, tidak pernah
+  `throw`, dan pengenalan `abortIncoming`/`ECONNRESET`/`EPIPE`/
+  `ERR_STREAM_PREMATURE_CLOSE`.
+- Suite: **2935 lulus**, 0 regresi baru.
+
 # v0.5.83.1 (2026-10-22)
 
 ## Perbaikan
