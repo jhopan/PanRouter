@@ -1,3 +1,55 @@
+# v0.5.86.0 (2026-10-27)
+
+## Perbaikan penting
+
+- **MiniMax Code: akun yang plan-nya habis diparkir 24 jam, dan di-skip
+  sebelum request dikirim.**
+
+  ```
+  [AUTH] Account 1 locked modelLock_MiniMax-M3.1-Flash for 300s [429]
+  minimax-code-global [429]: {"type":"error","error":{"type":"rate_limit_error",
+    "message":"usage limit reached: insufficient balance (1008)"}}
+  ```
+
+  Dua bug:
+
+  1. **"insufficient balance" tidak dikenali sebagai penolakan kuota**, sehingga
+     jatuh ke backoff 429 generik — **300 detik flat**. Padahal plan window-nya
+     **punya reset time** (tracker melaporkan persentase sisa dan `end_time`),
+     tapi PanRouter baru tahu dari 429, jadi akun di-probe ulang tiap 5 menit dan
+     tiap probe memakai request sungguhan.
+
+  2. **Guard frequency-limit jalan lebih dulu** dan mencocokkan "usage limit
+     reached" sebagai burst throttle, jadi penolakan plan tidak pernah sampai ke
+     jalur kuota.
+
+  Perubahan:
+
+  - `"insufficient balance"` adalah penolakan kuota; `"usage limit reached"`
+    polos tetap di jalur burst (bisa jadi throttle biasa)
+  - Aturan baru khusus `minimax-code` / `minimax-code-global`: **blok 24 jam
+    flat**. Plan yang habis di tengah percakapan 470 ribu token tidak layak
+    dicoba lagi dalam beberapa jam
+  - `auth.js` tidak lagi membiarkan resolver kuota menimpa blok 24 jam dengan
+    reset time dari tracker (plan window bisa melaporkan reset hanya dua jam
+    lagi)
+  - `open-sse/services/minimaxCapCache.js` mengingat bacaan tracker per
+    koneksi, jadi akun habis **dilewati sebelum request dikirim**. Bacaan
+    terbaru melepaskannya begitu plan terisi ulang, tanpa menunggu blok habis
+
+## Catatan
+
+- `unit/error-rules-daily-quota.test.js` sensitif waktu — test itu mengasumsikan cooldown
+  harian mendarat di 00:00 UTC dan gagal kalau suite dijalankan beberapa menit
+  terakhir sebelum tengah malam UTC. Sudah diverifikasi pre-existing (gagal
+  sama dengan perubahan ini di-stash).
+
+## Test
+
+- 20 test baru: klasifikasi, blok 24 jam, kedua provider, provider lain tidak
+  terpengaruh, cache skip, TTL, dan pelepasan oleh bacaan terbaru.
+- Suite: **3034 lulus**, 0 regresi baru.
+
 # v0.5.85.0 (2026-10-22)
 
 ## Fitur
