@@ -54,20 +54,31 @@ describe("qoder — queue throttle is not an account fault", () => {
   });
 });
 
-describe("chat.js — a queued request is skipped, not retried", () => {
+describe("chat.js — a queued request waits and retries the SAME account", () => {
   const chat = read("../src/sse/handlers/chat.js");
 
   // The capacity is provider-wide (queueCount:0, serviceAvailable:false) and
-  // the official CLI shows the same queue ("Model request queued (34s)"), so a
-  // retry only burns a request for the same answer.
-  it("skips the queued request", () => {
+  // the model is FREE but busy: this is a queue, not an error. Rotating would
+  // take the same queue on every other account and only burn their quota, so the
+  // request waits and retries the same account.
+  it("retries the queued request", () => {
     expect(chat).toContain("result.queueThrottle");
-    expect(chat).toMatch(/skipping without retrying or rotating/);
+    expect(chat).toMatch(/waiting .* and retrying the same account/);
   });
 
-  it("does not retry the queued request", () => {
-    expect(chat).not.toMatch(/queued upstream — waiting/);
-    expect(chat).not.toMatch(/QUEUE_MAX_RETRIES/);
+  it("waits the provider's own retryAfterSeconds", () => {
+    expect(chat).toContain("QUEUE_MAX_RETRIES");
+    expect(chat).toContain("QUEUE_MAX_WAIT_MS");
+    expect(chat).toMatch(/resetsAtMs \|\| 0\) - Date\.now\(\)/);
+  });
+
+  it("does not rotate to another account while queued", () => {
+    // The retry must happen BEFORE the account is excluded, so the same one
+    // is picked again.
+    const queueIdx = chat.indexOf("if (result.queueThrottle) {");
+    const excludeIdx = chat.indexOf("excludeConnectionIds.add(credentials.connectionId)");
+    expect(queueIdx).toBeGreaterThan(-1);
+    expect(queueIdx).toBeLessThan(excludeIdx);
   });
 
   it("returns before markAccountUnavailable, so no account is locked", () => {
@@ -77,9 +88,10 @@ describe("chat.js — a queued request is skipped, not retried", () => {
     expect(queueIdx).toBeLessThan(markIdx);
   });
 
-  it("reports the queue window to the client", () => {
+  it("reports the queue window to the client when it finally gives up", () => {
     expect(chat).toMatch(/HTTP_STATUS\.RATE_LIMITED/);
     expect(chat).toMatch(/queued, retry in/);
+    expect(chat).toMatch(/giving up without locking the account/);
   });
 });
 

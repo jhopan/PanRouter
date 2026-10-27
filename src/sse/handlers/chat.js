@@ -263,6 +263,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let sameAccountRetries = 0;
   let consecutiveBans = 0;
 
+  // Admission queue: the model is free but momentarily busy for EVERY key on the
+  // provider. Waiting and retrying the SAME account is the only thing that can
+  // work — rotating would just take the same queue on every other account.
+  const QUEUE_MAX_RETRIES = 2;
+  const QUEUE_MAX_WAIT_MS = 45_000;
+  let queueRetries = 0;
+
   // Cold-cache trim: CodeBuddy's prompt cache belongs to the ACCOUNT. When the
   // request lands on a different account than the previous turn, that account
   // has no cache for this conversation and the whole history is uploaded
@@ -433,16 +440,26 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Admission queue (Qoder 10605 isQueued, serviceAvailable:false,
     // queueCount:0): the capacity is shared by EVERY key on the provider, so
-    // there is nothing to rotate to and nothing to wait for on our side —
-    // the official CLI shows the same queue ("Model request queued (34s)").
+    // the model is free but busy — this is a QUEUE, not an error. The official
+    // CLI shows the same thing ("Model request queued (34s)") and succeeds once
+    // the queue drains.
     //
-    // Retrying here only burns requests: the answer is the same for every
-    // account, and the wait would delay the client for no gain. So the request
-    // is reported as queued and the account is left untouched (no lock, no
-    // rotation) so it stays available for the next, non-queued request.
+    // So the right move is to WAIT and retry the SAME account. Rotating would
+    // hit the same queue on every other account and only burn their quota, and
+    // locking the account would hide a healthy one. The wait is the provider's
+    // own retryAfterSeconds (30s).
     if (result.queueThrottle) {
+      if (queueRetries < QUEUE_MAX_RETRIES) {
+        queueRetries += 1;
+        const waitMs = Math.max(1000, Math.min((result.resetsAtMs || 0) - Date.now(), QUEUE_MAX_WAIT_MS));
+        log.warn("CHAT", `[${provider}/${model}] queued upstream (shared model capacity) — waiting ${Math.round(waitMs / 1000)}s and retrying the same account (${queueRetries}/${QUEUE_MAX_RETRIES})`);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+      // Still queued after the retries: report it, and leave the account
+      // untouched (no lock, no rotation) so it stays available.
       const retrySec = Math.max(1, Math.round(((result.resetsAtMs || 0) - Date.now()) / 1000)) || 30;
-      log.warn("CHAT", `[${provider}/${model}] queued upstream (provider-wide capacity) — skipping without retrying or rotating`);
+      log.warn("CHAT", `[${provider}/${model}] still queued after ${QUEUE_MAX_RETRIES} retries — giving up without locking the account`);
       return unavailableResponse(
         HTTP_STATUS.RATE_LIMITED,
         `[${provider}/${model}] queued upstream: ${result.error}`,
