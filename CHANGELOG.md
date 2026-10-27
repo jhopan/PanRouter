@@ -1,3 +1,32 @@
+# v0.5.88.6 (2026-10-27)
+
+## Perbaikan
+
+- **CodeBuddy `[403]: request illegal` tanpa code sekarang men-ban akun 1 bulan.**
+
+  Sebelumnya: backoff 4 detik → retry → rotasi akun → akun lain kena hal sama →
+  3 akun refused → stop. Semua akun tetap "available" setelah cooldown.
+
+  Sekarang: akun yang return `request illegal` tanpa code 11128/11140 langsung
+  di-ban 30 hari, di-off dari dashboard, dan tidak akan dipilih router lagi
+  sampai ban diangkat manual atau 30 hari lewat (siapa tahu pihak CodeBuddy
+  sudah cabut ban-nya).
+
+  Bedanya tiga kondisi:
+
+  | Kode | Artinya | Tindakan |
+  |---|---|---|
+  | 11128 | Request shape salah (per-request) | `requestRejected: true` — akun sehat, jangan kunci |
+  | 11140 | Akun di-ban resmi | `banned: true` — ban 30 hari |
+  | (tidak ada) | Akun diflag, belum 11140 | **Sekarang: `banned: true` — ban 30 hari** |
+
+## Test
+
+- Test baru `codebuddy-request-illegal-ban.test.js` (4 test).
+- Test lama `codebuddy-block-backoff.test.js` diupdate: 11128 = parseError
+  (bukan errorConfig), plain `request illegal` = banned (bukan backoff).
+- Suite: **3101 lulus**, 0 regresi baru.
+
 # v0.5.88.5 (2026-10-27)
 
 ## Perbaikan
