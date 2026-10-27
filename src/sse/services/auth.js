@@ -7,6 +7,7 @@ import { quotaWindowFor } from "open-sse/config/quotaWindows.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, antigravityFamilyKey } from "./antigravityQuota.js";
 import { shouldSkipKiroAccount, markKiroCapped, recordKiroUsage } from "open-sse/services/kiroCapCache.js";
+import { isBannedConnection, banFields, clearBanFields } from "open-sse/services/bannedAccounts.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -151,6 +152,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      // Provider-banned account (CodeBuddy 11140). The rotation lock already
+      // keeps it out for 30 days, but the ban marker makes it explicit: the
+      // account is skipped even for a model it was never locked for, and the
+      // dashboard can show why.
+      if (isBannedConnection(c)) {
+        log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | BANNED until ${c.bannedUntil} — skipped`);
+        return false;
+      }
       if (isKiro) {
         const verdict = shouldSkipKiroAccount(c.id);
         if (verdict.skip) {
@@ -421,12 +430,19 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     errorCode: status,
     lastErrorAt: new Date().toISOString(),
     ...(quotaExhausted && { quotaExhaustedUntil: new Date(Date.now() + cooldownMs).toISOString() }),
+    // A provider ban is recorded explicitly so the dashboard can show it and
+    // "Test connection" does not keep poking the account.
+    ...(banned ? banFields(reason, Date.now() + cooldownMs) : {}),
     backoffLevel: newBackoffLevel ?? backoffLevel
   });
 
   const lockKey = Object.keys(lockUpdate)[0];
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-  log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
+  if (banned) {
+    log.warn("AUTH", `${connName} BANNED by provider until ${new Date(Date.now() + cooldownMs).toISOString()} — account excluded from rotation`);
+  } else {
+    log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
+  }
 
   if (provider && status && reason) {
     console.error(`❌ ${provider} [${status}]: ${reason}`);

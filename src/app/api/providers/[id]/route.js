@@ -5,6 +5,7 @@ import {
   updateProviderConnection,
   deleteProviderConnection,
 } from "@/models";
+import { clearBanFields } from "open-sse/services/bannedAccounts.js";
 
 function normalizeProxyConfig(body = {}) {
   const hasAnyProxyField =
@@ -104,6 +105,26 @@ export async function PUT(request, { params }) {
     const existing = await getProviderConnectionById(id);
     if (!existing) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+
+    // Unban: clear the provider-ban marker so the account is eligible again.
+    // The rotation lock (modelLock___all) is cleared too, otherwise the
+    // account would still be filtered out until the ban window expires.
+    if (body.unban === true) {
+      const cleared = clearBanFields();
+      const lockKeys = Object.keys(existing).filter((k) => k.startsWith("modelLock_"));
+      const clearLocks = {};
+      for (const key of lockKeys) clearLocks[key] = null;
+      const updated = await updateProviderConnection(id, {
+        ...cleared,
+        ...clearLocks,
+        testStatus: "active",
+        lastError: null,
+        lastErrorAt: null,
+        errorCode: null,
+        backoffLevel: 0,
+      });
+      return NextResponse.json({ success: true, connection: updated });
     }
 
     const proxyConfig = normalizeProxyConfig(body);

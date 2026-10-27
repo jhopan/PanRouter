@@ -8,6 +8,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
+import { trimMessagesToBudget, estimateTokens } from "open-sse/services/messageTrimmer.js";
 import { getSettings } from "@/lib/localDb";
 import { checkApiKeyLimits } from "@/lib/apiKeyLimits.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
@@ -251,6 +252,34 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   const QUEUE_MAX_RETRIES = 2;
   let queueRetries = 0;
 
+  // ── Account rotation safety (CodeBuddy 11140 / "unusual activity") ───────
+  // A provider ban is contagious through the request PATTERN, not through the
+  // account. Rotating through 20 accounts inside 13 seconds with one
+  // conversation id is the pattern the ban is issued for, and every account in
+  // the pool gets flagged with it. So:
+  //   1. the same account is retried once before rotating (keeps the prompt
+  //      cache and the conversation id on one account, and 11128 is often
+  //      transient)
+  //   2. rotating waits a few seconds, so the traffic is not a burst
+  //   3. after N consecutive provider bans the rotation stops, so the remaining
+  //      accounts are never touched
+  const SAME_ACCOUNT_RETRIES = 1;
+  const ACCOUNT_ROTATION_DELAY_MS = 4000;
+  const MAX_CONSECUTIVE_BANS = 3;
+  let sameAccountRetries = 0;
+  let consecutiveBans = 0;
+
+  // Cold-cache trim: CodeBuddy's prompt cache belongs to the ACCOUNT. When the
+  // request lands on a different account than the previous turn, that account
+  // has no cache for this conversation and the whole history is uploaded
+  // (observed: 412k tokens). A 412k-token upload is the shape most likely to
+  // get an account flagged, so the history is trimmed to fit the model window
+  // before the request goes out.
+  const TRIM_ON_COLD_ACCOUNT = true;
+  const TRIM_BUDGET_TOKENS = 200_000;
+  let lastAccountId = null;
+  let conversationTrimmed = false;
+
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
@@ -294,8 +323,28 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // Use shared chatCore
     const chatSettings = await getSettings();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
+
+    // Cold-account trim (see the state comment above). Only fires when the
+    // request lands on a DIFFERENT account than the previous turn, and only
+    // once per conversation — trimming again would keep eating history.
+    let requestBody = body;
+    if (TRIM_ON_COLD_ACCOUNT
+        && provider === "codebuddy-intl"
+        && !conversationTrimmed
+        && lastAccountId
+        && lastAccountId !== credentials.connectionId
+        && Array.isArray(body?.messages)) {
+      const trimmed = trimMessagesToBudget(body.messages, TRIM_BUDGET_TOKENS);
+      if (trimmed.removed > 0) {
+        conversationTrimmed = true;
+        requestBody = { ...body, messages: trimmed.messages };
+        log.warn("CHAT", `[${provider}/${model}] cold account (${credentials.connectionId?.slice(0, 8)}) — trimmed ${trimmed.removed} oldest messages, ${trimmed.before} → ${trimmed.after} tokens`);
+      }
+    }
+    lastAccountId = credentials.connectionId;
+
     const result = await handleChatCore({
-      body: { ...body, model: `${provider}/${model}` },
+      body: { ...requestBody, model: `${provider}/${model}` },
       modelInfo: { provider, model },
       credentials: refreshedCredentials,
       log,
@@ -309,10 +358,15 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
       headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
       headroomTimeoutMs: chatSettings.headroomTimeoutMs,
-      cavemanEnabled: !!chatSettings.cavemanEnabled,
+      // Per-provider opt-out for the system-prompt injectors. CodeBuddy's
+      // gateway compares the message structure against what its official client
+      // sends; the CLI never injects an extra system prompt, so CAVEMAN and
+      // PONYTAIL make the request look hand-rolled there.
+      cavemanEnabled: !!chatSettings.cavemanEnabled
+        && !(chatSettings.cavemanDisabledProviders || []).includes(provider),
       cavemanLevel: chatSettings.cavemanLevel || "full",
-      ponytailEnabled: !!chatSettings.ponytailEnabled,
-      ponytailLevel: chatSettings.ponytailLevel || "full",
+      ponytailEnabled: !!chatSettings.ponytailEnabled
+        && !(chatSettings.ponytailDisabledProviders || []).includes(provider),
       pxpipeEnabled: !!chatSettings.pxpipeEnabled,
       pxpipeMinChars: chatSettings.pxpipeMinChars,
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
@@ -413,13 +467,50 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
     // Do not persist a modelLock_* for this path.
+    // Same-account retry: a channel-verification refusal (11128) is often
+    // transient, and staying on one account keeps the prompt cache and the
+    // conversation id consistent. The retry happens BEFORE the account is
+    // locked, because a lock would push the next attempt onto a different
+    // account — exactly the rotation the retry is meant to avoid.
+    if (result.banned !== true
+        && result.fatal !== true
+        && sameAccountRetries < SAME_ACCOUNT_RETRIES
+        && provider === "codebuddy-intl") {
+      sameAccountRetries += 1;
+      log.warn("CHAT", `[${provider}/${model}] retrying the same account (${sameAccountRetries}/${SAME_ACCOUNT_RETRIES}) — ${String(result.error || "").slice(0, 80)}`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      continue;
+    }
+
     const shouldFallback = provider === "antigravity" && quotaResetMs
       ? true
       : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
 
     if (shouldFallback) {
+      // A provider ban means the account is refused outright. Rotating to the
+      // next account would hit the same wall, and the burst of requests is
+      // itself the pattern that gets accounts banned. Stop after a few
+      // consecutive bans and leave the remaining pool untouched.
+      if (result.banned) {
+        consecutiveBans += 1;
+        if (consecutiveBans >= MAX_CONSECUTIVE_BANS) {
+          log.warn("CHAT", `[${provider}/${model}] ${consecutiveBans} accounts refused by the provider — stopping rotation to protect the remaining accounts`);
+          return errorResponse(
+            result.status || HTTP_STATUS.FORBIDDEN,
+            `${result.error || "Provider refused the account"}. Stopped after ${consecutiveBans} accounts to avoid flagging the rest of the pool.`,
+          );
+        }
+      }
+
+      // Rotating to another account: wait first. Five accounts in 13 seconds
+      // looks like automation; the same five accounts over 20 seconds does not.
+      if (excludeConnectionIds.size > 0) {
+        await new Promise((resolve) => setTimeout(resolve, ACCOUNT_ROTATION_DELAY_MS));
+      }
+
       log.debug("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
       excludeConnectionIds.add(credentials.connectionId);
+      sameAccountRetries = 0;
       lastError = result.error;
       lastStatus = result.status;
       lastHeaders = upstreamResponseHeaders(result.response?.headers);

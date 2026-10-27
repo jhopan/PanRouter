@@ -44,6 +44,7 @@ export default function TokenSaverClient() {
   const [cavemanEnabled, setCavemanEnabled] = useState(false);
   const [cavemanLevel, setCavemanLevel] = useState("full");
   const [ponytailEnabled, setPonytailEnabled] = useState(false);
+  const [codebuddySafeMode, setCodebuddySafeMode] = useState(false);
   const [ponytailLevel, setPonytailLevel] = useState("full");
   const [pxpipeEnabled, setPxpipeEnabled] = useState(false);
   const [pxpipeMinChars, setPxpipeMinChars] = useState(25000);
@@ -79,6 +80,28 @@ export default function TokenSaverClient() {
       patchSetting({ cavemanLevel: "ultra" });
     }
   }, [isWenyanLocale, cavemanLevel]);
+
+  // CodeBuddy's gateway compares the request against what its official client
+  // sends. The CLI never injects an extra system prompt, so CAVEMAN/PONYTAIL
+  // make the request look hand-rolled there. Safe mode disables both injectors
+  // for codebuddy-intl only; every other provider keeps them.
+  const handleCodebuddySafeMode = async (value) => {
+    setCodebuddySafeMode(value);
+    try {
+      const res = await fetch("/api/settings", { method: "GET" });
+      const data = await res.json();
+      const list = Array.isArray(data.cavemanDisabledProviders) ? [...data.cavemanDisabledProviders] : [];
+      const next = value
+        ? [...new Set([...list, "codebuddy-intl"])]
+        : list.filter((p) => p !== "codebuddy-intl");
+      await patchSetting({
+        cavemanDisabledProviders: next,
+        ponytailDisabledProviders: next,
+      });
+    } catch (error) {
+      console.log("Error updating codebuddy safe mode:", error);
+    }
+  };
 
   const patchSetting = async (patch) => {
     try {
@@ -429,6 +452,7 @@ export default function TokenSaverClient() {
           setCavemanEnabled(!!data.cavemanEnabled);
           setCavemanLevel(data.cavemanLevel || "full");
           setPonytailEnabled(!!data.ponytailEnabled);
+          setCodebuddySafeMode(!!(data.cavemanDisabledProviders || []).includes("codebuddy-intl"));
           setPonytailLevel(data.ponytailLevel || "full");
           setPxpipeEnabled(!!data.pxpipeEnabled);
           if (typeof data.pxpipeMinChars === "number") setPxpipeMinChars(data.pxpipeMinChars);
@@ -738,6 +762,27 @@ export default function TokenSaverClient() {
             <Toggle
               checked={ponytailEnabled}
               onChange={() => handlePonytailEnabled(!ponytailEnabled)}
+            />
+          </div>
+        </div>
+        {/* CodeBuddy safe mode — the official CLI never injects an extra system
+            prompt, and CodeBuddy's gateway rejects/flags requests whose message
+            structure does not match what it sends. Turning this on disables
+            CAVEMAN and PONYTAIL for codebuddy-intl only; other providers are
+            untouched. */}
+        <div className="flex items-center justify-between pt-4 mt-4 border-t border-border gap-4 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">CodeBuddy safe mode</p>
+            <p className="text-sm text-text-muted">
+              Disable CAVEMAN and PONYTAIL for CodeBuddy Intl — its gateway flags
+              requests whose system prompt does not match the official CLI, and
+              the extra injection is what gets accounts banned.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <Toggle
+              checked={codebuddySafeMode}
+              onChange={() => handleCodebuddySafeMode(!codebuddySafeMode)}
             />
           </div>
         </div>

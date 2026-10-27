@@ -66,6 +66,11 @@ const DEFAULT_SETTINGS = {
   cavemanEnabled: false,
   cavemanLevel: "full",
   ponytailEnabled: false,
+  // Providers where the system-prompt injectors are switched off. CodeBuddy's
+  // gateway compares the message structure against the official client's, and
+  // the CLI never injects an extra system prompt.
+  cavemanDisabledProviders: [],
+  ponytailDisabledProviders: [],
   ponytailLevel: "full",
   pxpipeEnabled: false,
   pxpipeAutoInstall: true,

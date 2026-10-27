@@ -1,4 +1,5 @@
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
+import { isBannedConnection } from "open-sse/services/bannedAccounts.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
@@ -891,6 +892,20 @@ case "llm7": {
 export async function testSingleConnection(id) {
   const connection = await getProviderConnectionById(id);
   if (!connection) return { valid: false, error: "Connection not found", latencyMs: 0, testedAt: new Date().toISOString() };
+
+  // A provider-banned account must not be probed: the test itself would be
+  // another request to the account the provider just refused, which is exactly
+  // the pattern that gets an account banned. Report the ban instead.
+  if (isBannedConnection(connection)) {
+    return {
+      valid: false,
+      error: `Account is banned by the provider until ${connection.bannedUntil}${connection.banReason ? ` (${connection.banReason})` : ""}`,
+      banned: true,
+      bannedUntil: connection.bannedUntil,
+      latencyMs: 0,
+      testedAt: new Date().toISOString(),
+    };
+  }
 
   const effectiveProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});
 
