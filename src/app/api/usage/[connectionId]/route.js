@@ -7,6 +7,7 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
 import { buildRouterQuotaState, hasQuotaRows, mergeModelLocks } from "open-sse/services/routerQuotaState.js";
+import { getAntigravityIneligibility } from "open-sse/services/antigravityCapCache.js";
 
 /**
  * Attach router-side quota rows when the provider itself reports none.
@@ -208,6 +209,38 @@ export async function GET(request, { params }) {
       } catch (retryError) {
         console.warn(`[Usage] ${connection.provider}: force refresh failed: ${retryError.message}`);
       }
+    }
+
+    // Antigravity: attach the cached eligibility verdict so the dashboard can
+    // show "Needs verification" even when this reading came from cache (the
+    // usage API is not called on every dashboard poll).
+    if (connection.provider === "antigravity" && !usage?.ineligible) {
+      const cached = getAntigravityIneligibility(connection.id);
+      if (cached) {
+        usage = { ...usage, ineligible: { eligible: false, ...cached } };
+      }
+    }
+
+    // Mirror the eligibility verdict onto the connection record so the
+    // PROVIDERS page (which only reads `lastError`) shows the account as
+    // needing verification too. The verification link itself lives in the
+    // quota tracker — the URL is long and single-use.
+    if (connection.provider === "antigravity") {
+      const flagged = usage?.ineligible && usage.ineligible.eligible === false;
+      const marker = "Account needs verification (VALIDATION_REQUIRED) — open the verify link in the quota tracker";
+      try {
+        if (flagged && !/needs verification/i.test(connection.lastError || "")) {
+          await updateProviderConnection(connection.id, {
+            lastError: marker,
+            lastErrorAt: new Date().toISOString(),
+          });
+        } else if (!flagged && /needs verification/i.test(connection.lastError || "")) {
+          await updateProviderConnection(connection.id, {
+            lastError: null,
+            lastErrorAt: null,
+          });
+        }
+      } catch { /* advisory only */ }
     }
 
     return Response.json(withRouterQuotaState(usage, connection));

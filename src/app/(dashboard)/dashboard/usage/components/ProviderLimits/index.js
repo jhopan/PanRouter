@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import QuotaTable from "./QuotaTable";
+import AntigravityEligibilityBadge from "./AntigravityEligibilityBadge";
 import Toggle from "@/shared/components/Toggle";
 import Tooltip from "@/shared/components/Tooltip";
 import {
@@ -1098,6 +1099,10 @@ export default function ProviderLimits() {
           const rawQuotas = quota?.quotas || [];
           const visibleQuotas = filterQuotasByVisibility(conn.provider, rawQuotas, quotaVisibility);
           const hiddenQuotaRows = getHiddenQuotaRows(conn.provider, rawQuotas, quotaVisibility);
+          // Antigravity: Google flags accounts as ineligible (VALIDATION_REQUIRED);
+          // they refuse every model until verified in a browser.
+          const agIneligible =
+            conn.provider === "antigravity" ? quota?.raw?.ineligible || null : null;
 
           return (
             <Card
@@ -1172,6 +1177,13 @@ export default function ProviderLimits() {
                             </button>
                           )}
                         </div>
+                      )}
+                      {agIneligible && (
+                        <AntigravityEligibilityBadge
+                          ineligible={agIneligible}
+                          onCopy={(url) => copy(url, conn.id)}
+                          copied={copied === conn.id}
+                        />
                       )}
                     </div>
                   </div>
