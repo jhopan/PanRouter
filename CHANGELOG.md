@@ -1,3 +1,38 @@
+# v0.5.87.0 (2026-10-27)
+
+## Fitur
+
+- **Blok 24 jam MiniMax bertahan setelah restart.**<Block MiniMax sebelumnya hanya
+  ada di memori, jadi server restart "lupa" bahwa akun sudah habis dan langsung
+  mengprobe lagi. Sekarang blok ditulis ke KV store (`scope: minimax_cap`) dan
+  dipulihkan saat startup — sama seperti `CACHE_BLOCK` Antigravity. Entri yang
+  sudah lewat 24 jam dibuang saat load.
+
+- **Tombol "Cek & Lepas"** (`lock_open`) di dashboard Usage, di sebelah tombol
+  refresh kuota. Endpoint barunya: `POST /api/usage/[connectionId]/check-release`.
+
+  Tombol ini **bukan** "buka regardless": ia membaca kuota langsung dari
+  provider dulu, dan hanya melepas blok kalau provider memang sudah melayani
+  akun itu lagi. Kalau tracker tidak bisa dibaca, blok **tetap dibiarkan** —
+  melepas akun yang habis hanya menghasilkan 429 lagi.
+
+## Perilaku setelah perubahan
+
+| Kejadian | Hasil |
+|---|---|
+| Limit kena 23:50 | blok 24 jam, akun di-skip tanpa request |
+| Top-up 23:52 | tracker dibaca → blok lepas → akun aktif lagi |
+| Top-up besok + tracker dibaca | blok lepas otomatis, tidak perlu klik |
+| Restart server | blok tetap ada (dari DB) |
+| Tracker masih bilang habis | blok tetap, pesan jelas ditampilkan |
+
+## Test
+
+- 15 test baru: tulis/baca KV, pemulihan saat startup, pembersihan blok basi,
+  fail-open, jendela 24 jam, pelepasan oleh bacaan terbaru, perilaku endpoint,
+  dan tombol dashboard.
+- Suite: **3052 lulus**, 0 regresi baru.
+
 # v0.5.86.0 (2026-10-27)
 
 ## Perbaikan penting
