@@ -1,3 +1,65 @@
+# v0.5.88.0 (2026-10-27)
+
+## Perbaikan
+
+- **Identitas request Qoder sekarang sama persis dengan CLI resmi 1.1.78.**
+  Request asli dari `qodercli` ditangkap lewat MITM proxy
+  (`scripts/qoder-mitm-addon.py`) lalu dibandingkan header demi header.
+
+  | Field | Sebelum | Sesudah (tangkapan CLI) |
+  |---|---|---|
+  | `Cosy-Version` | `1.0.0` | `1.1.78` |
+  | `Cosy-MachineOS` | `x86_64_windows` | `x86_64_win32` |
+  | `Cosy-MachineType` | `5` | UMID 16-byte hex, stabil per mesin |
+  | `Cosy-MachineToken` | = machine-id | token 64 char base64url |
+  | `Cosy-MachineHostname` | — | hostname asli |
+  | `Cosy-Data-Policy` | `disagree` | `agree` |
+  | `Cosy-Scene` | — | `assistant` |
+  | `Cosy-Business-Product` | — | `cli` |
+  | `Cosy-Business-Type` | — | `agent` |
+  | `User-Agent` | — | `Bun/1.4.2` |
+  | `traceparent` | — | W3C trace context |
+
+  **Nama header dicocokkan case-sensitively** dan huruf besarnya milik CLI
+  (`Cosy-MachineId`, bukan `Cosy-Machineid`) — ini berlaku untuk enam header
+  `Cosy-Machine*`/`Cosy-ClientType`.
+
+  Header yang **tidak pernah** dikirim CLI juga dihapus: `Cosy-Bodyhash`,
+  `Cosy-Bodylength`, `Cosy-Sigpath`, `Cosy-Clientip`, `Cosy-Organization-Id`,
+  `Cosy-Organization-Tags`.
+
+  `business.version` di payload tidak lagi bertentangan dengan header
+  `Cosy-Version` (keduanya `1.1.78`).
+
+- **Host inferensi memakai `api2.qoder.sh` untuk semua request**, sama seperti
+  CLI. Sebelumnya device token diarahkan ke `api3.qoder.sh`; hasil A/B: kedua
+  host menjawab identik, jadi ini soal mencocokkan CLI, bukan memperbaiki
+  kesalahan.
+
+- **UMID lokal yang stabil per mesin.** Server headless tidak punya layanan
+  UMID Qoder, jadi nilainya diturunkan sendiri dengan bentuk yang sama
+  (16 byte hex, 64 char base64url, UUID v4) dan disimpan di
+  `~/.9router/qoder/fingerprint.json` supaya restart tidak terlihat seperti
+  mesin baru.
+
+## Catatan
+
+- Pengujian langsung: `refresh_device_token` untuk akun tersebut **berhasil**
+  (HTTP 200, token baru sampai 2026-11-26) — akunnya sehat. CLI dan PanRouter
+  memakai **akun berbeda**, jadi "CLI jalan, kita gagal" bukan perbandingan
+  yang sebanding.
+- Body CLI terenkripsi (AES) dan dikirim `Content-Encoding: zstd`, sedangkan
+  PanRouter mengirim JSON plaintext. Signature COSY dihitung dari body, jadi
+  ini masih menjadi candidat penyebab `10605` — perlu reverse engineering
+  layer enkripsi CLI (Tahap 2).
+
+## Test
+
+- Test `qoder.test.js` diperbarui ke tangkapan CLI: casing header, header
+  khusus CLI yang wajib ada, header yang tidak boleh ada, bentuk UMID/token, dan
+  host api2.
+- Suite: **3052 lulus**, 0 regresi baru.
+
 # v0.5.87.0 (2026-10-27)
 
 ## Fitur
