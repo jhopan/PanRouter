@@ -1,3 +1,47 @@
+# v0.5.88.9 (2026-10-27)
+
+## Perbaikan
+
+- **CodeBuddy `403 request illegal` sekarang benar-benar ban akun 30 hari.**
+  Sebelumnya log menunjukkan:
+
+  ```
+  [403]: request illegal
+  [AUTH] Account 1 locked modelLock_deepseek-v4.1-flash for 120s [403]
+  → 3 akun dikunci sama → "3 accounts refused — stopping rotation"
+  ```
+
+  Verdict-nya **benar** (counter ban bercabut naik, jadi `result.banned` = true)
+  tapi tidak pernah sampai ke record akun. Penyebabnya:
+  `markAccountUnavailable()` tidak punya parameter `banned`, jadi verdict dari
+  executor berhenti di `chat.js`. `auth.js` lalu menjalankan rule teks generik
+  — dan `errorConfig` sudah tidak punya entri "request illegal" (karena
+  `parseError` yang menangani, dan hanya executor yang bisa melihat body
+  sebenarnya). Hasilnya: lock generik 120 detik per-model.
+
+  Fix:
+  - `chat.js` meneruskan `result.banned` ke `markAccountUnavailable`
+  - `markAccountUnavailable` menerima flag `providerBanned`; kalau aktif,
+    paksa `banned = true`, `shouldFallback = true`,
+    `cooldown = BANNED_ACCOUNT_COOLDOWN_MS` (30 hari)
+  - ban sudah menulis `modelLock___all` (per-akun) + `bannedUntil`, jadi akun
+    dikeluarkan dari rotasi dan dari "Test connection"
+
+  Hanya executor CodeBuddy yang mengembalikan `banned: true`, jadi flag ini
+  praktis khusus CodeBuddy.
+
+  Diverifikasi langsung ke DB (integration test): dengan verdict, record
+  dapat `bannedUntil` ~30 hari + `modelLock___all` dan tanpa lock per-model;
+  tanpa verdict, error yang sama hanya dapat lock 120 detik per-model.
+
+## Test
+
+- 7 test struktural `codebuddy-ban-verdict-propagation.test.js`.
+- 2 test integrasi `codebuddy-ban-live.integration.test.js` (memakai DB
+  sungguhan, koneksi scratch selalu dihapus).
+- Test lama yang mencari string call-site diperbarui ke format multi-line.
+- Suite: **3140 lulus**, 0 regresi baru.
+
 # v0.5.88.8 (2026-10-27)
 
 ## Perbaikan
