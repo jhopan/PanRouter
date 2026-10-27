@@ -123,12 +123,16 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     const subscriptionInfo = await getAntigravitySubscriptionInfo(accessToken, proxyOptions);
     const projectId = subscriptionInfo?.cloudaicompanionProject || null;
 
-    // Surface account-level verification requirements (Google anti-abuse gate).
-    // The CLI shows: "Eligibility check failed ... Please verify your account in
-    // your browser to continue: <accounts.google.com/signin/continue?...>".
-    // Same signal sometimes arrives from loadProject/loadCodeAssist — scan for it
-    // and print the exact verification URL so logs are actionable.
-    logVerificationHint(subscriptionInfo);
+    // The official CLI (1.4.8) reads `ineligibleTiers` from this response and
+    // STOPS — it never sends the chat request. PanRouter used to ignore the
+    // field entirely, so a flagged account kept serving traffic.
+    const eligibility = parseAntigravityEligibility(subscriptionInfo);
+    if (eligibility && eligibility.eligible === false) {
+      console.warn(`[AG_QUOTA] ACCOUNT VERIFICATION REQUIRED\n${formatEligibilityLog({
+        reasonCode: eligibility.reasonCode || "VALIDATION_REQUIRED",
+        validationUrl: eligibility.validationUrl,
+      })}`);
+    }
 
     const response = await fetchWithTimeout(ANTIGRAVITY_CONFIG.quotaApiUrl, {
       method: "POST",
@@ -145,9 +149,20 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     }, 10000, proxyOptions);
 
     if (response.status === 403) {
+      // The quota endpoint can refuse with VALIDATION_REQUIRED — Google wants
+      // the account verified in a browser. Read the reason out of the body so
+      // the caller can park the account instead of retrying it.
+      let quotaEligibility = null;
+      try {
+        const body = await response.json();
+        quotaEligibility = parseAntigravityQuotaEligibility(body);
+      } catch { /* body may be empty */ }
       return {
-        message: "Antigravity quota API access forbidden. Chat may still work.",
-        quotas: {}
+        message: quotaEligibility
+          ? `Antigravity account needs verification: ${quotaEligibility.reasonCode || "VALIDATION_REQUIRED"}`
+          : "Antigravity quota API access forbidden. Chat may still work.",
+        quotas: {},
+        ...(quotaEligibility ? { ineligible: quotaEligibility } : {}),
       };
     }
 
@@ -281,6 +296,10 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
       plan: subscriptionInfo?.currentTier?.name || "Unknown",
       quotas,
       subscriptionInfo,
+      // Surface the eligibility verdict so the caller can park a flagged
+      // account. `eligible: true` means the account is fine; `null` means the
+      // payload carried no eligibility information (no opinion).
+      ...(eligibility ? { ineligible: eligibility } : {}),
     };
   } catch (error) {
     console.error("[Antigravity Usage] Error:", error.message, error.cause);
@@ -328,17 +347,110 @@ export function formatEligibilityLog({ reasonCode = "VALIDATION_REQUIRED", valid
   }, null, 2);
 }
 
-function logVerificationHint(payload) {
-  try {
-    const raw = JSON.stringify(payload || "");
-    if (!raw) return;
-    const lower = raw.toLowerCase();
-    const hints = ["verify", "eligible", "further action", "signin/continue"];
-    if (!hints.some((h) => lower.includes(h))) return;
-    const urlMatch = raw.match(/https:\/\/accounts\.google\.com\/signin\/continue[^"\\\s]+/) || raw.match(/https:\/\/accounts\.google\.com\/[^"\\\s]+/);
-    const validationUrl = urlMatch ? urlMatch[0].replace(/\\u0026/g, "&") : null;
-    console.warn(`[AG_QUOTA] ACCOUNT VERIFICATION REQUIRED\n${formatEligibilityLog({ validationUrl })}`);
-  } catch {
-    // never break quota refresh because of logging
+/**
+ * Extract the account-eligibility gate from a loadCodeAssist / loadProject
+ * response.
+ *
+ * Live MITM capture of the official CLI 1.4.8 (2026-10-27, account
+ * ayuantini63) shows the shape:
+ *
+ *   {
+ *     "allowedTiers": [ { "id": "standard-tier", "name": "Antigravity", ... } ],
+ *     "ineligibleTiers": [
+ *       {
+ *         "reasonCode": "VALIDATION_REQUIRED",
+ *         "reasonMessage": "Your current account is not eligible for Antigravity...",
+ *         "tierId": "free-tier",
+ *         "tierName": "Antigravity",
+ *         "validationErrorMessage": "Verify your account to continue.",
+ *         "validationUrlLinkText": "Verify your account",
+ *         "validationUrl": "https://accounts.google.com/v3/signin/continue?...",
+ *         "validationLearnMoreLinkText": "Learn more",
+ *         "validationLearnMoreUrl": "https://support.google.com/accounts?p=al_alert"
+ *       }
+ *     ]
+ *   }
+ *
+ * The official CLI stops there — it never sends the chat request. PanRouter
+ * used to ignore `ineligibleTiers` entirely and only regex-scanned the payload
+ * for the word "verify", so a flagged account kept serving traffic.
+ *
+ * @param {object} payload - parsed JSON body
+ * @returns {{eligible: boolean, reasonCode: string|null, reasonMessage: string|null,
+ *            validationUrl: string|null, tierId: string|null}|null}
+ *   null when the payload carries no eligibility information at all.
+ */
+export function parseAntigravityEligibility(payload) {
+  if (!payload || typeof payload !== "object") return null;
+
+  const tiers = Array.isArray(payload.ineligibleTiers) ? payload.ineligibleTiers : [];
+  if (tiers.length === 0) {
+    // No ineligible tiers → the account is fine, unless there is no allowed
+    // tier either (an account with neither is not usable).
+    const allowed = Array.isArray(payload.allowedTiers) ? payload.allowedTiers : [];
+    if (allowed.length > 0) return { eligible: true, reasonCode: null, reasonMessage: null, validationUrl: null, tierId: null };
+    return null;
   }
+
+  // Prefer the tier that names a validation reason; the first tier is not
+  // necessarily the blocking one.
+  const tier = tiers.find((t) => t && (t.reasonCode || t.validationUrl || t.reasonMessage)) || tiers[0] || {};
+  const reasonCode = tier.reasonCode || null;
+  const validationUrl = tier.validationUrl || null;
+
+  return {
+    eligible: false,
+    reasonCode,
+    reasonMessage: tier.reasonMessage || tier.validationErrorMessage || null,
+    validationUrl,
+    tierId: tier.tierId || null,
+  };
 }
+
+/**
+ * Extract the eligibility gate from a retrieveUserQuotaSummary 403 body.
+ *
+ *   {
+ *     "error": {
+ *       "code": 403, "status": "PERMISSION_DENIED",
+ *       "message": "Verify your account to continue.",
+ *       "details": [
+ *         { "@type": ".../google.rpc.ErrorInfo",
+ *           "reason": "VALIDATION_REQUIRED",
+ *           "metadata": { "validation_url": "https://accounts.google.com/..." } },
+ *         { "@type": ".../google.rpc.Help", "links": [ { "url": "..." } ] }
+ *       ]
+ *     }
+ *   }
+ *
+ * @param {object} payload - parsed JSON body
+ * @returns {{eligible: boolean, reasonCode: string|null, reasonMessage: string|null,
+ *            validationUrl: string|null, tierId: string|null}|null}
+ */
+export function parseAntigravityQuotaEligibility(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const error = payload.error;
+  if (!error || typeof error !== "object") return null;
+
+  const details = Array.isArray(error.details) ? error.details : [];
+  // The ErrorInfo detail carries the reason code and the metadata; the Help
+  // detail carries only the link. Either alone is enough to act on.
+  const info = details.find((d) => d && (d.reason || d.metadata?.validation_url));
+  const help = details.find((d) => d && d.links && Array.isArray(d.links));
+  const helpUrl = help?.links?.find((l) => l?.url?.includes("accounts.google.com"))?.url || null;
+
+  if (!info && !helpUrl) return null;
+
+  const reasonCode = info?.reason || null;
+  const metadata = info?.metadata || {};
+  const validationUrl = metadata.validation_url || helpUrl || null;
+
+  return {
+    eligible: false,
+    reasonCode,
+    reasonMessage: metadata.validation_error_message || error.message || null,
+    validationUrl,
+    tierId: null,
+  };
+}
+

@@ -23,6 +23,7 @@ import "open-sse/index.js";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/localDb";
 import { getUsageForProvider } from "open-sse/services/usage.js";
 import { clearMiniMaxCap, recordMiniMaxUsage, shouldSkipMiniMaxAccount } from "open-sse/services/minimaxCapCache.js";
+import { clearAntigravityIneligible } from "open-sse/services/antigravityCapCache.js";
 import { clearBanFields } from "open-sse/services/bannedAccounts.js";
 
 const MODEL_LOCK_PREFIX = "modelLock_";
@@ -76,6 +77,36 @@ async function checkAndRelease(connection) {
     });
     clearMiniMaxCap(connection.id);
     return { released: true, reason: "The plan has quota again — the account is usable", usage };
+  }
+
+  // ── Antigravity ──────────────────────────────────────────────────────────
+  // An account Google flagged as ineligible (VALIDATION_REQUIRED) needs a
+  // browser re-verification. The provider itself decides whether the flag is
+  // gone: the usage reading carries `ineligible` only while the account is
+  // still flagged.
+  if (provider === "antigravity") {
+    const usage = await getUsageForProvider(connection);
+    if (!usage || usage.error) {
+      return {
+        released: false,
+        reason: usage?.message || "Usage API unavailable — the account was left in place",
+      };
+    }
+    if (usage.ineligible && usage.ineligible.eligible === false) {
+      return {
+        released: false,
+        reason: usage.ineligible.validationUrl
+          ? `Still needs verification (${usage.ineligible.reasonCode || "VALIDATION_REQUIRED"}) — open the verification link, then check again`
+          : `Still needs verification (${usage.ineligible.reasonCode || "VALIDATION_REQUIRED"})`,
+        usage,
+      };
+    }
+    await clearAntigravityIneligible(connection.id);
+    return {
+      released: true,
+      reason: "The account is eligible again — it is usable",
+      usage,
+    };
   }
 
   // ── Generic path: any provider with a usage API ──────────────────────────

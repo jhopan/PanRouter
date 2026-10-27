@@ -11,6 +11,7 @@ export { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits, consum
 import { getKiroUsage } from "./usage/kiro.js";
 import { recordKiroUsage } from "./kiroCapCache.js";
 import { recordMiniMaxUsage } from "./minimaxCapCache.js";
+import { recordAntigravityEligibility } from "./antigravityCapCache.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getMiniMaxCodeUsage } from "./minimaxCodeUsage.js";
 import { getCursorUsage } from "./usage/cursor.js";
@@ -117,6 +118,15 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
   if ((provider === "minimax-code" || provider === "minimax-code-global")
       && connection.id && result && !result.error) {
     try { recordMiniMaxUsage(connection.id, result); } catch { /* advisory only */ }
+  }
+
+  // Same for Antigravity: an account Google flagged as ineligible
+  // (VALIDATION_REQUIRED) refuses every model, so it is skipped BEFORE the
+  // request goes out instead of after a failed round-trip.
+  if (provider === "antigravity" && connection.id && result && !result.error) {
+    try {
+      await recordAntigravityEligibility(connection.id, result.ineligible || null);
+    } catch { /* advisory only */ }
   }
 
   return result;

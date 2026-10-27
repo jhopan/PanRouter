@@ -6,6 +6,7 @@ import { isQuotaExhaustedError, resolveQuotaResetAt } from "open-sse/services/qu
 import { quotaWindowFor } from "open-sse/config/quotaWindows.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, antigravityFamilyKey } from "./antigravityQuota.js";
+import { shouldSkipAntigravityAccount, getAntigravityIneligibility } from "open-sse/services/antigravityCapCache.js";
 import { shouldSkipKiroAccount, markKiroCapped, recordKiroUsage } from "open-sse/services/kiroCapCache.js";
 import { isBannedConnection, banFields, clearBanFields } from "open-sse/services/bannedAccounts.js";
 import { shouldSkipMiniMaxAccount, markMiniMaxExhausted } from "open-sse/services/minimaxCapCache.js";
@@ -178,6 +179,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           log.debug("KIRO_QUOTA", `${c.id?.slice(0, 8) || "unknown"} | monthly cap reached — skip upstream until ${new Date(verdict.until).toISOString()}`);
           return false;
         }
+      }
+      // Antigravity: account eligibility. Google can flag an account as
+      // ineligible (VALIDATION_REQUIRED) and require a browser re-verification.
+      // The official CLI checks this and stops — it never sends the chat
+      // request. We skip the account before the request goes out.
+      if (isAntigravity && shouldSkipAntigravityAccount(c.id)) {
+        const info = getAntigravityIneligibility(c.id);
+        log.debug("AG_QUOTA", `${c.id?.slice(0, 8) || "unknown"} | INELIGIBLE (${info?.reasonCode || "VALIDATION_REQUIRED"}) — skip upstream, needs browser verification`);
+        return false;
       }
       // Antigravity: family-only routing. Plus/free accounts share ONE weekly
       // limit per family (gemini_weekly / claude_gpt_weekly); the per-model rows

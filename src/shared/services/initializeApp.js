@@ -139,6 +139,14 @@ async function runHeavyStartup() {
     .then((n) => { if (n > 0) console.log(`[MINIMAX_QUOTA] restored ${n} plan block(s)`); })
     .catch((e) => console.log("[MINIMAX_QUOTA] restore failed (non-fatal):", e.message));
 
+  // Same for Antigravity account eligibility: an account Google flagged as
+  // ineligible (VALIDATION_REQUIRED) refuses every model, so the flag must
+  // survive a restart too.
+  import("open-sse/services/antigravityCapCache.js")
+    .then(({ restoreAntigravityIneligible }) => restoreAntigravityIneligible())
+    .then((n) => { if (n > 0) console.log(`[AG_QUOTA] restored ${n} ineligible account(s)`); })
+    .catch((e) => console.log("[AG_QUOTA] eligibility restore failed (non-fatal):", e.message));
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")
