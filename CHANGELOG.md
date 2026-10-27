@@ -1,3 +1,59 @@
+# v0.5.85.0 (2026-10-22)
+
+## Fitur
+
+Enam perlindungan terhadap ban provider (`11140`). Ban bersifat **menular lewat
+pola request**, bukan lewat akun: rotasi 20 akun dalam 13 detik dengan satu
+conversation id adalah bentuk yang memicu ban, dan semua akun di pool ikut
+ditandai. Tidak ada satu pun dari perubahan ini yang mengubah request yang
+berhasil.
+
+### 1. Akun banned ditandai dan tidak pernah dipilih lagi
+
+`open-sse/services/bannedAccounts.js` mencatat `bannedUntil` + `banReason` di
+koneksi. `auth.js` melewati akun itu di dalam filter kandidat, dan "Test
+connection" **melaporkan ban-nya** alih-alih mengirim request lagi ke akun yang
+tadi ditolak provider. Tanda kedaluwarsa sendiri (30 hari), dan
+`PUT /api/providers/[id]` dengan `{ unban: true }` membersihkannya beserta kunci
+rotasi.
+
+### 2. Akun yang sama dicoba sekali lagi sebelum pindah
+
+Penolakan `11128` (channel verification) sering bersifat transient, dan tetap di
+satu akun menjaga prompt cache dan conversation id tetap konsisten. Retry
+terjadi **sebelum** akun dikunci — kalau setelahnya, kunci tersebut justru
+mendorong retry ke akun lain, yaitu rotasi yang justru ingin dihindari.
+
+### 3. Rotasi menunggu (4 detik)
+
+Lima akun dalam 13 detik terlihat seperti otomatisasi; lima akun dalam 20 detik
+tidak.
+
+### 4. Setelah 3 ban berturut-turut, rotasi dihentikan
+
+Error dikembalikan ke klien dan akun sisanya **tidak pernah disentuh**.
+
+### 5. CAVEMAN dan PONYTAIL bisa dimatikan per provider
+
+CLI resmi CodeBuddy tidak pernah menyuntik system prompt tambahan, jadi injeksi
+itu bagian dari yang membuat request terlihat buatan. Setting baru: **CodeBuddy
+safe mode** di dashboard Token Saver, mematikan `cavemanDisabledProviders` /
+`ponytailDisabledProviders` untuk `codebuddy-intl` saja.
+
+### 6. Request ke akun **cold** dipotong sebelum dikirim
+
+Prompt cache CodeBuddy terikat akun, jadi request yang diputar ke akun lain
+mengunggah seluruh riwayat — **412 ribu token**. `open-sse/services/messageTrimmer.js`
+membuang giliran tertua (system prompt dan giliran terbaru selalu disimpan)
+sekali per percakapan, sehingga unggahan cold tidak lagi berbentuk yang paling
+berisiko di-flag.
+
+## Test
+
+- 28 test baru: penandaan ban, skip, unban, retry akun sama, jeda, batas ban,
+  opt-out per provider, dan trimming.
+- Suite: **3011 lulus**, 0 regresi baru.
+
 # v0.5.84.1 (2026-10-22)
 
 ## Perbaikan
