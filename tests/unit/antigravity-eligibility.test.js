@@ -17,6 +17,7 @@ import {
   parseAntigravityEligibility,
   parseAntigravityQuotaEligibility,
 } from "../../open-sse/services/usage/google.js";
+import { makeKv } from "../../src/lib/db/helpers/kvStore.js";
 import {
   shouldSkipAntigravityAccount,
   recordAntigravityEligibility,
@@ -175,6 +176,25 @@ describe("antigravity eligibility cache", () => {
     await recordAntigravityEligibility("conn-1", parseAntigravityEligibility(LOAD_CODE_ASSIST_INELIGIBLE));
     await recordAntigravityEligibility("conn-1", null);
     expect(shouldSkipAntigravityAccount("conn-1")).toBe(false);
+  });
+
+  it("a healthy reading clears a PERSISTED flag even with an empty in-memory cache", async () => {
+    // Regression: after a restart the in-memory map is empty while the KV
+    // entry is still there. The old code only removed the KV entry when the
+    // in-memory cache held the flag, so the persisted flag survived until the
+    // TTL expired — the account stayed skipped after the user had verified it.
+    const kv = makeKv("antigravity_ineligible");
+    await kv.set("conn-2", { flagged: true, flaggedAt: Date.now(), reasonCode: "VALIDATION_REQUIRED" });
+
+    // Fresh module state: nothing in memory.
+    getAntigravityIneligibleCache().clear();
+    expect(shouldSkipAntigravityAccount("conn-2")).toBe(false);
+
+    // A healthy reading must remove the persisted entry.
+    await recordAntigravityEligibility("conn-2", parseAntigravityEligibility(LOAD_CODE_ASSIST_OK));
+
+    const persisted = await kv.get("conn-2");
+    expect(persisted).toBeFalsy();
   });
 
   it("the manual release clears the flag", async () => {

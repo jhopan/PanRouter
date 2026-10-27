@@ -109,11 +109,14 @@ export async function recordAntigravityEligibility(connectionId, eligibility) {
   // No opinion (the probe failed, or the payload had no eligibility fields):
   // clear any stale flag so a transient failure does not disable a healthy
   // account forever.
+  //
+  // The KV entry is removed UNCONDITIONALLY here, not only when the in-memory
+  // cache happens to hold the flag. After a restart the in-memory map is empty
+  // while the persisted entry is still there — a "healthy" reading must clear
+  // it, otherwise the flag survives until the TTL expires.
   if (!eligibility || eligibility.eligible !== false) {
-    if (ineligibleCache.has(connectionId)) {
-      ineligibleCache.delete(connectionId);
-      await persistEntry(connectionId, null);
-    }
+    ineligibleCache.delete(connectionId);
+    await persistEntry(connectionId, null);
     return false;
   }
 
