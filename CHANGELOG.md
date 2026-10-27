@@ -1,3 +1,49 @@
+# v0.5.88.10 (2026-10-27)
+
+## Perbaikan
+
+- **Akun Kiro yang sudah habis kuota bulanan sekarang keluar dari rotasi
+  selama SELURUH periode cap.**
+
+  Log sebelumnya:
+
+  ```
+  [402]: {"message":"You have reached the limit.","reason":"MONTHLY_REQUEST_COUNT"}
+  [AUTH] Adelia locked modelLock___all for 376727s until 2026-11-01T00:00:00.848Z
+  ```
+
+  Kuncinya sudah benar (1 Nov), tapi akunnya tetap dikirimi request.
+
+  Penyebab: `shouldSkipKiroAccount()` keluar lebih awal pada TTL probe 5 menit:
+
+  ```
+  if (now - entry.checkedAt > CACHE_TTL_MS) return { skip: false };
+  ```
+
+  `checkedAt` adalah waktu 402 itu datang, jadi **lima menit kemudian** entri
+  dianggap basi dan akun terlihat sehat lagi — padahal `cappedUntil` masih
+  lebih dari empat hari di depan. Router terus memilihnya sampai habis bulan.
+
+  TTL itu ada untuk meng-*expire* probe yang tidak bisa dibaca. Cap dengan
+  jendela yang diketahui **bukan basi**: dia otoritatif sampai `cappedUntil`
+  lewat.
+
+  Fix: cek jendela cap **lebih dulu**. TTL tetap berlaku untuk entri tanpa
+  jendela, jadi reading yang tidak terbaca tidak bisa menonaktifkan akun
+  selamanya.
+
+  Ini bug kelas yang sama dengan fix flag Antigravity di v0.5.88.8 (verdict
+  persisten yang melewati TTL probe) dan pola yang sudah ditangani MiniMax
+  dengan `EXHAUSTED_TTL_MS`.
+
+## Test
+
+- 6 test baru `kiro-cap-ttl.test.js`.
+- Test stale-reading di `kiro-cap-cache.test.js` diperbarui: reading basi
+  **tanpa** reset di masa depan tetap tidak menahan akun; reading basi
+  **dengan** reset di masa depan tetap menahan.
+- Suite: **3148 lulus**, 0 regresi baru.
+
 # v0.5.88.9 (2026-10-27)
 
 ## Perbaikan
