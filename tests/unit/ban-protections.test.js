@@ -72,9 +72,17 @@ describe("2/3/4 — rotation safety in chat.js", () => {
     expect(chat).toContain("ACCOUNT_ROTATION_DELAY_MS");
   });
 
-  it("stops after N consecutive bans", () => {
-    expect(chat).toContain("MAX_CONSECUTIVE_BANS");
-    expect(chat).toMatch(/stopping rotation to protect the remaining accounts/);
+  it("keeps rotating through the whole pool instead of stopping early", () => {
+    // The pool belongs to the operator: every healthy account should get its
+    // chance. The burst is what looks like automation, so the rotation waits
+    // between accounts rather than stopping after N bans.
+    expect(chat).not.toContain("MAX_CONSECUTIVE_BANS");
+    expect(chat).not.toMatch(/stopping rotation to protect the remaining accounts/);
+    expect(chat).not.toMatch(/Stopped after \$\{consecutiveBans\}/);
+  });
+
+  it("logs each banned account and moves on", () => {
+    expect(chat).toMatch(/account banned by the provider/);
   });
 
   it("does not retry a banned account on the same connection", () => {

@@ -258,8 +258,10 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   //   3. after N consecutive provider bans the rotation stops, so the remaining
   //      accounts are never touched
   const SAME_ACCOUNT_RETRIES = 1;
-  const ACCOUNT_ROTATION_DELAY_MS = 4000;
-  const MAX_CONSECUTIVE_BANS = 3;
+  // Rotation delay between accounts. A burst of refusals across the pool in a
+  // couple of seconds is exactly what looks like automation — spreading the
+  // attempts out keeps the pattern human-shaped.
+  const ACCOUNT_ROTATION_DELAY_MS = 3000;
   let sameAccountRetries = 0;
   let consecutiveBans = 0;
 
@@ -503,23 +505,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         )).shouldFallback;
 
     if (shouldFallback) {
-      // A provider ban means the account is refused outright. Rotating to the
-      // next account would hit the same wall, and the burst of requests is
-      // itself the pattern that gets accounts banned. Stop after a few
-      // consecutive bans and leave the remaining pool untouched.
+      // A provider ban means the account is refused outright. Mark it banned and
+      // move on to the next one — but do NOT stop early. The pool is the
+      // operator's; every account that is still healthy should get its chance.
+      // The burst itself is what looks like automation, so the rotation waits
+      // between accounts instead of stopping.
       if (result.banned) {
         consecutiveBans += 1;
-        if (consecutiveBans >= MAX_CONSECUTIVE_BANS) {
-          log.warn("CHAT", `[${provider}/${model}] ${consecutiveBans} accounts refused by the provider — stopping rotation to protect the remaining accounts`);
-          return errorResponse(
-            result.status || HTTP_STATUS.FORBIDDEN,
-            `${result.error || "Provider refused the account"}. Stopped after ${consecutiveBans} accounts to avoid flagging the rest of the pool.`,
-          );
-        }
+        log.warn("CHAT", `[${provider}/${model}] account banned by the provider (#${consecutiveBans}) — banning it and trying the next account`);
       }
 
-      // Rotating to another account: wait first. Five accounts in 13 seconds
-      // looks like automation; the same five accounts over 20 seconds does not.
+      // Rotating to another account: wait first. Several accounts in a couple of
+      // seconds looks like automation; the same accounts spread out does not.
       if (excludeConnectionIds.size > 0) {
         await new Promise((resolve) => setTimeout(resolve, ACCOUNT_ROTATION_DELAY_MS));
       }
