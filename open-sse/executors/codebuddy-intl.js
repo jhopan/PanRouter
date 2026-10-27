@@ -19,7 +19,9 @@ import { DefaultExecutor } from "./default.js";
 
 // From the installed @tencent-ai/codebuddy-code 2.170.0 bundle.
 const CB_IDE_VERSION = "2.170.0";
-const CB_UA = `IDE/${CB_IDE_VERSION} CodeBuddy/${CB_IDE_VERSION}`;
+// CLI sets User-Agent and IDE headers to "CLI", not "IDE". The gateway tracks
+// the caller type and "IDE" triggers IDE-mode fingerprinting.
+const CB_UA = `CLI/${CB_IDE_VERSION} CodeBuddy/${CB_IDE_VERSION}`;
 
 // ── UUID v1 (time-based), matching the official client ─────────────────────
 // The CLI's conversation id is a time-based UUID: it encodes a creation
@@ -119,6 +121,8 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
 
     const conversationKey = sessionKey || (userText ? `cbai:${userText}` : null);
     const requestId = perTurnId();
+    // The root request ID is the same as the conversation request ID on the CLI.
+    const rootRequestId = requestId;
 
     // The registry ships lowercase duplicates of two headers; sending both
     // spellings looks like a hand-rolled client. Drop the lowercase variants
@@ -132,6 +136,8 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     headers["X-Conversation-Request-ID"] = requestId;
     // The CLI sends the same id for the request and the message on a chat turn.
     headers["X-Conversation-Message-ID"] = requestId;
+    // Root request ID mirrors the conversation request ID (observed in MITM capture).
+    headers["X-Root-Request-ID"] = rootRequestId;
 
     // ── CLI identity ──────────────────────────────────────────────────────
     // Everything below is sent by the official CLI on every chat call. The
@@ -142,8 +148,8 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     headers["X-Product"] = "SaaS";
     headers["X-Product-Version"] = CB_IDE_VERSION;
     headers["X-App"] = "cli";
-    headers["X-IDE-Type"] = "IDE";
-    headers["X-IDE-Name"] = "IDE";
+    headers["X-IDE-Type"] = "CLI";
+    headers["X-IDE-Name"] = "CLI";
     headers["X-IDE-Version"] = CB_IDE_VERSION;
     // The CLI sets this from the user's data-sharing preference; "false" is the
     // conservative value it sends for a normal account.
@@ -151,15 +157,37 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     headers["X-Requested-With"] = "XMLHttpRequest";
     headers["X-CodeBuddy-Request"] = "1";
 
-    // Agent identity: the CLI describes every chat turn as a "craft" intent for
-    // a "conversation" purpose, attributed to the IDE agent type.
+    // Agent identity: the CLI describes every chat turn as a "craft" intent
+    // for a "conversation" purpose, attributed to the MAIN agent type (not ide).
+    // X-Agent-Runtime "other" matches the CLI's non-IDE runtime context.
     headers["X-Agent-Intent"] = "craft";
     headers["X-Agent-Purpose"] = "conversation";
-    headers["X-Agent-Type"] = "ide";
-    headers["X-Agent-Runtime"] = "ide";
+    headers["X-Agent-Type"] = "main";
+    headers["X-Agent-Runtime"] = "other";
 
     // Per-request id, mirrored into the conversation-message id like the CLI.
     headers["X-Request-ID"] = requestId;
+
+    // ── OpenTelemetry distributed tracing ─────────────────────────────────
+    // The CLI sends Zipkin B3 + W3C traceparent on every chat request. The IDs
+    // are per-request randoms; they are not validated server-side but their
+    // absence looks like a non-SDK caller.
+    const traceId = randomUUID().replace(/-/g, "");           // 32-hex
+    const spanId  = traceId.slice(0, 16);                     // 16-hex (first half)
+    const parentSpanId = traceId.slice(16, 32);               // 16-hex (second half)
+    headers["traceparent"]      = `00-${traceId}-${spanId}-01`;
+    headers["b3"]               = `${traceId}-${spanId}-1-${parentSpanId}`;
+    headers["X-B3-TraceId"]     = traceId;
+    headers["X-B3-SpanId"]      = spanId;
+    headers["X-B3-ParentSpanId"]= parentSpanId;
+    headers["X-B3-Sampled"]     = "1";
+    headers["X-Trace-ID"]       = traceId;
+
+    // baggage carries the stable session id and the per-request id in the
+    // format the CLI sends:
+    //   codebuddy.session_id=<uuid>,codebuddy.conversation_request_id=<hex>
+    const sessionUuid = headers["X-Conversation-ID"] || randomUUID();
+    headers["baggage"] = `codebuddy.session_id=${sessionUuid},codebuddy.conversation_request_id=${requestId.replace(/-/g, "")}`;
 
     // Stainless SDK fingerprint. These are what make the call look like it came
     // from the official Node SDK rather than a bare fetch(). Values mirror
@@ -175,10 +203,12 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
       if (v === "openbsd") return "OpenBSD";
       return v ? `Other:${v}` : "Unknown";
     };
+    // normalizeArch: live MITM capture shows the CLI sends the raw arch string
+    // (x64) rather than the amd64 value inside the bundle's normalizeArch().
+    // Trust the live wire — x64 is what the server expects.
     const normalizeArch = (a) => {
       if (a === "arm") return "arm32";
       if (a === "ppc") return "ppc32";
-      if (a === "x64") return "amd64";
       return a || "unknown";
     };
 

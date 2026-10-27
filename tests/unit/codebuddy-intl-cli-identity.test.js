@@ -44,20 +44,23 @@ describe("codebuddy-intl — CLI identity headers", () => {
     expect(h["X-Stainless-Package-Version"]).toBe("6.25.0");
     expect(h["X-Stainless-OS"]).toMatch(/^(Windows|MacOS|Linux|FreeBSD|OpenBSD|Unknown|Other:.+)$/);
     expect(h["X-Stainless-Arch"]).toMatch(/^(amd64|arm32|ppc32|arm64|x64|ia32)$/);
-    expect(h["X-Stainless-Arch"]).not.toBe("x64"); // CLI normalizes x64 -> amd64
+    // Live MITM capture (2026-10-27) shows CLI 2.170.0 on Windows/x64 sends
+    // "x64", not "amd64". The bundle source has a normalizeArch that maps x64→amd64
+    // but the compiled CLI does NOT apply that mapping. Trust the wire.
+    // (arm and ppc are still normalized to arm32/ppc32 — only x64 differs.)
   });
 
   it("sends the agent identity the CLI declares", () => {
     const h = build();
     expect(h["X-Agent-Intent"]).toBe("craft");
     expect(h["X-Agent-Purpose"]).toBe("conversation");
-    expect(h["X-Agent-Type"]).toBe("ide");
-    expect(h["X-Agent-Runtime"]).toBe("ide");
+    expect(h["X-Agent-Type"]).toBe("main");
+    expect(h["X-Agent-Runtime"]).toBe("other");
   });
 
   it("advertises the installed CLI version in UA and X-IDE-Version", () => {
     const h = build();
-    expect(h["User-Agent"]).toMatch(/^IDE\/\d+\.\d+\.\d+ CodeBuddy\/\d+\.\d+\.\d+$/);
+    expect(h["User-Agent"]).toMatch(/^CLI\/\d+\.\d+\.\d+ CodeBuddy\/\d+\.\d+\.\d+$/);
     expect(h["X-IDE-Version"]).toBe(h["User-Agent"].match(/CodeBuddy\/(\d+\.\d+\.\d+)/)[1]);
   });
 
@@ -139,25 +142,25 @@ describe("codebuddy-intl — cross-platform fingerprint", () => {
   const normalizeArch = (a) => {
     if (a === "arm") return "arm32";
     if (a === "ppc") return "ppc32";
-    if (a === "x64") return "amd64";
+    // Wire observation: CLI 2.170.0 sends "x64" raw, not "amd64".
     return a || "unknown";
   };
 
   it.each([
-    ["win32", "x64", "Windows", "amd64"],
+    ["win32", "x64", "Windows", "x64"],
     ["darwin", "arm64", "MacOS", "arm64"],
-    ["darwin", "x64", "MacOS", "amd64"],
-    ["linux", "x64", "Linux", "amd64"],
+    ["darwin", "x64", "MacOS", "x64"],
+    ["linux", "x64", "Linux", "x64"],
     ["linux", "arm64", "Linux", "arm64"],
     ["linux", "arm", "Linux", "arm32"],
-    ["freebsd", "x64", "FreeBSD", "amd64"],
+    ["freebsd", "x64", "FreeBSD", "x64"],
   ])("%s/%s → %s/%s", (platform, arch, os, cpu) => {
     expect(normalizePlatform(platform)).toBe(os);
     expect(normalizeArch(arch)).toBe(cpu);
   });
 
-  it("never emits the raw x64 token (CLI normalizes it to amd64)", () => {
-    expect(normalizeArch("x64")).not.toBe("x64");
+  it("sends x64 as-is (live wire shows CLI does NOT map x64→amd64)", () => {
+    expect(normalizeArch("x64")).toBe("x64");
   });
 
   it("falls back to Other:<platform> for an unknown OS instead of lying", () => {
