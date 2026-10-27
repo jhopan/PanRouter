@@ -1,3 +1,42 @@
+# v0.5.88.3 (2026-10-27)
+
+## Fitur
+
+- **Kiro menampilkan kapan kuota bulanannya reset — seperti Codex.** Log
+  sebelumnya:
+
+  ```
+  [14:01:25] ⚠️ [AUTH] Adelia locked modelLock___all for 406715s [402]
+  ❌ kiro [402]: {"message":"You have reached the limit.","reason":"MONTHLY_REQUEST_COUNT"}
+  ```
+
+  Kuncinya sudah benar (406715 detik persis tanggal 1 bulan depan), tapi tidak
+  ada yang menyebut **kapan**. "locked for 406715s" bikin orang menebak 30
+  menit atau sebulan. Codex sudah menampilkan
+  "Quota exhausted — resets 2026-11-17T02:43:32.000Z" + hitung mundur
+  "⏱ 500h 32m". Sekarang Kiro sama:
+
+  - baris log AUTH membawa tanggal reset dalam format ISO, bukan cuma durasi
+  - record koneksi memakai **satu** timestamp reset yang sama untuk kunci,
+    teks error, dan `quotaExhaustedUntil` — jadi dashboard dan router tidak
+    mungkin berbeda pendapat soal kapan akun aktif lagi
+  - quota tracker mendapat baris "monthly" yang **selalu ada**, bahkan kalau
+    upstream mengembalikan breakdown kosong untuk akun yang sudah habis
+    (sebelumnya kartunya kosong, tidak menampilkan reset sama sekali)
+  - nilai remaining di baris tracker dihitung dari used/total. Baris usage Kiro
+    adalah jumlah request absolut, jadi meneruskan `remaining` mentah akan
+    menampilkan "40%" untuk baris yang terpakai 60%
+
+  Jendela bulanan Kiro reset tanggal 1; tanggal reset diambil dari
+  `nextDateReset` di usage API, dengan fallback kalender 1 pukul 00:00 UTC.
+
+## Test
+
+- Test baru `kiro-reset-visibility.test.js` (13 test): log memuat tanggal
+  reset, record memakai satu timestamp konsisten, baris tracker selalu ada,
+  dan remaining dihitung sebagai persentase.
+- Suite: **3069 lulus**, 0 regresi baru.
+
 # v0.5.88.2 (2026-10-27)
 
 ## Fitur
