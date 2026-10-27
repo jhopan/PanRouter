@@ -1,3 +1,52 @@
+# v0.5.88.7 (2026-10-27)
+
+## Fitur
+
+- **Antigravity: akun yang di-flag Google kini di-skip SEBELUM request, dan
+  tampil jelas di dashboard.**
+
+  Live MITM capture CLI resmi 1.4.8 (akun `ayuantini63`) membuktikan dua hal:
+  gerbangelasnya diumumkan di **dua** tempat, dan CLI resmi **berhenti** di
+  situ — `generateAssistantResponse` tidak pernah dikirim:
+
+  | Endpoint | Status | Field |
+  |---|---|---|
+  | `/v1internal:loadCodeAssist` | 200 | `ineligibleTiers[].reasonCode = "VALIDATION_REQUIRED"` + `validationUrl` + `tierId` |
+  | `/v1internal:retrieveUserQuotaSummary` | 403 | `error.details[].reason` + `metadata.validation_url` |
+
+  PanRouter sebelumnya **mengabaikan** `ineligibleTiers` dan hanya regex-scan
+  payload untuk kata "verify" — jadi akun yang ter-flag tetap melayani traffic
+  dan setiap request jadi sia-sia.
+
+  **Backend:**
+  - `google.js` — `parseAntigravityEligibility()` (baca `ineligibleTiers`) dan
+    `parseAntigravityQuotaEligibility()` (baca detail 403). Scanner regex
+    `logVerificationHint()` yang sudah mati dihapus.
+  - `antigravityCapCache.js` (baru) — cache per-koneksi, dipersist ke KV
+    supaya flag bertahan setelah restart. Fail-open: probe gagal = "tidak ada
+    pendapat", akun tetap dipakai.
+  - `usage.js` — mencatat verdict dari reading yang sama dengan tracker.
+  - `auth.js` — akun ter-flag di-skip sebelum request keluar (pola
+    `kiroCapCache`).
+  - `check-release` — branch Antigravity membaca verdict live dan hanya
+    melepas flag kalau Google melaporkan akun eligible lagi.
+  - `initializeApp.js` — restore flag saat startup.
+
+  **UI (quota tracker):**
+  - badge oranye "Needs verification" dengan reason code di tooltip
+  - tombol "Copy verify link" (URL-nya panjang dan sekali pakai)
+  - link "Verify" yang membuka halaman verifikasi Google
+
+  **UI (halaman providers):** verdict dicerminkan ke `lastError` supaya akun
+  ter-flag terlihat di sana juga, dan marker dibersihkan begitu akun eligible
+  lagi.
+
+## Test
+
+- 16 test `antigravity-eligibility.test.js` (parser + cache).
+- 12 test `antigravity-eligibility-ui.test.js` (badge + wiring).
+- Suite: **3131 lulus**, 0 regresi baru.
+
 # v0.5.88.6 (2026-10-27)
 
 ## Perbaikan
