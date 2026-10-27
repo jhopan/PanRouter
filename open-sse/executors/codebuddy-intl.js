@@ -293,6 +293,22 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
           };
         }
 
+        // "request illegal" WITHOUT a 11128/11140 code — this is the fingerprint
+        // of an account that has been flagged and is now refusing every request.
+        // The 11140 banner only appears after the provider has already fully
+        // decided to restrict the account; the 11128 code appears on transient
+        // channel-verification mismatches. A plain "request illegal" with a
+        // raw 403 and no distinguishing code is the ban state before 11140 is
+        // confirmed. Ban the account for 1 month: retrying hourly is exactly
+        // the automation pattern the ban was issued for.
+        if (/request illegal/i.test(String(msg || bodyText || ""))) {
+          return {
+            status: 403,
+            message: msg || "CodeBuddy: account flagged — request illegal (no channel code)",
+            banned: true,
+          };
+        }
+
         // 11115: the REQUEST is too large for the model ("prompt is too long:
         // 1054321 tokens > 1048576 maximum"). Nothing is wrong with the account,
         // so it must not be locked — the same prompt fails on every account and

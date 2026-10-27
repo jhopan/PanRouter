@@ -146,7 +146,8 @@ export const ERROR_RULES = [
   // the connection should back off EXPONENTIALLY instead of taking the flat
   // 403 cooldown below. Provider-scoped on purpose: the same wording from
   // another provider stays request-scoped and must not cool the account down.
-  { provider: "codebuddy-intl", text: "request illegal",           backoff: true },
+  // "request illegal" without a code is handled in parseError (banned: true).
+  // "conversation id missing" is still a transient per-request backoff.
   { provider: "codebuddy-intl", text: "conversation id missing",  backoff: true },
   { text: "request not allowed",      cooldownMs: COOLDOWN.short },
   { text: "improperly formed request", cooldownMs: COOLDOWN.long },

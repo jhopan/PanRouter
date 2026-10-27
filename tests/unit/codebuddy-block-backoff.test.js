@@ -28,24 +28,31 @@ import path from "path";
 const read = (rel) => fs.readFileSync(path.resolve(rel), "utf8");
 
 describe("upstream #5024 — codebuddy block backoff", () => {
-  it.each(["11128:request illegal", "conversation id missing"])(
-    "backs off for %s",
-    (msg) => {
-      expect(checkFallbackError(400, { code: 11128, msg }, 0, "codebuddy-intl")).toEqual({
-        shouldFallback: true,
-        cooldownMs: BACKOFF_CONFIG.base,
-        newBackoffLevel: 1,
-      });
-    },
-  );
+  it.each(["conversation id missing"])("backs off for %s", (msg) => {
+    expect(checkFallbackError(400, { code: 11128, msg }, 0, "codebuddy-intl")).toEqual({
+      shouldFallback: true,
+      cooldownMs: BACKOFF_CONFIG.base,
+      newBackoffLevel: 1,
+    });
+  });
 
-  it("increases repeated block cooldowns and respects the existing cap", () => {
-    expect([0, 1, 2].map((level) =>
-      checkFallbackError(400, "request illegal", level, "codebuddy-intl").cooldownMs,
-    )).toEqual([BACKOFF_CONFIG.base, BACKOFF_CONFIG.base * 2, BACKOFF_CONFIG.base * 4]);
+  it("11128 request illegal is handled by parseError (fatal/requestRejected), not checkFallbackError", () => {
+    // parseError returns { fatal: true, requestRejected: true } for 11128.
+    // checkFallbackError only reads errorConfig and has no 11128 code rule,
+    // so it returns shouldFallback: false — that is correct because the
+    // request is rejected, not the account.
+    const res = checkFallbackError(400, { code: 11128, msg: "request illegal" }, 0, "codebuddy-intl");
+    expect(res.shouldFallback).toBe(false);
+  });
 
-    expect(checkFallbackError(400, "request illegal", BACKOFF_CONFIG.maxLevel, "codebuddy-intl"))
-      .toEqual({ shouldFallback: true, cooldownMs: BACKOFF_CONFIG.max, newBackoffLevel: BACKOFF_CONFIG.maxLevel });
+  it("plain 'request illegal' without a code (no 11128/11140) is handled by parseError, not errorConfig backoff", () => {
+    // parseError now returns { banned: true } for a bare "request illegal" 403
+    // with no channel code. checkFallbackError (which only reads errorConfig)
+    // therefore returns shouldFallback: false for this string — the ban is
+    // handled upstream by parseError before checkFallbackError is ever called.
+    const res = checkFallbackError(400, "request illegal", 0, "codebuddy-intl");
+    // No longer a backoff rule — the errorConfig rule was removed.
+    expect(res.shouldFallback).toBe(false);
   });
 
   it.each(["openai", "codebuddy-cn", null])(
@@ -98,9 +105,17 @@ describe("ours — 11140 is a ban, not a cooldown", () => {
 describe("wiring", () => {
   const cfg = read("../open-sse/config/errorConfig.js");
 
-  it("has the two upstream provider-scoped rules", () => {
-    expect(cfg).toMatch(/provider: "codebuddy-intl",\s*text: "request illegal",\s*backoff: true/);
+  it("has the upstream provider-scoped rule for conversation id missing", () => {
+    // "request illegal" without a code is now banned (not backoff) and handled
+    // in parseError; the errorConfig rule was removed. Only conversation id
+    // missing stays as a per-request transient backoff.
     expect(cfg).toMatch(/provider: "codebuddy-intl",\s*text: "conversation id missing",\s*backoff: true/);
+    // request illegal is no longer an active backoff rule in errorConfig
+    const lines = cfg.split("\n");
+    const activeBackoff = lines.find(
+      (l) => !l.trimStart().startsWith("//") && l.includes("request illegal") && l.includes("backoff"),
+    );
+    expect(activeBackoff).toBeUndefined();
   });
 
   it("keeps the request-scoped 4xx guard", () => {
