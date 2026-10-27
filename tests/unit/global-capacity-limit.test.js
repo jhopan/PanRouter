@@ -68,7 +68,7 @@ describe("chat.js — stops rotating on a global limit", () => {
 
   it("returns before markAccountUnavailable", () => {
     const globalIdx = chat.indexOf("const globalLimit = globalCapacityLimit");
-    const markIdx = chat.indexOf("markAccountUnavailable(credentials.connectionId");
+    const markIdx = chat.indexOf("markAccountUnavailable(");
     expect(globalIdx).toBeGreaterThan(-1);
     expect(markIdx).toBeGreaterThan(-1);
     expect(globalIdx).toBeLessThan(markIdx);

@@ -89,7 +89,7 @@ describe("chat.js — fatal errors short-circuit", () => {
 
   it("checks fatal BEFORE markAccountUnavailable", () => {
     const fatalIdx = chat.indexOf("result.fatal === true");
-    const markIdx = chat.indexOf("markAccountUnavailable(credentials.connectionId");
+    const markIdx = chat.indexOf("markAccountUnavailable(");
     expect(fatalIdx).toBeGreaterThan(-1);
     expect(markIdx).toBeGreaterThan(-1);
     expect(fatalIdx).toBeLessThan(markIdx);

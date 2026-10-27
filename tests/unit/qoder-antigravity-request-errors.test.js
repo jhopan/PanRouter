@@ -122,7 +122,7 @@ describe("chat.js — fatal 400 does not lock accounts", () => {
 
   it("returns before markAccountUnavailable on fatal", () => {
     const fatalIdx = chat.indexOf("result.fatal === true");
-    const markIdx = chat.indexOf("markAccountUnavailable(credentials.connectionId");
+    const markIdx = chat.indexOf("markAccountUnavailable(");
     expect(fatalIdx).toBeGreaterThan(-1);
     expect(fatalIdx).toBeLessThan(markIdx);
   });

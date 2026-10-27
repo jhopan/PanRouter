@@ -488,7 +488,19 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     const shouldFallback = provider === "antigravity" && quotaResetMs
       ? true
-      : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+      : (await markAccountUnavailable(
+          credentials.connectionId,
+          result.status,
+          result.error,
+          provider,
+          model,
+          resetsAtMs,
+          // The executor's own parser already decided the account is banned
+          // (CodeBuddy 11140, or "request illegal" with no channel code).
+          // Without this the verdict never reached auth.js, and the account
+          // got a generic 120s per-model lock instead of a 30-day account ban.
+          result.banned === true,
+        )).shouldFallback;
 
     if (shouldFallback) {
       // A provider ban means the account is refused outright. Rotating to the

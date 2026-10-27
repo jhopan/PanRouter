@@ -83,7 +83,7 @@ describe("chat.js — a queued request waits and retries the SAME account", () =
 
   it("returns before markAccountUnavailable, so no account is locked", () => {
     const queueIdx = chat.indexOf("if (result.queueThrottle) {");
-    const markIdx = chat.indexOf("markAccountUnavailable(credentials.connectionId");
+    const markIdx = chat.indexOf("markAccountUnavailable(");
     expect(queueIdx).toBeGreaterThan(-1);
     expect(queueIdx).toBeLessThan(markIdx);
   });

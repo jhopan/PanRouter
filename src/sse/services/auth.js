@@ -1,7 +1,7 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
-import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
+import { MAX_RATE_LIMIT_COOLDOWN_MS, BANNED_ACCOUNT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { isQuotaExhaustedError, resolveQuotaResetAt } from "open-sse/services/quotaWindow.js";
 import { quotaWindowFor } from "open-sse/config/quotaWindows.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
@@ -355,7 +355,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
  * @param {string|null} model - The specific model that triggered the error
  * @returns {{ shouldFallback: boolean, cooldownMs: number }}
  */
-export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null) {
+export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null, providerBanned = false) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
   const connections = await getProviderConnections({ provider });
   const conn = connections.find(c => c.id === connectionId);
@@ -416,6 +416,18 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   } else {
     ({ shouldFallback, cooldownMs, newBackoffLevel, banned } = checkFallbackError(status, errorText, backoffLevel, provider));
   }
+
+  // The provider's own parser already decided this account is banned (CodeBuddy
+  // 11140, or a "request illegal" 403 with no channel code). That verdict must
+  // win over the generic text rules: the executor saw the actual body, so it
+  // knows a 30-day account ban where a rule table can only guess.
+  if (providerBanned) {
+    banned = true;
+    shouldFallback = true;
+    cooldownMs = BANNED_ACCOUNT_COOLDOWN_MS;
+    newBackoffLevel = 0;
+  }
+
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
   // MiniMax Code plan exhaustion is blocked for a flat 24 hours by the
