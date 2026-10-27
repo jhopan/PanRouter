@@ -450,9 +450,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
   // Account-level lock for conditions that refuse EVERY model on the account:
-  // github monthly, kiro monthly, and a provider BAN (CodeBuddy 11140).
-  // Model-level lock otherwise.
-  const lockUpdate = buildModelLockUpdate((githubResetAtMs || kiroMonthly || banned) ? null : model, cooldownMs);
+  // - quota exhausted (Codex, Cline, TokenHarbor, etc.) — the whole account's
+  //   free tier is empty, not just one model's slot
+  // - github monthly / kiro monthly — explicit calendar resets
+  // - a provider BAN (CodeBuddy 11140)
+  // Model-level lock otherwise (burst rate-limit on a specific model slot).
+  const lockUpdate = buildModelLockUpdate(
+    (quotaExhausted || githubResetAtMs || kiroMonthly || banned) ? null : model,
+    cooldownMs,
+  );
 
   // One reset timestamp for everything: the lock, the error text and the
   // persisted until-date must agree, or the dashboard shows one date while the

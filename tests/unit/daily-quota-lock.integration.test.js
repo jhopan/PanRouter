@@ -41,8 +41,11 @@ describe("markAccountUnavailable — daily free-tier quota", () => {
       expect(after.isActive).not.toBe(false); // stays active → auto-recovers
       expect(after.quotaExhaustedUntil).toBeTruthy();
 
-      const lockKey = Object.keys(after).find((k) => k === "modelLock_z-ai/glm-5.3-flash");
-      const until = new Date(after[lockKey]).getTime();
+      // A quota exhaustion (daily free-tier) locks the WHOLE ACCOUNT, not just
+      // one model slot. The router would otherwise try other models on the same
+      // drained account, burning a real request per attempt.
+      expect(after.modelLock___all).toBeTruthy();
+      const until = new Date(after.modelLock___all).getTime();
       // Parks until the next 00:00 UTC, so the remaining time depends on the wall
       // clock (49 min at 23:11 UTC, ~24h just after midnight). Check the boundary
       // rather than a fixed duration.
@@ -61,6 +64,7 @@ describe("markAccountUnavailable — daily free-tier quota", () => {
       await markAccountUnavailable(conn.id, 429, "too many requests", "cline", "z-ai/glm-5.3-flash");
       const after = await readConn(conn.id);
       expect(after.quotaExhaustedUntil ?? null).toBeFalsy();
+      // Burst rate-limit → model-level lock (only the specific slot is cooling)
       const lockKey = Object.keys(after).find((k) => k === "modelLock_z-ai/glm-5.3-flash");
       const until = new Date(after[lockKey]).getTime();
       expect(until - Date.now()).toBeLessThan(60 * 1000); // seconds
@@ -80,8 +84,9 @@ describe("markAccountUnavailable — daily free-tier quota", () => {
       await markAccountUnavailable(conn.id, 429, CLINE_DAILY, "cline", "z-ai/glm-5.3-flash", fiveDaysOut);
 
       const after = await readConn(conn.id);
-      const lockKey = Object.keys(after).find((k) => k === "modelLock_z-ai/glm-5.3-flash");
-      const remaining = new Date(after[lockKey]).getTime() - Date.now();
+      // A quota refusal with an explicit resetsAtMs uses the account-level lock.
+      expect(after.modelLock___all).toBeTruthy();
+      const remaining = new Date(after.modelLock___all).getTime() - Date.now();
 
       expect(remaining).toBeGreaterThan(30 * 60 * 1000); // NOT the burst cap
       expect(remaining).toBeCloseTo(5 * 24 * 60 * 60 * 1000, -4); // lands on the provider's own reset
