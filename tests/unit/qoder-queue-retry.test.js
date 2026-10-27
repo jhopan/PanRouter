@@ -54,38 +54,32 @@ describe("qoder — queue throttle is not an account fault", () => {
   });
 });
 
-describe("chat.js — waits and retries instead of locking", () => {
+describe("chat.js — a queued request is skipped, not retried", () => {
   const chat = read("../src/sse/handlers/chat.js");
 
-  it("retries the same account on a queue throttle", () => {
+  // The capacity is provider-wide (queueCount:0, serviceAvailable:false) and
+  // the official CLI shows the same queue ("Model request queued (34s)"), so a
+  // retry only burns a request for the same answer.
+  it("skips the queued request", () => {
     expect(chat).toContain("result.queueThrottle");
-    expect(chat).toMatch(/queued upstream — waiting/);
+    expect(chat).toMatch(/skipping without retrying or rotating/);
   });
 
-  it("retries before markAccountUnavailable", () => {
-    const queueIdx = chat.indexOf("result.queueThrottle");
+  it("does not retry the queued request", () => {
+    expect(chat).not.toMatch(/queued upstream — waiting/);
+    expect(chat).not.toMatch(/QUEUE_MAX_RETRIES/);
+  });
+
+  it("returns before markAccountUnavailable, so no account is locked", () => {
+    const queueIdx = chat.indexOf("if (result.queueThrottle) {");
     const markIdx = chat.indexOf("markAccountUnavailable(credentials.connectionId");
     expect(queueIdx).toBeGreaterThan(-1);
     expect(queueIdx).toBeLessThan(markIdx);
   });
 
-  it("bounds the number of retries", () => {
-    expect(chat).toMatch(/QUEUE_MAX_RETRIES = \d+/);
-  });
-
-  it("caps the wait so a dead model still fails eventually", () => {
-    expect(chat).toMatch(/45_000/);
-  });
-
-  it("does not lock the account when the queue persists", () => {
-    // queueCount:0 + serviceAvailable:false means nobody is ahead of us: the
-    // capacity is provider-wide, so rotating accounts cannot help and locking
-    // this one would only hide a healthy account.
-    expect(chat).toMatch(/provider-wide capacity, not locking the account/);
-    const guardIdx = chat.indexOf("provider-wide capacity, not locking the account");
-    const markIdx = chat.indexOf("markAccountUnavailable(credentials.connectionId");
-    expect(guardIdx).toBeGreaterThan(-1);
-    expect(guardIdx).toBeLessThan(markIdx);
+  it("reports the queue window to the client", () => {
+    expect(chat).toMatch(/HTTP_STATUS\.RATE_LIMITED/);
+    expect(chat).toMatch(/queued, retry in/);
   });
 });
 

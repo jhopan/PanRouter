@@ -27,7 +27,13 @@ describe("daily free-tier quota classification", () => {
     const before = Date.now();
     const res = checkFallbackError(429, CLINE_DAILY, 0, "cline");
     const resetAt = new Date(before + res.cooldownMs);
-    expect(resetAt.getUTCHours()).toBe(0); // default = 00:00 UTC
+    // The reset is the next 00:00 UTC. Running inside the last minute before
+    // midnight would land on 23:xx of the current day, so the hour is checked
+    // against the next boundary rather than a fixed 0.
+    const expected = new Date(before + res.cooldownMs);
+    expected.setUTCHours(0, 0, 0, 0);
+    if (expected.getTime() <= before) expected.setUTCDate(expected.getUTCDate() + 1);
+    expect(Math.abs(resetAt.getTime() - expected.getTime())).toBeLessThan(2000);
     expect(resetAt.getUTCMinutes()).toBe(0);
   });
 

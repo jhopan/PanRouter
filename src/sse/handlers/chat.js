@@ -245,12 +245,6 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastStatus = null;
   let lastHeaders = null;
 
-  // Admission-queue retry: a 10605 "isQueued" answer means the MODEL is busy,
-  // not that the account is bad. Qoder sends retryAfterSeconds (usually 30), so
-  // waiting once and retrying the same account turns a hard failure into a slow
-  // success. Bounded so a permanently saturated model still surfaces an error.
-  const QUEUE_MAX_RETRIES = 2;
-  let queueRetries = 0;
 
   // ── Account rotation safety (CodeBuddy 11140 / "unusual activity") ───────
   // A provider ban is contagious through the request PATTERN, not through the
@@ -437,32 +431,23 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       );
     }
 
-    // Admission queue (10605 isQueued): the model is momentarily busy, the
-    // account is fine. Wait the provider's own retryAfterSeconds and retry the
-    // SAME account instead of locking it — locking would hide a healthy account
-    // for 30s over a queue that usually clears in seconds.
-    if (result.queueThrottle && queueRetries < QUEUE_MAX_RETRIES) {
-      queueRetries += 1;
-      const waitMs = Math.max(1000, Math.min((result.resetsAtMs || 0) - Date.now(), 45_000));
-      log.warn("CHAT", `[${provider}/${model}] queued upstream — waiting ${Math.round(waitMs / 1000)}s then retrying (${queueRetries}/${QUEUE_MAX_RETRIES})`);
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
-      continue;
-    }
-
-
-
-    // Still queued after the retries: the capacity is shared by every key on the
-    // provider (Qoder reports queueCount:0 / serviceAvailable:false — nobody is
-    // ahead of us, the model is simply saturated). Rotating to the next account
-    // would get the same answer, so return the 429 WITHOUT locking this one.
+    // Admission queue (Qoder 10605 isQueued, serviceAvailable:false,
+    // queueCount:0): the capacity is shared by EVERY key on the provider, so
+    // there is nothing to rotate to and nothing to wait for on our side —
+    // the official CLI shows the same queue ("Model request queued (34s)").
+    //
+    // Retrying here only burns requests: the answer is the same for every
+    // account, and the wait would delay the client for no gain. So the request
+    // is reported as queued and the account is left untouched (no lock, no
+    // rotation) so it stays available for the next, non-queued request.
     if (result.queueThrottle) {
       const retrySec = Math.max(1, Math.round(((result.resetsAtMs || 0) - Date.now()) / 1000)) || 30;
-      log.warn("CHAT", `[${provider}/${model}] still queued after ${QUEUE_MAX_RETRIES} retries — provider-wide capacity, not locking the account`);
+      log.warn("CHAT", `[${provider}/${model}] queued upstream (provider-wide capacity) — skipping without retrying or rotating`);
       return unavailableResponse(
         HTTP_STATUS.RATE_LIMITED,
-        `[${provider}/${model}] ${result.error}`,
+        `[${provider}/${model}] queued upstream: ${result.error}`,
         retrySec,
-        `${retrySec}s`,
+        `queued, retry in ~${retrySec}s`,
         lastHeaders,
       );
     }
