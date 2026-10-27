@@ -1,3 +1,41 @@
+# v0.5.88.11 (2026-10-27)
+
+## Perbaikan
+
+- **CodeBuddy: akun yang kena ban tidak lagi menghentikan rotasi.**
+
+  Log sebelumnya:
+
+  ```
+  [AUTH] Account 1 BANNED by provider until 2026-11-26T23:42:34.509Z
+  [AUTH] Account 2 BANNED by provider until 2026-11-26T23:42:34.711Z
+  [AUTH] Account 3 BANNED by provider until 2026-11-26T23:42:38.921Z
+  [CHAT] 3 accounts refused by the provider — stopping rotation to protect
+         the remaining accounts
+  ```
+
+  Ban 30 hari-nya **sudah bekerja**. Yang tidak bekerja adalah berhenti di
+  akun ke-3: request gagal padahal masih ada akun sehat lain di pool, dan
+  operator harus retry manual.
+
+  Pool itu milik operator — setiap akun yang sehat berhak dicoba. Yang membuat
+  burst terlihat seperti otomatisasi adalah **timing**, bukan jumlahnya. Jadi
+  rotasi sekarang **menunggu antar akun** alih-alih berhenti.
+
+  - cabang stop-after-N-bans dihapus
+  - setiap akun yang kena ban dicatat dan rotasi lanjut
+  - jeda rotasi 3 detik (sebelumnya 4) supaya seluruh pool dilewati cepat
+    tanpa request ditembakkan beruntun
+
+  Diverifikasi live lewat dev server: `cbai/deepseek-v4.1-flash` HTTP 200 dalam
+  4,3 detik dengan akun yang sehat, setelah akun-akun sebelumnya kena ban.
+
+## Test
+
+- 6 test baru `codebuddy-rotation-continues.test.js`.
+- `ban-protections.test.js` diperbarui untuk behavior baru.
+- Suite: **3154 lulus**, 0 regresi baru.
+
 # v0.5.88.10 (2026-10-27)
 
 ## Perbaikan
