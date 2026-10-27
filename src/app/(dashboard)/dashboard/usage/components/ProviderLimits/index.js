@@ -142,6 +142,7 @@ export default function ProviderLimits() {
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
   const [resettingLimitId, setResettingLimitId] = useState(null);
+  const [checkingReleaseId, setCheckingReleaseId] = useState(null);
   const [resetConfirmState, setResetConfirmState] = useState(null);
   const [resetCreditsState, setResetCreditsState] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -302,6 +303,36 @@ export default function ProviderLimits() {
       setLastUpdated(new Date());
     },
     [fetchQuota],
+  );
+
+  // "Check & release": read the provider's live quota and lift the block when
+  // the account is serving again. Deliberately verifies first — the button
+  // cannot force a request against an exhausted account.
+  const handleCheckRelease = useCallback(
+    async (connectionId, provider) => {
+      if (!connectionId || checkingReleaseId) return;
+
+      setCheckingReleaseId(connectionId);
+      setErrors((prev) => ({ ...prev, [connectionId]: null }));
+
+      try {
+        const response = await fetch(`/api/usage/${connectionId}/check-release`, { method: "POST" });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result.error || "Failed to check the account");
+        }
+        if (!result.released) {
+          setErrors((prev) => ({ ...prev, [connectionId]: result.reason || "The account is still blocked" }));
+        }
+        await fetchQuota(connectionId, provider, { force: true });
+        setLastUpdated(new Date());
+      } catch (error) {
+        setErrors((prev) => ({ ...prev, [connectionId]: error.message || "Failed to check the account" }));
+      } finally {
+        setCheckingReleaseId(null);
+      }
+    },
+    [fetchQuota, checkingReleaseId],
   );
 
   const handleResetCodexLimit = useCallback(
@@ -1201,6 +1232,21 @@ export default function ProviderLimits() {
                         </button>
                       </Tooltip>
                     )}
+                    <Tooltip text="Check & release: read the live quota and unlock the account if the provider is serving it again">
+                      <button
+                        type="button"
+                        onClick={() => handleCheckRelease(conn.id, conn.provider)}
+                        disabled={isLoading || rowBusy || checkingReleaseId === conn.id}
+                        aria-label="Check and release"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-50"
+                      >
+                        <span
+                          className={`material-symbols-outlined text-[18px] text-text-muted ${checkingReleaseId === conn.id ? "animate-spin" : ""}`}
+                        >
+                          lock_open
+                        </span>
+                      </button>
+                    </Tooltip>
                     <Tooltip text="Refresh quota">
                       <button
                         type="button"

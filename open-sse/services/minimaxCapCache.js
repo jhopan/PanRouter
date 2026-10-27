@@ -17,9 +17,18 @@
  * router skip the account before the request goes out, exactly like the Kiro
  * monthly-cap cache.
  *
- * Advisory and short-lived: a missing or stale entry means "no opinion" and
- * the account stays eligible. We never block on a guess.
+ * The block has to survive a server restart, otherwise a restart would
+ * "forget" that the account ran out of plan and immediately probe it again.
+ * So an exhausted entry is persisted to the KV store (same idea as the
+ * Antigravity CACHE_BLOCK) and restored at startup.
+ *
+ * Advisory: a missing or stale entry means "no opinion" and the account stays
+ * eligible. We never block on a guess.
  */
+
+import { makeKv } from "@/lib/db/helpers/kvStore";
+
+const kv = makeKv("minimax_cap");
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -42,9 +51,62 @@ export function getMiniMaxCapCache() {
   return capCache;
 }
 
+/**
+ * Write an exhausted entry to the KV store so it survives a restart. A healthy
+ * reading removes the entry instead. Fail-open: a KV error must never touch the
+ * request path.
+ */
+async function persistEntry(connectionId, entry) {
+  try {
+    if (entry?.exhausted) {
+      await kv.set(connectionId, {
+        exhausted: true,
+        resetAt: entry.resetAt ?? null,
+        checkedAt: entry.checkedAt ?? Date.now(),
+      });
+    } else {
+      await kv.remove(connectionId);
+    }
+  } catch { /* fail-open */ }
+}
+
+/**
+ * Restore persisted blocks at startup. Entries whose 24h window already passed
+ * are dropped (and removed from the store), so a stale block never outlives
+ * its window.
+ * @returns {Promise<number>} how many blocks were restored
+ */
+export async function loadPersistedMiniMaxCaps(now = Date.now()) {
+  try {
+    const all = await kv.getAll();
+    let restored = 0;
+    for (const [connectionId, entry] of Object.entries(all || {})) {
+      if (!entry || typeof entry !== "object") continue;
+      const checkedAt = Number(entry.checkedAt) || 0;
+      const until = checkedAt + EXHAUSTED_TTL_MS;
+      if (!entry.exhausted || until <= now) {
+        // The 24h window closed while the server was down.
+        await kv.remove(connectionId).catch(() => {});
+        continue;
+      }
+      capCache.set(connectionId, {
+        exhausted: true,
+        resetAt: Number(entry.resetAt) || null,
+        checkedAt,
+      });
+      restored += 1;
+    }
+    return restored;
+  } catch {
+    return 0; // fail-open: no persisted blocks is the same as none
+  }
+}
+
 /** Forget one connection (successful request, token change, manual reset). */
 export function clearMiniMaxCap(connectionId) {
-  if (connectionId) capCache.delete(connectionId);
+  if (!connectionId) return;
+  capCache.delete(connectionId);
+  kv.remove(connectionId).catch(() => {});
 }
 
 /** Forget everything (tests / settings change). */
@@ -98,6 +160,8 @@ export function recordMiniMaxUsage(connectionId, usage, now = Date.now()) {
   // top-up lands), the tracker says so and the account becomes eligible again
   // immediately, without waiting for the 24h block to expire.
   capCache.set(connectionId, { exhausted, resetAt, checkedAt: now });
+  // Persist so the block survives a restart; a healthy reading clears the entry.
+  persistEntry(connectionId, capCache.get(connectionId));
 }
 
 /**
@@ -152,4 +216,5 @@ export function markMiniMaxExhausted(connectionId, resetAtMs = null, now = Date.
     resetAt: resetAtMs || existing?.resetAt || null,
     checkedAt: now,
   });
+  persistEntry(connectionId, capCache.get(connectionId));
 }

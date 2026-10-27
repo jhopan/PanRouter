@@ -132,6 +132,13 @@ async function runHeavyStartup() {
     .then((n) => { if (n > 0) console.log(`[KIRO_QUOTA] restored ${n} monthly cap(s)`); })
     .catch((e) => console.log("[KIRO_QUOTA] restore failed (non-fatal):", e.message));
 
+  // Same for MiniMax: a 24-hour plan block must survive a restart, otherwise
+  // the server would forget the account ran out and probe it again.
+  import("open-sse/services/minimaxCapCache.js")
+    .then(({ loadPersistedMiniMaxCaps }) => loadPersistedMiniMaxCaps())
+    .then((n) => { if (n > 0) console.log(`[MINIMAX_QUOTA] restored ${n} plan block(s)`); })
+    .catch((e) => console.log("[MINIMAX_QUOTA] restore failed (non-fatal):", e.message));
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")
