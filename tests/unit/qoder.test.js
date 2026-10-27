@@ -181,18 +181,22 @@ describe("buildCosyHeaders", () => {
       "Cosy-User",
       "Cosy-Date",
       "Cosy-Version",
-      "Cosy-Machineid",
-      "Cosy-Machinetoken",
-      "Cosy-Machinetype",
-      "Cosy-Machineos",
-      "Cosy-Clienttype",
-      "Cosy-Clientip",
-      "Cosy-Bodyhash",
-      "Cosy-Bodylength",
-      "Cosy-Sigpath",
+      // The gateway matches these case-SENSITIVELY, and the CLI's casing is
+      // not the obvious one (captured from qodercli 1.1.78).
+      "Cosy-MachineId",
+      "Cosy-MachineToken",
+      "Cosy-MachineType",
+      "Cosy-MachineOS",
+      "Cosy-MachineHostname",
+      "Cosy-ClientType",
       "Cosy-Data-Policy",
+      "Cosy-Scene",
+      "Cosy-Business-Product",
+      "Cosy-Business-Type",
       "Login-Version",
       "X-Request-Id",
+      "User-Agent",
+      "traceparent",
     ];
     for (const key of required) {
       expect(headers[key], `missing header ${key}`).toBeDefined();
@@ -204,36 +208,36 @@ describe("buildCosyHeaders", () => {
     expect(headers.Authorization).toMatch(/^Bearer COSY\.[A-Za-z0-9+/=]+\.[a-f0-9]{32}$/);
   });
 
-  it("Cosy-Sigpath strips the leading /algo prefix", () => {
+  it("does NOT send the headers the official CLI never sends", () => {
+    // Captured from qodercli 1.1.78: the CLI sends no body hash, no body
+    // length, no sig path, no client ip and no organization headers.
     const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
-    expect(headers["Cosy-Sigpath"]).toBe("/api/v2/model/list");
+    for (const key of [
+      "Cosy-Bodyhash",
+      "Cosy-Bodylength",
+      "Cosy-Sigpath",
+      "Cosy-Clientip",
+      "Cosy-Organization-Id",
+      "Cosy-Organization-Tags",
+    ]) {
+      expect(headers[key], `unexpected header ${key}`).toBeUndefined();
+    }
   });
 
-  it("Cosy-Sigpath also handles the encoded chat URL", () => {
-    const headers = buildCosyHeaders(Buffer.from("body", "utf8"), QODER_CHAT_URL_ENCODED, creds);
-    expect(headers["Cosy-Sigpath"]).toBe(
-      "/api/v2/service/pro/sse/agent_chat_generation",
-    );
-  });
-
-  it("Cosy-Bodyhash is the MD5 of the request body, Cosy-Bodylength is the length", () => {
-    const body = Buffer.from("hello qoder", "utf8");
-    const headers = buildCosyHeaders(body, QODER_MODEL_LIST_URL, creds);
-    const expectedHash = crypto.createHash("md5").update(body).digest("hex");
-    expect(headers["Cosy-Bodyhash"]).toBe(expectedHash);
-    expect(headers["Cosy-Bodylength"]).toBe(String(body.length));
-  });
-
-  it("empty body produces the canonical empty-MD5 hash", () => {
+  it("Cosy-MachineId matches the supplied machineId", () => {
     const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
-    expect(headers["Cosy-Bodyhash"]).toBe("d41d8cd98f00b204e9800998ecf8427e");
-    expect(headers["Cosy-Bodylength"]).toBe("0");
+    expect(headers["Cosy-MachineId"]).toBe("fixed-machine-id");
   });
 
-  it("Cosy-Machineid + Cosy-Machinetoken match the supplied machineId", () => {
+  it("Cosy-MachineToken is a 64-char base64url token, not the machine id", () => {
     const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
-    expect(headers["Cosy-Machineid"]).toBe("fixed-machine-id");
-    expect(headers["Cosy-Machinetoken"]).toBe("fixed-machine-id");
+    expect(headers["Cosy-MachineToken"]).not.toBe("fixed-machine-id");
+    expect(headers["Cosy-MachineToken"]).toMatch(/^[A-Za-z0-9_-]{64}$/);
+  });
+
+  it("Cosy-MachineType is a 16-byte hex UMID, not the client type", () => {
+    const headers = buildCosyHeaders(Buffer.alloc(0), QODER_MODEL_LIST_URL, creds);
+    expect(headers["Cosy-MachineType"]).toMatch(/^[0-9a-f]{32}$/);
   });
 
   it("auto-generates a machineId when none is supplied", () => {
@@ -241,7 +245,7 @@ describe("buildCosyHeaders", () => {
       ...creds,
       machineId: "",
     });
-    expect(headers["Cosy-Machineid"]).toMatch(
+    expect(headers["Cosy-MachineId"]).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
   });
@@ -660,9 +664,11 @@ describe("canonicalizeQoderUsage", () => {
 });
 
 describe("qoderInferenceBase", () => {
-  it("sends job tokens to api2 and device tokens to api3", () => {
+  it("sends every inference request to api2, like the official CLI", () => {
+    // Captured from qodercli 1.1.78: the only inference host it contacted was
+    // api2.qoder.sh, for device and job tokens alike.
     expect(qoderInferenceBase({ accessToken: "jt-abc" })).toContain("api2.qoder.sh");
-    expect(qoderInferenceBase({ accessToken: "dt-abc" })).toContain("api3.qoder.sh");
+    expect(qoderInferenceBase({ accessToken: "dt-abc" })).toContain("api2.qoder.sh");
   });
 });
 
