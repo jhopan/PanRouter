@@ -33,6 +33,7 @@ import { FETCH_CONNECT_TIMEOUT_MS, HTTP_STATUS } from "../config/runtimeConfig.j
 import {
   QODER_CHAT_SIG_PATH,
   QODER_CONTEXT_TIER_ENV,
+  QODER_IDE_VERSION,
   QODER_MODEL_MAP,
   qoderInferenceBase,
 } from "../shared/qoder/constants.js";
@@ -334,7 +335,10 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
       model_config: modelConfig,
       business: {
         product: "cli",
-        version: "1.0.0",
+        // The CLI reports its real version here. Sending the oldest value we
+        // ever shipped ("1.0.0") while the Cosy-Version header says 1.1.78 is
+        // an internal contradiction the gateway can see.
+        version: QODER_IDE_VERSION,
         type: "agent",
         stage: "start",
         id: uuidv4(),

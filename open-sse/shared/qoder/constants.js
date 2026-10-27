@@ -126,25 +126,49 @@ export const QODER_CONTEXT_TIER_MODES = Object.freeze({ AUTO: "auto", MAX: "max"
 export function qoderInferenceBase(credentials, region = QODER_REGION_INTL) {
   // CN serves every token kind from the single gateway host.
   if (region === QODER_REGION_CN) return QODER_REGION_BASES[QODER_REGION_CN].chat;
-  const raw = credentials?.apiKey || credentials?.accessToken;
-  if (
-    typeof raw === "string" &&
-    !raw.startsWith("pt-") &&
-    (raw.startsWith("jt-") || (credentials?.accessToken || "").startsWith("jt-"))
-  ) {
-    return QODER_CHAT_BASE_ALT;
-  }
-  return QODER_CHAT_BASE;
+  // The official qodercli 1.1.78 sends EVERY inference request to api2 — chat,
+  // streaming and job tokens alike (verified by MITM capture: the only chat
+  // host it contacted was api2.qoder.sh). api3 accepted the request too, but
+  // it is not the host the CLI uses, and the gateway treats a request that
+  // does not come from the expected endpoint as a non-official client: the
+  // answer was 429 "isQueued" with serviceAvailable:false.
+  return QODER_CHAT_BASE_ALT;
 }
 
 // COSY header constants. These are not arbitrary — the upstream signature
 // validation matches them against the values used at signing time.
-export const QODER_IDE_VERSION = "1.0.0";
+//
+// Values below were captured live from the official qodercli 1.1.78 through a
+// MITM capture (see scripts/qoder-mitm-addon.py):
+//
+//   Cosy-Version        : 1.1.78
+//   Cosy-ClientType     : 5
+//   Cosy-Data-Policy    : agree
+//   Cosy-MachineOS      : x86_64_win32
+//   Cosy-MachineType    : 49690fcd144a6fa707  (16 bytes hex, per machine)
+//   Cosy-MachineToken   : 64 chars base64url, per machine
+//   Cosy-MachineHostname: LAPTOP-3FBHMC46
+//   Cosy-Scene          : assistant
+//   Cosy-Business-Product: cli
+//   Cosy-Business-Type  : agent
+//   User-Agent          : Bun/1.4.2
+//   Login-Version       : v2
+//
+// The per-machine values (MachineType/MachineToken/MachineId/Hostname) come
+// from shared/qoder/fingerprint.js — see that file for why they are derived
+// locally and how they stay stable across restarts.
+export const QODER_IDE_VERSION = "1.1.78";
 export const QODER_CLIENT_TYPE = "5";
-export const QODER_DATA_POLICY = "disagree";
+export const QODER_DATA_POLICY = "agree";
 export const QODER_LOGIN_VERSION = "v2";
-export const QODER_MACHINE_OS = "x86_64_windows";
+export const QODER_MACHINE_OS = "x86_64_win32";
 export const QODER_MACHINE_TYPE = "5";
+// The CLI's User-Agent. The request runs under Bun, not Node.
+export const QODER_USER_AGENT = "Bun/1.4.2";
+// The CLI tags every chat turn with these three.
+export const QODER_SCENE = "assistant";
+export const QODER_BUSINESS_PRODUCT = "cli";
+export const QODER_BUSINESS_TYPE = "agent";
 
 // Canonical model identifiers. Identity map — keep as a map so callers can
 // cheaply test "is this a known qoder model?" before sending the request.

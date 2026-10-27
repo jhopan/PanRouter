@@ -24,7 +24,12 @@ import {
   QODER_MACHINE_OS,
   QODER_MACHINE_TYPE,
   QODER_RSA_PUBLIC_KEY,
+  QODER_USER_AGENT,
+  QODER_SCENE,
+  QODER_BUSINESS_PRODUCT,
+  QODER_BUSINESS_TYPE,
 } from "./constants.js";
+import { getQoderFingerprint, buildTraceparent } from "./fingerprint.js";
 
 // AES-128 wants a 16-byte key. Match qodercli/Veria: take the first 16 chars
 // of a fresh UUID's canonical string (hyphens included). The key is fresh
@@ -147,7 +152,16 @@ export function buildCosyHeaders(body, requestUrl, creds) {
   const sigInput = `${payloadB64}\n${cosyKey}\n${timestamp}\n${bodyBuf.toString("latin1")}\n${sigPath}`;
   const sig = md5Hex(Buffer.from(sigInput, "latin1"));
 
-  const machineId = creds.machineId || generateMachineId();
+  // The machine fingerprint. The official CLI sends a UMID-derived triple
+  // (machineType = 16 bytes hex, machineToken = 64 chars base64url, machineId =
+  // UUID v4) that is STABLE per machine. A headless server has no Qoder UMID
+  // service, so the same shape is derived locally and persisted — a value that
+  // changes per request would itself be a signal.
+  const fingerprint = getQoderFingerprint();
+  const machineId = creds.machineId || fingerprint.machineId;
+  const machineToken = fingerprint.machineToken;
+  const machineType = fingerprint.machineType;
+  const machineOs = fingerprint.os || QODER_MACHINE_OS;
   const bodyHash = md5Hex(bodyBuf);
   const bodyLength = String(bodyBuf.length);
 
@@ -157,19 +171,26 @@ export function buildCosyHeaders(body, requestUrl, creds) {
     "Cosy-User": creds.userId,
     "Cosy-Date": timestamp,
     "Cosy-Version": QODER_IDE_VERSION,
-    "Cosy-Machineid": machineId,
-    "Cosy-Machinetoken": machineId,
-    "Cosy-Machinetype": QODER_MACHINE_TYPE,
-    "Cosy-Machineos": QODER_MACHINE_OS,
-    "Cosy-Clienttype": QODER_CLIENT_TYPE,
-    "Cosy-Clientip": "127.0.0.1",
-    "Cosy-Bodyhash": bodyHash,
-    "Cosy-Bodylength": bodyLength,
-    "Cosy-Sigpath": sigPath,
+    // Header names are matched CASE-SENSITIVELY by the gateway, and the CLI's
+    // casing is not the obvious one: Cosy-MachineId (capital I), not
+    // Cosy-Machineid. Captured live from qodercli 1.1.78.
+    "Cosy-MachineId": machineId,
+    "Cosy-MachineToken": machineToken,
+    "Cosy-MachineType": machineType,
+    "Cosy-MachineOS": machineOs,
+    "Cosy-MachineHostname": fingerprint.hostname,
+    "Cosy-ClientType": QODER_CLIENT_TYPE,
     "Cosy-Data-Policy": QODER_DATA_POLICY,
-    "Cosy-Organization-Id": "",
-    "Cosy-Organization-Tags": "",
+    // The CLI tags every chat turn with the scene and the business context.
+    "Cosy-Scene": QODER_SCENE,
+    "Cosy-Business-Product": QODER_BUSINESS_PRODUCT,
+    "Cosy-Business-Type": QODER_BUSINESS_TYPE,
     "Login-Version": QODER_LOGIN_VERSION,
     "X-Request-Id": uuidv4(),
+    // The CLI runs under Bun and always identifies itself; a Node fetch() with
+    // no User-Agent is one of the cheapest ways to look like a script.
+    "User-Agent": QODER_USER_AGENT,
+    // W3C trace context, one per request.
+    traceparent: buildTraceparent(),
   };
 }
