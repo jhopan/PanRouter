@@ -1,3 +1,36 @@
+# v0.5.88.5 (2026-10-27)
+
+## Perbaikan
+
+- **CodeBuddy: header disamakan persis dengan CLI 2.170.0 (MITM live capture).**
+  Sebelumnya PanRouter mengirim header yang terlihat seperti client IDE pihak
+  ketiga. Koreksi berdasarkan capture live:
+
+  | Header | Sebelum | Sesudah |
+  |---|---|---|
+  | `User-Agent` / `X-IDE-Type` / `X-IDE-Name` | `IDE/2.170.0` / `IDE` | `CLI/2.170.0` / `CLI` |
+  | `X-Agent-Type` | `ide` | `main` |
+  | `X-Agent-Runtime` | `ide` | `other` |
+  | `x-stainless-arch` | `amd64` | `x64` |
+  | `X-Root-Request-ID` | tidak ada | ada |
+  | `traceparent` / `b3` / `X-B3-*` / `X-Trace-ID` | tidak ada | ada (OTel/Zipkin) |
+  | `baggage` | tidak ada | ada |
+
+- **Quota habis → kunci per-akun, bukan per-model.** Codex 429, Cline daily,
+  TokenHarbor weekly, dll. sekarang tulis `modelLock___all` — router tidak lagi
+  buang N request ke model lain di akun yang kosong semua.
+
+- **Hitung mundur cooldown (⏱) sekarang tampil untuk Kiro dan semua akun
+  quota-parked.** Fix bug `sort()[0]` yang memilih lock expired + tidak membaca
+  `quotaExhaustedUntil`. Helper bersama `src/shared/utils/cooldown.js`.
+
+## Test
+
+- 36 lulus di `codebuddy-intl-cli-identity.test.js` (header CLI).
+- 4 baru di `quota-exhausted-account-lock.test.js`.
+- 19 baru di `cooldown-countdown.test.js` + `cooldown-countdown-live-lock.test.js`.
+- Suite: **3097 lulus**, 0 regresi baru.
+
 # v0.5.88.4 (2026-10-27)
 
 ## Perbaikan
