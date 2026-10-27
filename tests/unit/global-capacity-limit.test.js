@@ -76,6 +76,8 @@ describe("chat.js — stops rotating on a global limit", () => {
 
   it("surfaces 429 with the retry window", () => {
     expect(chat).toMatch(/provider-wide capacity limit/);
-    expect(chat).toContain("HTTP_STATUS.TOO_MANY_REQUESTS");
+    // HTTP_STATUS.TOO_MANY_REQUESTS does not exist in runtimeConfig —
+    // the constant is RATE_LIMITED.
+    expect(chat).toContain("HTTP_STATUS.RATE_LIMITED");
   });
 });
