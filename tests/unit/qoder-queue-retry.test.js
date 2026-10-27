@@ -105,3 +105,4 @@ describe("error plumbing — queueThrottle survives the round trip", () => {
     expect(chatCore).toMatch(/\{ fatal, accountRestricted, queueThrottle(, banned)? \}/);
   });
 });
+

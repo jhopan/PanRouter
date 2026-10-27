@@ -11,6 +11,7 @@ import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelSupportedFormats, getModelStrip, getModelUpstreamId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { PROVIDERS } from "../config/providers.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
+import { shouldRefreshOnForbidden } from "../utils/authErrorHeuristics.js";
 import { upstreamResponseHeaders } from "../utils/upstreamHeaders.js";
 import { HTTP_STATUS, TOKEN_SAVER_HEADER } from "../config/runtimeConfig.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
@@ -425,7 +426,29 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   }
 
   // Handle 401/403 - try token refresh (skip for noAuth providers)
-  if (!executor.noAuth && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED || providerResponse.status === HTTP_STATUS.FORBIDDEN)) {
+  //
+  // A 403 is not always an auth failure. Qoder answers 403 for its admission
+  // queue (code 10605) and CodeBuddy answers 403 for channel verification
+  // (11128) / account restriction (11140). Refreshing the token cannot fix
+  // those, and the refresh path costs three attempts (6s of backoff) plus a
+  // duplicate upstream request before the real error is finally reported.
+  // So the body is peeked at first and only a genuine auth error refreshes.
+  let forbiddenIsAuthError = true;
+  if (providerResponse.status === HTTP_STATUS.FORBIDDEN) {
+    try {
+      const peekBody = await providerResponse.clone().text();
+      forbiddenIsAuthError = shouldRefreshOnForbidden(HTTP_STATUS.FORBIDDEN, peekBody);
+      if (!forbiddenIsAuthError) {
+        log?.debug?.("TOKEN", `${provider.toUpperCase()} | 403 is a provider refusal, not an auth error — skipping token refresh`);
+      }
+    } catch {
+      // Body unreadable: fall back to the generic behaviour.
+    }
+  }
+
+  if (!executor.noAuth
+      && (providerResponse.status === HTTP_STATUS.UNAUTHORIZED
+          || (providerResponse.status === HTTP_STATUS.FORBIDDEN && forbiddenIsAuthError))) {
     try {
       // Mutate credentials after each successful refresh: rotating refresh_token
       // providers (xAI/grok-cli) issue a new RT on every refresh; without this,
