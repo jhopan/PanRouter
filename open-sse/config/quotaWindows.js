@@ -34,6 +34,12 @@ export const QUOTA_WINDOWS = {
     kiro: { scope: QUOTA_SCOPES.MONTHLY, usageKey: null },
     // Weekly buckets from retrieveUserQuotaSummary (resetTime per bucket).
     antigravity: { scope: QUOTA_SCOPES.WEEKLY, usageKey: "gemini_weekly" },
+    // MiniMax Code M Plan: the plan reports an INTERVAL window (hours) and a
+    // WEEKLY window, each with its own remaining percentage and end time.
+    // The interval window is the one that runs out first, so it drives the
+    // reset; `usageKey: null` picks the earliest future reset across rows.
+    "minimax-code": { scope: QUOTA_SCOPES.SESSION, usageKey: null },
+    "minimax-code-global": { scope: QUOTA_SCOPES.SESSION, usageKey: null },
     // 5h primary window + weekly secondary; `session` is the short one.
     codex: { scope: QUOTA_SCOPES.SESSION, usageKey: "session" },
     claude: { scope: QUOTA_SCOPES.SESSION, usageKey: "session (5h)" },
@@ -191,7 +197,13 @@ export function isQuotaExhaustedError(errorText) {
   // 15-minute throttle is wrong: the account still serves other models and the
   // window reopens in minutes. Check this BEFORE the generic signals so a
   // message that also mentions "quota" cannot be misclassified.
-  if (/frequency limit|rate.?limit|too many requests|exceeds? frequency|请求过于频繁/i.test(lower)) {
+  //
+  // Exception: MiniMax's "usage limit reached: insufficient balance (1008)" is
+  // a PLAN/credit exhaustion, not a burst throttle — the balance is gone, so
+  // the account must wait for the plan window, not a few seconds. It is checked
+  // before the frequency guard below.
+  if (!/insufficient balance/.test(lower)
+      && /frequency limit|rate.?limit|too many requests|exceeds? frequency|请求过于频繁/i.test(lower)) {
     return false;
   }
 
@@ -211,6 +223,19 @@ export function isQuotaExhaustedError(errorText) {
   // it fell through to the generic backoff and the model was locked for only
   // 120s, letting the router hammer a paying-required account every two minutes.
   if (/"code"\s*:\s*"?11[02]"?/.test(lower) || /pricingurl/.test(lower)) {
+    return true;
+  }
+
+  // MiniMax plan/credit exhaustion: "usage limit reached: insufficient balance
+  // (1008)". The body carries no "quota" keyword, so it fell through to the
+  // generic backoff and the account was locked for a flat 300 seconds, then
+  // tried again — burning a real request on every retry. The MiniMax tracker
+  // reports the plan window's remaining percentage and its reset time, so
+  // classifying this as quota-class lets auth.js use the real reset.
+  //
+  // Only "insufficient balance" counts. A bare "usage limit reached" can also
+  // be a plain throttle, so it stays on the burst path.
+  if (/insufficient balance/.test(lower)) {
     return true;
   }
 

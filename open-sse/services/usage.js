@@ -10,6 +10,7 @@ import { getCodexUsage, consumeCodexRateLimitResetCredit, getCodexRateLimitReset
 export { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits, consumeClaudeResetGrant };
 import { getKiroUsage } from "./usage/kiro.js";
 import { recordKiroUsage } from "./kiroCapCache.js";
+import { recordMiniMaxUsage } from "./minimaxCapCache.js";
 import { getMiniMaxUsage } from "./usage/minimax.js";
 import { getMiniMaxCodeUsage } from "./minimaxCodeUsage.js";
 import { getCursorUsage } from "./usage/cursor.js";
@@ -108,6 +109,14 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
   // discovered via 402 on every model.
   if (provider === "kiro" && connection.id && result && !result.error) {
     try { recordKiroUsage(connection.id, result); } catch { /* advisory only */ }
+  }
+
+  // Same for MiniMax Code: the plan window's remaining percentage and reset
+  // time come straight from the tracker, so an exhausted account is skipped
+  // before the request goes out instead of after a 429.
+  if ((provider === "minimax-code" || provider === "minimax-code-global")
+      && connection.id && result && !result.error) {
+    try { recordMiniMaxUsage(connection.id, result); } catch { /* advisory only */ }
   }
 
   return result;

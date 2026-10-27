@@ -116,6 +116,16 @@ export const ERROR_RULES = [
   // NOT a ban (OmniRoute #11809 parity). Short cooldown so the connection
   // stays active and the retry succeeds after region/profile resolution.
   { text: "user is not authorized to make this call", cooldownMs: COOLDOWN.short },
+  // ── MiniMax Code plan exhaustion ─────────────────────────────────────────
+  // "usage limit reached: insufficient balance (1008)" means the M Plan window
+  // or the credit balance is spent. The plan window does have a reset time, but
+  // the operator asked for a flat 24-hour block: a plan that ran out while
+  // 470k tokens of conversation were being sent is not worth retrying in a few
+  // hours, and every retry burns a real request. 24h keeps the account parked
+  // for the rest of the working day and lets the usage tracker overwrite the
+  // entry as soon as the plan refills.
+  { provider: "minimax-code", text: "insufficient balance", cooldownMs: 24 * 60 * 60 * 1000 },
+  { provider: "minimax-code-global", text: "insufficient balance", cooldownMs: 24 * 60 * 60 * 1000 },
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
   // ── CodeBuddy Intl gateway blocks (upstream 9router PR #5024) ───────────
   // 11140 is an outright BAN ("Your account has been restricted due to unusual

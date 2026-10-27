@@ -8,6 +8,7 @@ import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.
 import { getAntigravityQuotaCache, antigravityFamilyKey } from "./antigravityQuota.js";
 import { shouldSkipKiroAccount, markKiroCapped, recordKiroUsage } from "open-sse/services/kiroCapCache.js";
 import { isBannedConnection, banFields, clearBanFields } from "open-sse/services/bannedAccounts.js";
+import { shouldSkipMiniMaxAccount, markMiniMaxExhausted } from "open-sse/services/minimaxCapCache.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -147,6 +148,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // an account that is capped can be skipped BEFORE the request goes upstream
     // instead of discovering it via 402 on every model.
     const isKiro = providerId === "kiro";
+    // MiniMax plan windows are exhausted per account and the reset is KNOWN
+    // (the tracker reports the window's end time), so an exhausted account is
+    // skipped before the request goes out instead of being discovered by a 429.
+    const isMiniMaxCode = providerId === "minimax-code" || providerId === "minimax-code-global";
 
     // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
     const availableConnections = connections.filter(c => {
@@ -159,6 +164,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       if (isBannedConnection(c)) {
         log.debug("AUTH", `  → ${c.id?.slice(0, 8)} | BANNED until ${c.bannedUntil} — skipped`);
         return false;
+      }
+      if (isMiniMaxCode) {
+        const verdict = shouldSkipMiniMaxAccount(c.id);
+        if (verdict.skip) {
+          log.debug("MINIMAX_QUOTA", `${c.id?.slice(0, 8) || "unknown"} | ${verdict.reason} — skip upstream${verdict.until ? ` until ${new Date(verdict.until).toISOString()}` : ""}`);
+          return false;
+        }
       }
       if (isKiro) {
         const verdict = shouldSkipKiroAccount(c.id);
@@ -396,10 +408,21 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
+  // MiniMax Code plan exhaustion is blocked for a flat 24 hours by the
+  // provider rule in ERROR_RULES. Do NOT let the quota-window resolver
+  // overwrite that with the tracker's reset time — a plan window can report a
+  // reset only a couple of hours out, and the operator asked for 24h so the
+  // account is not re-probed (and a real request is not burned) every few
+  // hours.
+  const isMiniMaxPlanExhaustion = ["minimax-code", "minimax-code-global"]
+    .includes(resolveProviderId(provider))
+    && Number(status) === 429
+    && /insufficient balance/i.test(String(errorText || ""));
+
   // No provider-supplied reset: resolve the window ourselves (usage API first,
   // calendar fallback) — see open-sse/services/quotaWindow.js.
   let quotaResetSource = null;
-  if (quotaExhausted && !resetsAtMs) {
+  if (quotaExhausted && !resetsAtMs && !isMiniMaxPlanExhaustion) {
     const resolved = await resolveQuotaResetAt({
       provider,
       connection: conn,
@@ -413,6 +436,16 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // going upstream instead of re-discovering it with a 402 on every model.
   if (kiroMonthly) {
     markKiroCapped(connectionId, resetsAtMs || (Date.now() + cooldownMs));
+  }
+
+  // Same for a MiniMax plan/credit exhaustion: the plan window's real reset
+  // comes from the tracker, so remember it and skip the account next time
+  // instead of retrying it every few minutes.
+  const isMiniMaxCodeProvider = ["minimax-code", "minimax-code-global"]
+    .includes(resolveProviderId(provider));
+  if (isMiniMaxCodeProvider && Number(status) === 429
+      && /insufficient balance|usage limit reached/i.test(String(errorText || ""))) {
+    markMiniMaxExhausted(connectionId, resetsAtMs || null);
   }
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
