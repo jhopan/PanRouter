@@ -1,3 +1,45 @@
+# v0.5.88.1 (2026-10-27)
+
+## Perbaikan
+
+- **Request Qoder yang masuk antrean sekarang di-skip, bukan di-retry dan bukan
+  dirotasi.** Antrean itu bersifat global: Qoder melaporkan `code 10605` dengan
+  `isQueued: true`, `queueCount: 0` dan `serviceAvailable: false` — tidak ada
+  siapa pun di depan kita, kapasitas bersama model itu memang sedang penuh. CLI
+  resmi menampilkan antrean yang sama ("Model request queued (34s)", "estimated
+  wait less than 1min") dan berhasil begitu antrean surut.
+
+  Retry maupun rotasi hanya membuang-buang request untuk jawaban yang sama.
+  Sekarang request dilaporkan sebagai terantre dan akun **tidak disentuh**:
+
+  - tidak ada retry (antrean urusan provider)
+  - tidak ada rotasi akun (semua akun dapat antrean yang sama)
+  - tidak ada kunci model (akunnya sehat)
+
+  Diukur langsung ke endpoint lewat dev server yang sedang jalan:
+
+  | | Sebelum | Sesudah |
+  |---|---|---|
+  | Durasi | HTTP 429 setelah **62,7 detik** | HTTP 429 setelah **1,3 detik** |
+  | Kunci akun | ditulis | **tidak** |
+
+- **403 yang bukan error auth tidak lagi memicu refresh token.** Aturan umum
+  "401 atau 403 → refresh dan coba lagi" tidak berlaku untuk 403 dari antrean
+  Qoder (`10605`) maupun dari CodeBuddy (`11128`/`11140`). Refresh tidak akan
+  memperbaikinya, dan jalur refresh memakan tiga percobaan (6 detik backoff) plus
+  satu request sia-sia sebelum error sebenarnya dilaporkan.
+
+- `HTTP_STATUS.TOO_MANY_REQUESTS` yang **tidak pernah ada** di `runtimeConfig`
+  (konstantanya `RATE_LIMITED`) — cabang antrean akan melempar error.
+
+## Test
+
+- Test `qoder-queue-retry.test.js` ditulis ulang: antrean di-skip, tidak ada
+  retry, tidak ada kunci akun, dan jendela antrean dilaporkan ke klien.
+- Test `error-rules-daily-quota.test.js` dibuat tahan waktu (sebelumnya gagal
+  kalau suite berjalan di menit terakhir sebelum tengah malam UTC).
+- Suite: **3062 lulus**, 0 regresi baru.
+
 # v0.5.88.0 (2026-10-27)
 
 ## Perbaikan
