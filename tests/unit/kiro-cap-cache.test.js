@@ -68,11 +68,21 @@ describe("kiroCapCache — skip before the request goes out", () => {
     expect(shouldSkipKiroAccount("conn-e").skip).toBe(false);
   });
 
-  it("ignores a stale reading", () => {
-    // 5-minute TTL: an old reading must not block the account forever.
+  it("a stale reading WITHOUT a future reset does not block the account", () => {
+    // The 5-minute TTL still guards the case where we could not read a reset
+    // window: an old, uninterpretable reading must not block forever.
     const old = Date.now() - 10 * 60 * 1000;
-    recordKiroUsage("conn-f", usage(100, 100, new Date(Date.now() + 5 * DAY).toISOString()), old);
+    recordKiroUsage("conn-f", usage(10, 100, null), old);
     expect(shouldSkipKiroAccount("conn-f").skip).toBe(false);
+  });
+
+  it("a stale reading that reports a FUTURE reset still holds", () => {
+    // A cap with a known window is authoritative until that window passes, no
+    // matter how old the reading is. Before the fix, a monthly-capped Kiro
+    // account looked healthy again five minutes after its 402.
+    const old = Date.now() - 10 * 60 * 1000;
+    recordKiroUsage("conn-f2", usage(100, 100, new Date(Date.now() + 5 * DAY).toISOString()), old);
+    expect(shouldSkipKiroAccount("conn-f2").skip).toBe(true);
   });
 
   it("clears one connection on demand", () => {

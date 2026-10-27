@@ -160,16 +160,30 @@ export function recordKiroUsage(connectionId, usage, now = Date.now()) {
 export function shouldSkipKiroAccount(connectionId, now = Date.now()) {
   const entry = capCache.get(connectionId);
   if (!entry) return { skip: false };
-  if (now - entry.checkedAt > CACHE_TTL_MS) return { skip: false };
 
+  // A cap that is still in effect is NOT a stale probe. The TTL only exists to
+  // expire an entry whose window we could not confirm; while cappedUntil is
+  // still in the future the cap is authoritative and the account must stay out
+  // of rotation.
+  //
+  // Bailing out on the TTL alone let a monthly-capped account look healthy five
+  // minutes after the 402, so the router sent it requests again for the rest of
+  // the month (field log: "Adelia locked modelLock___all for 376727s" and the
+  // account was still being picked).
   if (entry.exhausted && entry.cappedUntil && entry.cappedUntil > now) {
     return { skip: true, until: entry.cappedUntil, reason: "monthly cap reached" };
   }
+
   // The reset time has passed: the cap is over, drop the entry.
   if (entry.cappedUntil && entry.cappedUntil <= now) {
     capCache.delete(connectionId);
     return { skip: false };
   }
+
+  // No cap window known — fall back to the probe TTL so a reading we could
+  // not interpret does not disable the account forever.
+  if (now - entry.checkedAt > CACHE_TTL_MS) return { skip: false };
+
   return { skip: false };
 }
 
