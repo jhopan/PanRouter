@@ -454,15 +454,20 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // Model-level lock otherwise.
   const lockUpdate = buildModelLockUpdate((githubResetAtMs || kiroMonthly || banned) ? null : model, cooldownMs);
 
+  // One reset timestamp for everything: the lock, the error text and the
+  // persisted until-date must agree, or the dashboard shows one date while the
+  // router unparks the account at another.
+  const quotaResetAt = new Date(Date.now() + cooldownMs).toISOString();
+
   await updateProviderConnection(connectionId, {
     ...lockUpdate,
     testStatus: "unavailable",
     lastError: quotaExhausted
-      ? `Quota exhausted — resets ${new Date(Date.now() + cooldownMs).toISOString()}`
+      ? `Quota exhausted — resets ${quotaResetAt}`
       : reason,
     errorCode: status,
     lastErrorAt: new Date().toISOString(),
-    ...(quotaExhausted && { quotaExhaustedUntil: new Date(Date.now() + cooldownMs).toISOString() }),
+    ...(quotaExhausted && { quotaExhaustedUntil: quotaResetAt }),
     // A provider ban is recorded explicitly so the dashboard can show it and
     // "Test connection" does not keep poking the account.
     ...(banned ? banFields(reason, Date.now() + cooldownMs) : {}),
@@ -474,7 +479,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (banned) {
     log.warn("AUTH", `${connName} BANNED by provider until ${new Date(Date.now() + cooldownMs).toISOString()} — account excluded from rotation`);
   } else {
-    log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
+    // The reset date belongs in the log, not just the duration: "locked
+    // modelLock___all for 406715s" leaves the operator guessing whether that is
+    // 30 minutes or a month. Codex shows the same thing as
+    // "Quota exhausted — resets <iso>", so a quota refusal prints both.
+    const resetAt = quotaExhausted || kiroMonthly || githubResetAtMs
+      ? quotaResetAt
+      : null;
+    const resetInfo = resetAt ? ` until ${resetAt}` : "";
+    log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s${resetInfo} [${status}]`);
   }
 
   if (provider && status && reason) {

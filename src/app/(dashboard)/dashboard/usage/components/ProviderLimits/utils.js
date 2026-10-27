@@ -472,11 +472,21 @@ export function parseQuotaData(provider, data) {
       case "kiro":
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([quotaType, quota]) => {
+            const total = Number(quota?.total) || 0;
+            const used = Number(quota?.used) || 0;
             normalizedQuotas.push({
               name: quotaType,
-              used: quota.used || 0,
-              total: quota.total || 0,
+              used,
+              total,
+              // Kiro's usage rows are absolute request counts, so `remaining` is
+              // a COUNT, not a percentage — forwarding it would render "500%"
+              // for a row that is 60% spent. Compute the percentage from
+              // used/total instead, exactly like the Qoder branch does.
+              remaining: total > 0
+                ? Math.max(0, Math.round(((total - used) / total) * 100))
+                : 0,
               resetAt: quota.resetAt || null,
+              unlimited: quota.unlimited === true,
             });
           });
         }

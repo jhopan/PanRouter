@@ -42,8 +42,37 @@ function parseKiroQuotaData(data) {
     }
   });
 
+  // Kiro's monthly cap (`reason: "MONTHLY_REQUEST_COUNT"`) refuses EVERY model
+  // on the account. Report it the way Codex does, with a limitReached flag, so
+  // the tracker can label the row as exhausted instead of showing a stale
+  // "used 0 / limit 0" that looks like plenty of quota.
+  const limitReached = usageList.some((breakdown) => {
+    const total = breakdown.usageLimitWithPrecision || 0;
+    const used = breakdown.currentUsageWithPrecision || 0;
+    return total > 0 && used >= total;
+  });
+
+  // The monthly cap is an ACCOUNT-wide limit that resets on the 1st. When the
+  // account is exhausted the upstream breakdown can come back empty, which
+  // would leave the tracker with no row at all — the operator would see a
+  // blank card instead of "exhausted, resets 2026-11-01". So the monthly
+  // window is always present as a row, even when there is nothing left.
+  if (!quotaInfo.monthly) {
+    quotaInfo.monthly = {
+      used: limitReached ? 1 : 0,
+      total: 1,
+      remaining: limitReached ? 0 : 1,
+      resetAt,
+      unlimited: false,
+    };
+  }
+
   return {
     plan: data.subscriptionInfo?.subscriptionTitle || "Kiro",
+    limitReached,
+    // The account-level reset date, so the dashboard and the router agree on
+    // when the account comes back.
+    resetAt,
     quotas: quotaInfo,
   };
 }
