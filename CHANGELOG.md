@@ -1,3 +1,36 @@
+# v0.5.88.8 (2026-10-27)
+
+## Perbaikan
+
+- **Akun Antigravity yang sudah diverifikasi sekarang benar-benar dilepas.**
+  Ditemukan saat mengecek akun `ayuantini63` setelah verifikasi browser.
+
+  Gejala: akun sudah eligible lagi (usage API melaporkan `eligible: true`, quota
+  row kembali normal), tapi entri KV `antigravity_ineligible` masih
+  `flagged: true`. Akun tetap di-skip sampai TTL 15 menit habis.
+
+  Penyebab: `recordAntigravityEligibility()` hanya menghapus entri KV kalau
+  cache **di memori** memegang flag tersebut. Setelah restart, map di memori
+  kosong sementara entri yang dipersist masih ada — jadi reading yang sehat
+  sama sekali tidak menghapus apa pun.
+
+  Fix: entri KV dihapus **tanpa syarat** di cabang sehat. Reading yang sehat
+  selalu melepas flag, baik yang ada di memori, yang dipersist, atau keduanya.
+
+  Diverifikasi live di dev server lokal setelah fix:
+
+  | | Nilai |
+  |---|---|
+  | `ineligible` | `{"eligible": true, ...}` |
+  | KV flag | **hilang** |
+  | Chat `ag/claude-sonnet-4-6` | **HTTP 200**, "ok", 2,8 detik |
+
+## Test
+
+- Test regresi: menulis flag yang dipersist, mengosongkan cache di memori,
+  lalu memastikan reading yang sehat menghapus entri persisten.
+- Suite: **3131 lulus**, 0 regresi baru.
+
 # v0.5.88.7 (2026-10-27)
 
 ## Fitur
