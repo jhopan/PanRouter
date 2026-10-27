@@ -1,3 +1,35 @@
+# v0.5.88.2 (2026-10-27)
+
+## Fitur
+
+- **Antrean Qoder: tunggu, lalu ulangi di akun yang sama.** Antrean Qoder
+  (`code 10605`, `isQueued:true`, `queueCount:0`, `serviceAvailable:false`)
+  berarti modelnya **gratis tapi sedang sibuk** untuk semua key — itu antrean,
+  bukan error. CLI resmi menampilkan hal yang sama ("Model request queued (34s)",
+  "estimated wait less than 1min") dan berhasil begitu antrean surut.
+
+  Rotasi akun tidak akan membantu: setiap akunmeet antrean yang sama, dan
+  tiap percobaan memakai kuota akun itu. Jadi request sekarang **menunggu
+  `retryAfterSeconds` dari provider (30 detik) lalu mengulangi di akun yang
+  sama**, paling banyak dua kali. Kalau masih antre, request dilaporkan sebagai
+  terantre dan akun **tidak disentuh** — tanpa kunci, tanpa rotasi — supaya
+  tetap tersedia.
+
+  Diukur lewat dev server yang sedang jalan:
+
+  | | Nilai |
+  |---|---|
+  | Durasi | HTTP 429 setelah **62,4 detik** (2 × 30 detik) |
+  | Akun | **sama** sepanjang (`consecutiveUseCount` tetap 1) |
+  | Kunci model baru | **tidak ada** |
+
+## Test
+
+- Test `qoder-queue-retry.test.js`: antrean di-retry di akun yang sama, jeda
+  mengikuti `retryAfterSeconds`, tidak ada rotasi selama antre, tidak ada kunci
+  akun, dan jendela antrean dilaporkan ke klien.
+- Suite: **3063 lulus**, 0 regresi baru.
+
 # v0.5.88.1 (2026-10-27)
 
 ## Perbaikan
