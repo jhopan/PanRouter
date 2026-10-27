@@ -6,6 +6,7 @@ import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/c
 import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
+import { getCooldownUntil } from "@/shared/utils/cooldown";
 
 export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
@@ -137,22 +138,13 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
   // Use useState + useEffect for impure Date.now() to avoid calling during render
   const [isCooldown, setIsCooldown] = useState(false);
 
-  // Get earliest model lock timestamp (useEffect handles the Date.now() comparison)
-  const modelLockUntil = Object.entries(connection)
-    .filter(([k]) => k.startsWith("modelLock_"))
-    .map(([, v]) => v)
-    .filter(v => !!v)
-    .sort()[0] || null;
+  // The account is parked while ANY lock is live, so the countdown runs to the
+  // LAST live lock. `sort()[0]` picked the earliest of all locks — including
+  // expired ones — and an expired winner meant no countdown was rendered.
+  const modelLockUntil = getCooldownUntil(connection);
 
   useEffect(() => {
-    const checkCooldown = () => {
-      const until = Object.entries(connection)
-        .filter(([k]) => k.startsWith("modelLock_"))
-        .map(([, v]) => v)
-        .filter(v => v && new Date(v).getTime() > Date.now())
-        .sort()[0] || null;
-      setIsCooldown(!!until);
-    };
+    const checkCooldown = () => setIsCooldown(!!getCooldownUntil(connection));
 
     checkCooldown();
     const interval = modelLockUntil ? setInterval(checkCooldown, 1000) : null;

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
+import { getCooldownUntil, formatCooldownRemaining } from "@/shared/utils/cooldown";
 import PropTypes from "prop-types";
 import { Card, Badge, Button, Modal, Select, Toggle, EditConnectionModal, ConfirmModal } from "@/shared/components";
 
@@ -10,14 +11,7 @@ function CooldownTimer({ until }) {
   const [remaining, setRemaining] = useState("");
 
   useEffect(() => {
-    const update = () => {
-      const diff = new Date(until).getTime() - Date.now();
-      if (diff <= 0) { setRemaining(""); return; }
-      const s = Math.floor(diff / 1000);
-      if (s < 60) setRemaining(`${s}s`);
-      else if (s < 3600) setRemaining(`${Math.floor(s / 60)}m ${s % 60}s`);
-      else setRemaining(`${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`);
-    };
+    const update = () => setRemaining(formatCooldownRemaining(until));
     update();
     const t = setInterval(update, 1000);
     return () => clearInterval(t);
@@ -59,17 +53,14 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   const noProxyText = boundProxyPool?.noProxy || connection.providerSpecificData?.connectionNoProxy || "";
   const proxyBadgeVariant = boundProxyPool?.isActive === true ? "success" : (boundProxyPoolId || hasLegacyProxy) ? "error" : "default";
 
-  const modelLockUntil = Object.entries(connection)
-    .filter(([k]) => k.startsWith("modelLock_"))
-    .map(([, v]) => v).filter(Boolean).sort()[0] || null;
+  // The account is parked while ANY lock is live, so the countdown runs to the
+  // LAST live lock — not the earliest. `sort()[0]` picked the earliest of all
+  // locks, including expired ones, and an expired winner meant no countdown
+  // was rendered at all.
+  const modelLockUntil = getCooldownUntil(connection);
 
   useEffect(() => {
-    const check = () => {
-      const until = Object.entries(connection)
-        .filter(([k]) => k.startsWith("modelLock_"))
-        .map(([, v]) => v).filter(v => v && new Date(v).getTime() > Date.now()).sort()[0] || null;
-      setIsCooldown(!!until);
-    };
+    const check = () => setIsCooldown(!!getCooldownUntil(connection));
     check();
     const t = modelLockUntil ? setInterval(check, 1000) : null;
     return () => { if (t) clearInterval(t); };
