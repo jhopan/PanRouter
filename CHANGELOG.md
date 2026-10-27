@@ -1,3 +1,21 @@
+# v0.5.88.4 (2026-10-27)
+
+## Perbaikan
+
+- **Hitung mundur (⏱) untuk Kiro dan semua akun quota-parked sekarang
+  tampil** seperti Codex. Ada dua bug yang menyebabkan timer tidak muncul:
+  (1) `sort()[0]` memilih lock paling awal termasuk yang expired — kalau ada
+  expired + live, yang expired menang, diff negatif, timer blank;
+  (2) `quotaExhaustedUntil` tidak pernah dibaca dashboard.
+  Fix: shared helper `src/shared/utils/cooldown.js` dengan `getCooldownUntil`
+  (lock terlama yang live + fallback `quotaExhaustedUntil`) dan
+  `formatCooldownRemaining`. Semua timer di providers dashboard kini konsisten.
+
+## Test
+
+- 19 test baru: unit helper + cek struktural komponen dashboard.
+- Suite: 3069 lulus, 0 regresi.
+
 # v0.5.88.3 (2026-10-27)
 
 ## Fitur
