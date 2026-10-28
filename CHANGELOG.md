@@ -1,3 +1,56 @@
+# v0.5.88.19 (2026-10-29)
+
+## Fitur
+
+- **Field Repository sekarang menerima URL GitHub yang langsung dipaste.**
+  Sebelumnya field itu meminta `owner/name`, padahal kolom "GitHub username"
+  sudah memegang owner-nya — jadi owner diketik dua kali, dan URL yang
+  sebenarnya dic orang dari GitHub justru tidak bisa dipakai.
+
+  Yang diterima sekarang:
+
+  ```
+  https://github.com/jhopan12/AutoBuy.git
+  https://github.com/jhopan12/AutoBuy
+  git@github.com:jhopan12/AutoBuy.git
+  github.com/jhopan12/AutoBuy
+  jhopan12/AutoBuy
+  AutoBuy                 (owner diambil dari kolom username)
+  ```
+
+  Kolom **GitHub username tetap ada** — token milik akun itu, jadi tetap
+  dibutuhkan.
+
+  Fungsi baru `parseRepoRef(raw, fallbackOwner)` di `dbBackup.js` yang
+  melakukan parsing dan mengembalikan `{ owner, repo }` atau `null`. Dipakai
+  baik oleh config route maupun scheduler, jadi yang disimpan dashboard
+  adalah target push yang sama.
+
+  Owner disimpan terpisah sebagai `githubRepoOwner`, dan settings GET
+  mengembalikan `githubRepoUrl` supaya field menampilkan URL penuh saat halaman
+  dimuat ulang.
+
+  Config lama yang menyimpan `owner/name` di `githubRepo` tetap jalan — GET
+  mem-parse-nya kembali jadi owner dan nama.
+
+## Verifikasi
+
+Production build + token asli:
+
+```
+URL penuh    -> 200 {githubRepo: "AutoBuy", githubRepoOwner: "jhopan12"}
+ssh remote -> 200 {githubRepo: "AutoBuy", githubRepoOwner: "jhopan12"}
+owner/repo -> 200 {githubRepo: "AutoBuy", githubRepoOwner: "jhopan12"}
+```
+
+"Back up now" mendorong snapshot **7.315.456 byte** ke `jhopan12/AutoBuy`.
+File snapshot test dihapus dari repo setelahnya.
+
+## Test
+
+- 8 test baru untuk `parseRepoRef` + assertion config route diperbarui.
+- Suite: **3208 lulus**, 0 regresi.
+
 # v0.5.88.18 (2026-10-27)
 
 ## Perbaikan
