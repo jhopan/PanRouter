@@ -1,3 +1,31 @@
+# v0.5.88.17 (2026-10-27)
+
+## Perbaikan
+
+- **Perintah mirror sekarang memakai URL lengkap dan tetap satu perintah saat
+  di-paste.** Dua masalah, ketemu saat melihat halaman yang sudah dirender:
+
+  1. URL-nya relatif (`/api/backup/download`) karena origin dibaca dari window
+     saat render. Sekarang origin disimpan di state yang awalnya kosong —
+     `useEffect` tidak pernah jalan di render server, jadi render client pertama
+     juga kosong dan HTML-nya cocok (tidak ada hydration mismatch) — dan terisi
+     tepat setelah mount.
+
+  2. Perintah curl satu baris tidak punya line continuation shell, jadi
+     di-paste baris pertama jalan sebagai perintah lengkap dan baris kedua
+     sebagai perintah lain. Kedua perintah sekarang diakhiri backslash, dibangun
+     dari `String.fromCharCode(92)` supaya backslash-nya tetap backslash, bukan
+     berubah jadi escape JS.
+
+  Diverifikasi di browser terhadap production build: kelima blok melaporkan
+  `literalN false`, tiga blok perintah membawa URL absolut, jumlah baris sesuai
+  (3/3/4/1/9), dan tidak ada yang meluber keluar kotaknya.
+
+## Test
+
+- 40 test `db-backup-service.test.js`.
+- Suite: **3200 lulus**, 0 regresi baru.
+
 # v0.5.88.16 (2026-10-27)
 
 ## Perbaikan
