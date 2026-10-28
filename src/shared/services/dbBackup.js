@@ -90,6 +90,55 @@ function run(cmd, args, opts = {}) {
 }
 
 /**
+ * Parse whatever the operator pasted into the repository field.
+ *
+ * Accepted shapes (all of them appear in the wild):
+ *   https://github.com/jhopan12/AutoBuy.git
+ *   https://github.com/jhopan12/AutoBuy
+ *   git@github.com:jhopan12/AutoBuy.git
+ *   github.com/jhopan12/AutoBuy
+ *   jhopan12/AutoBuy
+ *   AutoBuy                       (owner comes from the username field)
+ *
+ * Returns `{ owner, repo }` with owner taken from the URL when it carries
+ * one, or null when the input is not a repository reference at all.
+ *
+ * @param {string} raw
+ * @param {string} [fallbackOwner] - used when the input has no owner part
+ * @returns {{owner: string, repo: string}|null}
+ */
+export function parseRepoRef(raw, fallbackOwner = "") {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+
+  let rest = text;
+
+  // git@github.com:owner/repo(.git)
+  const sshMatch = rest.match(/^(?:ssh:\/\/)?git@([^:]+):(.+)$/);
+  if (sshMatch) {
+    rest = `${sshMatch[1]}/${sshMatch[2]}`;
+  } else {
+    // Strip a scheme and any host prefix, so the remainder is owner/repo.
+    rest = rest.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+    const hostMatch = rest.match(/^([^/]+)\/(.+)$/);
+    if (hostMatch && /github\.com$|^github\./i.test(hostMatch[1])) {
+      rest = hostMatch[2];
+    }
+  }
+
+  rest = rest.replace(/\.git$/i, "").replace(/^\/+|\/+$/g, "");
+  const parts = rest.split("/").filter(Boolean);
+  if (parts.length === 0) return null;
+
+  // A leading "owner" segment only counts when there are two of them.
+  if (parts.length >= 2) {
+    return { owner: parts[parts.length - 2], repo: parts[parts.length - 1] };
+  }
+  const owner = String(fallbackOwner || "").trim();
+  return owner ? { owner, repo: parts[0] } : null;
+}
+
+/**
  * Ask GitHub whether the repo is private. A public repo would publish every
  * token in the database, so this is a hard gate — not a warning.
  */
@@ -172,10 +221,14 @@ export async function runDbBackup({ force = false, now = Date.now() } = {}) {
 
   g.running = true;
   try {
-    // The repo field may carry "owner/name"; use the owner from it when present.
-    const repoParts = String(githubRepo).split("/").filter(Boolean);
-    const owner = repoParts.length >= 2 ? repoParts[repoParts.length - 2] : githubUser;
-    const repo = repoParts.length >= 2 ? repoParts[repoParts.length - 1] : repoParts[0];
+    // The repository field may hold a full URL, an ssh remote, "owner/repo",
+    // or a bare repo name. Parse it so the owner comes from the URL when the
+    // operator pasted one.
+    const ref = parseRepoRef(githubRepo, githubUser);
+    if (!ref) {
+      return { ok: false, reason: `Cannot read the repository from "${githubRepo}"` };
+    }
+    const { owner, repo } = ref;
 
     await assertRepoIsPrivate(owner, repo, githubToken);
 

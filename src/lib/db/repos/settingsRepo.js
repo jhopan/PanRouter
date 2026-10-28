@@ -87,6 +87,9 @@ const DEFAULT_SETTINGS = {
     githubUser: "",
     githubToken: "",
     githubRepo: "",
+    // The owner half of "owner/repo", kept apart so the dashboard can show
+    // and accept a full repository URL.
+    githubRepoOwner: "",
   },
 };
 

@@ -28,6 +28,71 @@ const settingsApi = read("src/app/api/settings/route.js");
 const profile = read("src/app/(dashboard)/dashboard/profile/page.js");
 const settingsRepo = read("src/lib/db/repos/settingsRepo.js");
 
+describe("parseRepoRef", () => {
+  it("parses a full https URL", async () => {
+    const { parseRepoRef } = await import("../../src/shared/services/dbBackup.js");
+    expect(parseRepoRef("https://github.com/jhopan12/AutoBuy.git")).toEqual({
+      owner: "jhopan12",
+      repo: "AutoBuy",
+    });
+  });
+
+  it("parses an https URL without the .git suffix", async () => {
+    const { parseRepoRef } = await import("../../src/shared/services/dbBackup.js");
+    expect(parseRepoRef("https://github.com/jhopan12/AutoBuy")).toEqual({
+      owner: "jhopan12",
+      repo: "AutoBuy",
+    });
+  });
+
+  it("parses an ssh remote", async () => {
+    const { parseRepoRef } = await import("../../src/shared/services/dbBackup.js");
+    expect(parseRepoRef("git@github.com:jhopan12/AutoBuy.git")).toEqual({
+      owner: "jhopan12",
+      repo: "AutoBuy",
+    });
+  });
+
+  it("parses a bare host path", async () => {
+    const { parseRepoRef } = await import("../../src/shared/services/dbBackup.js");
+    expect(parseRepoRef("github.com/jhopan12/AutoBuy")).toEqual({
+      owner: "jhopan12",
+      repo: "AutoBuy",
+    });
+  });
+
+  it("parses owner/repo", async () => {
+    const { parseRepoRef } = await import("../../src/shared/services/dbBackup.js");
+    expect(parseRepoRef("jhopan12/AutoBuy")).toEqual({
+      owner: "jhopan12",
+      repo: "AutoBuy",
+    });
+  });
+
+  it("takes the owner from the username field when only a repo name is given", async () => {
+    const { parseRepoRef } = await import("../../src/shared/services/dbBackup.js");
+    expect(parseRepoRef("AutoBuy", "jhopan12")).toEqual({
+      owner: "jhopan12",
+      repo: "AutoBuy",
+    });
+  });
+
+  it("returns null when there is nothing to parse", async () => {
+    const { parseRepoRef } = await import("../../src/shared/services/dbBackup.js");
+    expect(parseRepoRef("")).toBeNull();
+    expect(parseRepoRef("   ")).toBeNull();
+    expect(parseRepoRef("AutoBuy")).toBeNull();
+  });
+
+  it("ignores a trailing slash and a trailing .git", async () => {
+    const { parseRepoRef } = await import("../../src/shared/services/dbBackup.js");
+    expect(parseRepoRef("https://github.com/jhopan12/AutoBuy/")).toEqual({
+      owner: "jhopan12",
+      repo: "AutoBuy",
+    });
+  });
+});
+
 describe("db backup service", () => {
   it("exists and exports a scheduled runner", () => {
     expect(backup).toMatch(/export async function runDbBackup\(/);
@@ -125,8 +190,8 @@ describe("the backup config endpoint", () => {
     expect(route).toMatch(/assertRepoIsPrivate/);
   });
 
-  it("accepts the repo as 'name' or 'owner/name'", () => {
-    expect(route).toMatch(/repoParts/);
+  it("accepts the repository as a URL, 'owner/name' or a bare name", () => {
+    expect(route).toMatch(/parseRepoRef/);
   });
 
   it("no longer mints a download token", () => {
@@ -134,8 +199,11 @@ describe("the backup config endpoint", () => {
     expect(route).not.toMatch(/randomBytes/);
   });
 
-  it("never returns the GitHub token", () => {
-    expect(route).not.toMatch(/githubToken,\s*$/m);
+  it("never returns the GitHub token in the response", () => {
+    // The POST response reports only whether a token is configured.
+    const responseBlock = route.slice(route.indexOf("success: true"));
+    expect(responseBlock).not.toMatch(/githubToken,/);
+    expect(responseBlock).toMatch(/githubTokenConfigured: true/);
   });
 });
 
@@ -183,6 +251,11 @@ describe("backup interval", () => {
     expect(profile).not.toMatch(/gitSetup/);
     expect(profile).not.toMatch(/ssh-keygen/);
     expect(profile).not.toMatch(/git remote add origin/);
+  });
+
+  it("accepts a pasted repository URL in the repository field", () => {
+    expect(profile).toMatch(/https:\/\/github\.com\/jhopan12\/AutoBuy\.git/);
+    expect(profile).toMatch(/githubRepoUrl/);
   });
 
   it("says the mirror never touches GitHub", () => {

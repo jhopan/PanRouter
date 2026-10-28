@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
-import { assertRepoIsPrivate, resolveIntervalHours } from "@/shared/services/dbBackup";
+import { assertRepoIsPrivate, parseRepoRef, resolveIntervalHours } from "@/shared/services/dbBackup";
 import { configureDbBackup } from "@/shared/services/dbBackup";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
@@ -30,11 +30,18 @@ export async function GET(request) {
     }
     const settings = await getSettings();
     const cfg = settings.dbBackup || {};
+    // Older configs stored "owner/name" in githubRepo; newer ones store the
+    // bare name plus githubRepoOwner. Parse so both shapes report the owner.
+    const ref = parseRepoRef(cfg.githubRepo || "", cfg.githubUser || "");
+    const owner = cfg.githubRepoOwner || (ref ? ref.owner : "");
+    const repo = cfg.githubRepoOwner ? cfg.githubRepo : (ref ? ref.repo : "");
     return NextResponse.json({
       enabled: cfg.enabled === true,
       intervalHours: resolveIntervalHours(cfg),
       githubUser: cfg.githubUser || "",
-      githubRepo: cfg.githubRepo || "",
+      githubRepo: repo,
+      githubRepoOwner: owner,
+      githubRepoUrl: owner && repo ? `https://github.com/${owner}/${repo}` : "",
       githubTokenConfigured: Boolean(cfg.githubToken),
     });
   } catch (error) {
@@ -52,20 +59,20 @@ export async function POST(request) {
     const enabled = body.enabled === true;
     const intervalHours = resolveIntervalHours({ intervalHours: body.intervalHours });
     const githubUser = String(body.githubUser || "").trim();
-    // The repo may be given as "name" or as "owner/name". Both are accepted;
-    // the owner part is taken from the repo field when it is present, and
-    // otherwise from the username field.
-    const rawRepo = String(body.githubRepo || "").trim().replace(/\.git$/, "");
-    const repoParts = rawRepo.split("/").filter(Boolean);
-    const githubRepo = repoParts.length >= 2 ? repoParts.slice(-2).join("/") : repoParts[0] || "";
-    const repoOwner = repoParts.length >= 2 ? repoParts[repoParts.length - 2] : githubUser;
+    // The repository may be pasted as a full URL, an ssh remote, "owner/name"
+    // or a bare repo name. All of them are accepted; the owner comes from the
+    // URL when it carries one, otherwise from the username field.
+    const rawRepo = String(body.githubRepo || "").trim();
+    const ref = parseRepoRef(rawRepo, githubUser);
+    const repoOwner = ref ? ref.owner : "";
+    const githubRepo = ref ? ref.repo : "";
     // An empty token means "keep the stored one" — the dashboard never shows it.
     const incomingToken = String(body.githubToken || "").trim();
     const current = (await getSettings()).dbBackup || {};
     const githubToken = incomingToken || current.githubToken || "";
 
     if (!githubUser || !githubRepo) {
-      return NextResponse.json({ error: "GitHub username and repo are required" }, { status: 400 });
+      return NextResponse.json({ error: "GitHub username and repository are required" }, { status: 400 });
     }
     if (!githubToken) {
       return NextResponse.json({ error: "GitHub token is required" }, { status: 400 });
@@ -82,7 +89,14 @@ export async function POST(request) {
     }
 
     const settings = await updateSettings({
-      dbBackup: { enabled, intervalHours, githubUser, githubRepo, githubToken },
+      dbBackup: {
+        enabled,
+        intervalHours,
+        githubUser,
+        githubRepo,
+        githubRepoOwner: repoOwner,
+        githubToken,
+      },
     });
 
     // Start or stop the scheduler to match.
@@ -93,7 +107,8 @@ export async function POST(request) {
       enabled,
       intervalHours,
       githubUser,
-      githubRepo: `${repoOwner}/${githubRepo}`,
+      githubRepo,
+      githubRepoOwner: repoOwner,
       githubTokenConfigured: true,
     });
   } catch (error) {

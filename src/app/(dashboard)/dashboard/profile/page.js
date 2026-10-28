@@ -758,7 +758,8 @@ export default function ProfilePage() {
         enabled: data.enabled === true,
         intervalHours: data.intervalHours || 24,
         githubUser: data.githubUser || "",
-        githubRepo: data.githubRepo || "",
+        // Show the full URL so the field can be pasted straight into GitHub.
+        githubRepo: data.githubRepoUrl || data.githubRepo || "",
         githubToken: "",
       }));
     } catch {
@@ -1102,8 +1103,11 @@ export default function ProfilePage() {
                   id="backup-github-repo"
                   value={backupForm.githubRepo}
                   onChange={(e) => setBackupForm((prev) => ({ ...prev, githubRepo: e.target.value }))}
-                  placeholder="jhopan/panrouter-backups"
+                  placeholder="https://github.com/jhopan12/AutoBuy.git"
                 />
+                <p className="text-xs text-text-muted">
+                  Paste the repository URL straight from GitHub. A plain name also works.
+                </p>
               </div>
             </div>
 
