@@ -147,3 +147,32 @@ describe("the run-now endpoint", () => {
     expect(route).toMatch(/force: true/);
   });
 });
+
+describe("backup interval", () => {
+  it("is configurable in hours", () => {
+    expect(backup).toMatch(/resolveIntervalHours/);
+    expect(settingsRepo).toMatch(/intervalHours/);
+  });
+
+  it("defaults to once a day", () => {
+    expect(backup).toMatch(/DEFAULT_INTERVAL_HOURS = 24/);
+  });
+
+  it("clamps to a sane range", () => {
+    // resolveIntervalHours is exported so it can be unit-tested directly; the
+    // clamping bounds are asserted here on the source.
+    expect(backup).toMatch(/Math\.max\(raw, 1\)/);
+    expect(backup).toMatch(/24 \* 7/);
+  });
+
+  it("the dashboard offers the interval choices", () => {
+    expect(profile).toMatch(/intervalHours/);
+    expect(profile).toMatch(/Every hour/);
+    expect(profile).toMatch(/Every 24 hours \(daily\)/);
+  });
+
+  it("shows the mirror command so the URL is not guessed", () => {
+    expect(profile).toMatch(/api\/backup\/download/);
+    expect(profile).toMatch(/x-backup-token/);
+  });
+});

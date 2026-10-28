@@ -36,6 +36,7 @@ export default function ProfilePage() {
   // Automatic backup to a private GitHub repo.
   const [backupForm, setBackupForm] = useState({
     enabled: false,
+    intervalHours: 24,
     githubUser: "",
     githubToken: "",
     githubRepo: "",
@@ -60,6 +61,13 @@ export default function ProfilePage() {
   const [oidcExpanded, setOidcExpanded] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // The exact command the mirror machine runs. Shown so the operator does not
+  // have to assemble the URL and the header name by hand.
+  const downloadCommand = [
+    'curl -H "x-backup-token: <TOKEN>"',
+    `  "${origin}/api/backup/download"`,
+    "  -o data.sqlite",
+  ].join(" \\n");
   const oidcRedirectUri = origin ? `${origin}/api/auth/oidc/callback` : "/api/auth/oidc/callback";
   const samlAcsUrl = origin ? `${origin}/api/auth/saml/acs` : "/api/auth/saml/acs";
   const samlMetadataUrl = origin ? `${origin}/api/auth/saml/metadata` : "/api/auth/saml/metadata";
@@ -713,6 +721,7 @@ export default function ProfilePage() {
       setBackupForm((prev) => ({
         ...prev,
         enabled: data.enabled === true,
+        intervalHours: data.intervalHours || 24,
         githubUser: data.githubUser || "",
         githubRepo: data.githubRepo || "",
         githubToken: "",
@@ -938,6 +947,33 @@ export default function ProfilePage() {
               />
             </div>
 
+            <div className="flex flex-col gap-1">
+              <label className="text-xs sm:text-sm text-text-muted" htmlFor="backup-interval">
+                Backup interval
+              </label>
+              <select
+                id="backup-interval"
+                value={backupForm.intervalHours}
+                onChange={(e) =>
+                  setBackupForm((prev) => ({ ...prev, intervalHours: Number(e.target.value) }))
+                }
+                disabled={backupLoading}
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm sm:text-base text-text-main focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value={1}>Every hour</option>
+                <option value={3}>Every 3 hours</option>
+                <option value={6}>Every 6 hours</option>
+                <option value={12}>Every 12 hours</option>
+                <option value={24}>Every 24 hours (daily)</option>
+                <option value={48}>Every 48 hours</option>
+                <option value={168}>Every 7 days</option>
+              </select>
+              <p className="text-xs text-text-muted">
+                The snapshot is a full copy of the database, so the shortest sensible interval
+                is hourly.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
                 <label className="text-xs sm:text-sm text-text-muted" htmlFor="backup-github-user">
@@ -1001,6 +1037,17 @@ export default function ProfilePage() {
               >
                 Back up now
               </Button>
+            </div>
+
+            <div className="p-3 rounded-lg bg-bg border border-border">
+              <p className="font-medium text-sm sm:text-base">Mirror the database</p>
+              <p className="text-xs sm:text-sm text-text-muted mb-2">
+                Run this on the machine that keeps a copy off the VPS. It writes the raw
+                SQLite file straight into the current directory.
+              </p>
+              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre">
+                {downloadCommand}
+              </code>
             </div>
 
             {downloadToken && (

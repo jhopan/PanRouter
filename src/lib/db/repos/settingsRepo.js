@@ -82,6 +82,8 @@ const DEFAULT_SETTINGS = {
   // handler refuses to mass-assign it.
   dbBackup: {
     enabled: false,
+    // How many hours between backups. 24 = once a day, 1 = hourly, up to 168.
+    intervalHours: 24,
     githubUser: "",
     githubToken: "",
     githubRepo: "",

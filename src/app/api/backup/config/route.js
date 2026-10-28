@@ -15,7 +15,7 @@ import { randomBytes } from "node:crypto";
 
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
-import { assertRepoIsPrivate } from "@/shared/services/dbBackup";
+import { assertRepoIsPrivate, resolveIntervalHours } from "@/shared/services/dbBackup";
 import { configureDbBackup } from "@/shared/services/dbBackup";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
@@ -33,6 +33,7 @@ export async function GET(request) {
     const cfg = settings.dbBackup || {};
     return NextResponse.json({
       enabled: cfg.enabled === true,
+      intervalHours: resolveIntervalHours(cfg),
       githubUser: cfg.githubUser || "",
       githubRepo: cfg.githubRepo || "",
       githubTokenConfigured: Boolean(cfg.githubToken),
@@ -51,6 +52,7 @@ export async function POST(request) {
 
     const body = await request.json();
     const enabled = body.enabled === true;
+    const intervalHours = resolveIntervalHours({ intervalHours: body.intervalHours });
     const githubUser = String(body.githubUser || "").trim();
     // The repo may be given as "name" or as "owner/name". Both are accepted;
     // the owner part is taken from the repo field when it is present, and
@@ -87,7 +89,7 @@ export async function POST(request) {
     }
 
     const settings = await updateSettings({
-      dbBackup: { enabled, githubUser, githubRepo, githubToken, downloadToken },
+      dbBackup: { enabled, intervalHours, githubUser, githubRepo, githubToken, downloadToken },
     });
 
     // Start or stop the scheduler to match.
@@ -96,6 +98,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       enabled,
+      intervalHours,
       githubUser,
       githubRepo: `${repoOwner}/${githubRepo}`,
       githubTokenConfigured: true,

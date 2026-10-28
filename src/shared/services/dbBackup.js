@@ -38,19 +38,19 @@ import { DATA_DIR } from "@/lib/dataDir";
 const DB_DIR = path.join(DATA_DIR, "db");
 const DB_FILE = path.join(DB_DIR, "data.sqlite");
 
-/** How often the scheduler ticks; the daily slot is checked on every tick. */
-const TICK_INTERVAL_MS = 15 * 60 * 1000;
+/** How often the scheduler wakes up to check whether a backup is due. */
+const TICK_INTERVAL_MS = 5 * 60 * 1000;
 
-/** The backup is written once per day, at this local hour. */
-const BACKUP_HOUR = 3;
+/** Default interval between backups when the operator has not chosen one. */
+const DEFAULT_INTERVAL_HOURS = 24;
 
-/** Keep this many daily snapshots in the repo. */
+/** Keep this many snapshots in the repo. */
 const KEEP_SNAPSHOTS = 30;
 
 const g = {
   interval: null,
   running: false,
-  lastRunDayKey: null,
+  lastRunAt: 0,
 };
 
 function dayKey(nowMs = Date.now()) {
@@ -186,7 +186,7 @@ export async function runDbBackup({ force = false, now = Date.now() } = {}) {
       await snapshotDatabase(tmpPath);
       const content = fs.readFileSync(tmpPath);
       const res = await pushSnapshot({ owner, repo, token: githubToken, fileName, content });
-      g.lastRunDayKey = stamp;
+      g.lastRunAt = Date.now();
       console.log(`[DB_BACKUP] pushed ${fileName} (${(res.bytes / 1024 / 1024).toFixed(2)} MB) to ${owner}/${repo}`);
       return { ok: true, fileName, bytes: res.bytes };
     } finally {
@@ -201,19 +201,34 @@ export async function runDbBackup({ force = false, now = Date.now() } = {}) {
 }
 
 /**
- * The daily tick: run the backup once per day, at BACKUP_HOUR local time.
+ * How often a backup should run, in hours.
+ *
+ * The operator picks this in the dashboard. 24 is the default (once a day);
+ * 1 is the most protective (hourly). Values below 1 hour are not accepted —
+ * the snapshot is a full copy of the database, and copying it every few
+ * minutes would be pointless churn on the disk and in the repo.
+ *
+ * @param {object} cfg - the dbBackup settings block
+ * @returns {number} interval in hours
+ */
+export function resolveIntervalHours(cfg) {
+  const raw = Number(cfg?.intervalHours);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_INTERVAL_HOURS;
+  return Math.min(Math.max(raw, 1), 24 * 7);
+}
+
+/**
+ * The periodic tick: run the backup when the configured interval has elapsed.
  */
 export async function runDbBackupTick() {
   const settings = await getSettings();
   const cfg = settings.dbBackup || {};
   if (cfg.enabled !== true) return;
 
-  const now = new Date();
-  if (now.getHours() < BACKUP_HOUR) return;
-  const key = dayKey(now.getTime());
-  if (g.lastRunDayKey === key) return;
+  const intervalMs = resolveIntervalHours(cfg) * 60 * 60 * 1000;
+  if (g.lastRunAt && Date.now() - g.lastRunAt < intervalMs) return;
 
-  await runDbBackup({ now: now.getTime() });
+  await runDbBackup({ now: Date.now() });
 }
 
 export function startDbBackup() {
@@ -242,4 +257,4 @@ export async function configureDbBackup(settings) {
   }
 }
 
-export { DB_FILE, DB_DIR, KEEP_SNAPSHOTS, BACKUP_HOUR };
+export { DB_FILE, DB_DIR, KEEP_SNAPSHOTS, DEFAULT_INTERVAL_HOURS };
