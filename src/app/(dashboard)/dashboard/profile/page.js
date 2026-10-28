@@ -76,7 +76,10 @@ export default function ProfilePage() {
   // hydration mismatch. The origin fills in right after mount.
   const [pageOrigin, setPageOrigin] = useState("");
   useEffect(() => {
-    setPageOrigin(window.location.origin);
+    // Deferred to a timeout so the state update is not synchronous in the
+    // effect body (react-hooks/set-state-in-effect).
+    const t = setTimeout(() => { setPageOrigin(window.location.origin); }, 0);
+    return () => clearTimeout(t);
   }, []);
   // The exact command the mirror machine runs. Shown so the operator does not
   // have to assemble the URL and the header name by hand.
@@ -99,18 +102,7 @@ export default function ProfilePage() {
   const cronLine = [
     "0 */6 * * * /home/<user>/panrouter-backups/mirror.sh >> /home/<user>/panrouter-backups/mirror.log 2>&1",
   ].join("\n");
-  // Optional: the same snapshot pushed to a git remote.
-  const gitSetup = [
-    "# on the mirror machine",
-    "sudo apt install git",
-    'ssh-keygen -t ed25519 -C "panrouter-mirror"',
-    "cat ~/.ssh/id_ed25519.pub   # paste into GitHub -> Settings -> SSH keys",
-    "ssh -T git@github.com        # check the login",
-    "",
-    "# then the mirror can push the same snapshot to the repo",
-    "cd ~/panrouter-backups",
-    "git init && git remote add origin git@github.com:<you>/<repo>.git",
-  ].join("\n");
+
   const oidcRedirectUri = origin ? `${origin}/api/auth/oidc/callback` : "/api/auth/oidc/callback";
   const samlAcsUrl = origin ? `${origin}/api/auth/saml/acs` : "/api/auth/saml/acs";
   const samlMetadataUrl = origin ? `${origin}/api/auth/saml/metadata` : "/api/auth/saml/metadata";
@@ -1050,8 +1042,10 @@ export default function ProfilePage() {
               <div className="min-w-0">
                 <p className="font-medium text-sm sm:text-base">Daily backup to GitHub</p>
                 <p className="text-xs sm:text-sm text-text-muted">
-                  Pushes a snapshot of the database to a private repository every day. The
-                  repository must be private — a public one would publish every credential.
+                  This server pushes a snapshot of the database to a private repository on
+                  its own, using the token below. The repository must be private — a
+                  public one would publish every credential. Nothing else needs to touch
+                  GitHub.
                 </p>
               </div>
               <Toggle
@@ -1179,8 +1173,10 @@ export default function ProfilePage() {
         <Card>
           <h2 className="text-lg font-semibold mb-1">Periodic Download</h2>
           <p className="text-xs sm:text-sm text-text-muted mb-4">
-            A machine pulls the database over HTTP on a schedule. Each machine gets its
-            own token, so a token can be revoked or deleted without touching the others.
+            A machine pulls the database straight from this server on a schedule, using
+            its own backup token. Each machine gets its own token, so one can be revoked
+            or deleted without touching the others. The GitHub copy is separate — the
+            server pushes that itself.
           </p>
 
           <div className="flex flex-col gap-4">
@@ -1277,8 +1273,9 @@ export default function ProfilePage() {
             <div className="p-3 rounded-lg bg-bg border border-border">
               <p className="font-medium text-sm sm:text-base">Set it up on the mirror machine</p>
               <p className="text-xs sm:text-sm text-text-muted mb-3">
-                Git is only needed if the mirror pulls from a git remote. For the HTTP
-                download below, curl and a cron entry are enough.
+                The mirror pulls straight from this server with the backup token — it never
+                touches GitHub. The GitHub copy is pushed by the server itself, using its
+                own token. All this machine needs is curl and a cron entry.
               </p>
 
               <CopyableCode label="1 — Get the file" code={downloadCommand} />
@@ -1295,14 +1292,6 @@ export default function ProfilePage() {
                 hint="Run crontab -e and paste this line. Adjust the path and the schedule."
               />
 
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-semibold text-text-muted">Optional — mirror from a git remote instead</p>
-                <p className="text-xs sm:text-sm text-text-muted">
-                  If the mirror should also keep a git copy, it needs git and a GitHub
-                  login. An SSH key is the least fuss — no password prompt in cron.
-                </p>
-                <CopyableCode label="Install git and an SSH key" code={gitSetup} />
-              </div>
             </div>
           </div>
         </Card>

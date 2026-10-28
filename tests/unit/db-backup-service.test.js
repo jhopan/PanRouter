@@ -175,6 +175,19 @@ describe("backup interval", () => {
     expect(profile).toMatch(/api\/backup\/download/);
     expect(profile).toMatch(/x-backup-token/);
   });
+
+  it("does not tell the mirror to use GitHub or SSH", () => {
+    // The mirror pulls straight from this server with its backup token. The
+    // GitHub copy is pushed by the server itself, so git and SSH on the
+    // mirror machine are irrelevant — mentioning them only confused things.
+    expect(profile).not.toMatch(/gitSetup/);
+    expect(profile).not.toMatch(/ssh-keygen/);
+    expect(profile).not.toMatch(/git remote add origin/);
+  });
+
+  it("says the mirror never touches GitHub", () => {
+    expect(profile).toMatch(/never touches GitHub|pulls straight from this server/);
+  });
 });
 
 describe("the mirror command must not break hydration", () => {
