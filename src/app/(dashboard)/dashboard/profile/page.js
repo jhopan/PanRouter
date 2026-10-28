@@ -71,22 +71,24 @@ export default function ProfilePage() {
   // server render, so using it directly in the markup makes the first client
   // render differ from the server HTML and React throws a hydration mismatch.
   // The state starts empty (same as the server) and is filled after mount.
+  // useEffect never runs during the server render, so the first client render
+  // also sees an empty origin — the markup matches the server and there is no
+  // hydration mismatch. The origin fills in right after mount.
   const [pageOrigin, setPageOrigin] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => { setPageOrigin(window.location.origin); }, 0);
-    return () => clearTimeout(t);
+    setPageOrigin(window.location.origin);
   }, []);
   // The exact command the mirror machine runs. Shown so the operator does not
   // have to assemble the URL and the header name by hand.
+  // A trailing backslash on a shell line is a continuation, so the command
+  // stays one command when pasted.
+  const SHELL_CONT = String.fromCharCode(92);
   const downloadCommand = [
-    'curl -H "x-backup-token: <TOKEN>"',
-    `  "${pageOrigin}/api/backup/download"`,
+    'curl -H "x-backup-token: <TOKEN>" ' + SHELL_CONT,
+    `  "${pageOrigin}/api/backup/download" ` + SHELL_CONT,
     "  -o data.sqlite",
   ].join("\n");
   // The mirror script, written to disk once and then run from cron.
-  // A trailing backslash on a shell line is a continuation. Building it from a
-  // separate constant keeps the JS string free of escape sequences.
-  const SHELL_CONT = String.fromCharCode(92);
   const mirrorScript = [
     "#!/bin/sh",
     'curl -fsS -H "x-backup-token: <TOKEN>" ' + SHELL_CONT,
