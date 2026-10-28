@@ -1,6 +1,6 @@
 {
   "name": "panrouter",
-  "version": "0.5.88.15",
+  "version": "0.5.88.16",
   "description": "PanRouter CLI - Start and manage PanRouter server (by Jhopanstore)",
   "bin": {
     "panrouter": "./cli.js",

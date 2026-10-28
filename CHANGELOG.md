@@ -1,3 +1,35 @@
+# v0.5.88.16 (2026-10-27)
+
+## Perbaikan
+
+- **Blok perintah di dashboard sekarang bisa langsung disalin, dan teksnya
+  tidak lagi `
+` literal.**
+
+  Panel sebelumnya menampilkan dua karakterbackslash + n, bukan line break:
+  string perintahnya digabung dengan `" \n"` (backslash dan huruf n), dan
+  backslash continuation shell-nya ikut kacau oleh escaping JS. Hasilnya satu
+  baris panjang dengan `
+` di tengah dan teks meluber keluar kotak kode.
+
+  Sekarang setiap blok perintah lewat komponen bersama `CopyableCode`:
+
+  - dirender di `<pre>` dengan `whitespace-pre-wrap` + `break-words`, jadi
+    newline asli tampil dan tidak ada yang meluber
+  - ada tombol copy di samping setiap blok yang menaruh **teks yang sama
+    persis** ke clipboard, siap paste ke shell
+  - backslash continuation shell dibangun dari `String.fromCharCode(92)` supaya
+    backslash-nya tetap backslash, bukan escape
+
+  Diverifikasi di browser terhadap dev server yang jalan: kelima blok
+  melaporkan `hasLiteralBackslashN: false`, jumlah baris sesuai (3/3/4/1/9), dan
+  tidak ada blok yang meluber keluar container-nya.
+
+## Test
+
+- 40 test `db-backup-service.test.js`.
+- Suite: **3194 lulus**, 0 regresi baru.
+
 # v0.5.88.15 (2026-10-27)
 
 ## Fitur
