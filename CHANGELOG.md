@@ -1,3 +1,48 @@
+# v0.5.88.18 (2026-10-27)
+
+## Perbaikan
+
+- **Mirror tidak pernah menyentuh GitHub — blok git/SSH dihapus.** Card
+  "Periodic Download" berakhir dengan blok "Install git and an SSH key" dan
+  kalimat "Git is only needed if the mirror pulls from a git remote". Dua-duanya
+  menyiratkan mesin mirror butuh git dan kredensial GitHub.
+
+ iéndolo tidak. Pembagian kerja yang benar:
+
+  ```
+  VPS  --(token GitHub-nya sendiri)--> GitHub repo   push dari server
+  VPS  <--(token bk-)--------------> Debian          tarik langsung dari server
+  ```
+
+  Mesin Debian butuh **curl + cron**, tidak ada lagi. Repo GitHub sudah ada,
+  dan tokennya sudahpegang PanRouter.
+
+  Blok dihapus, dan teksnya sekarang eksplisit:
+
+  - "Periodic Download" — "A machine pulls the database straight from this
+    server on a schedule, using its own backup token... The GitHub copy is
+    separate — the server pushes that itself."
+  - "Set it up on the mirror machine" — "The mirror pulls straight from this
+    server with the backup token — it never touches GitHub. The GitHub copy is
+    pushed by the server itself, using its own token. All this machine needs is
+    curl and a cron entry."
+  - "Automatic Backup" — "This server pushes a snapshot of the database to a
+    private repository on its own, using the token below... Nothing else needs
+    to touch GitHub."
+
+  Effect `pageOrigin` juga diperbaiki supaya setState-nya tidak sinkron di
+  dalam body effect (`react-hooks/set-state-in-effect`).
+
+  Diverifikasi terhadap production build: halaman profile yang ter-render tidak
+  memuat `ssh-keygen`, tidak memuat "git remote add origin", dan tidak ada blok
+  gitSetup. Empat blok kode yang tersisa adalah tiga perintah curl + satu baris
+  cron.
+
+## Test
+
+- 42 test `db-backup-service.test.js`.
+- Suite: **3201 lulus**, 0 regresi baru.
+
 # v0.5.88.17 (2026-10-27)
 
 ## Perbaikan
