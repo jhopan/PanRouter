@@ -240,3 +240,38 @@ describe("backup download tokens", () => {
     expect(repo).toMatch(/revoked/);
   });
 });
+
+describe("the command blocks are copyable, not literal \\n text", () => {
+  const copyable = read("src/app/(dashboard)/dashboard/profile/components/CopyableCode.js");
+
+  it("renders the command in a pre block so the newlines show", () => {
+    expect(copyable).toMatch(/<pre/);
+    expect(copyable).toMatch(/whitespace-pre-wrap/);
+  });
+
+  it("copies the same text it renders", () => {
+    expect(copyable).toMatch(/writeText\(code\)/);
+  });
+
+  it("has a copy button", () => {
+    expect(copyable).toMatch(/aria-label="Copy to clipboard"/);
+    expect(copyable).toMatch(/content_copy/);
+  });
+
+  it("the command strings are joined with a real newline", () => {
+    // The bug was a join on the two characters backslash + n, which the
+    // browser showed literally instead of a line break.
+    expect(profile).toContain('.join("\\n")');
+    expect(profile).not.toContain('.join(" \\n")');
+  });
+
+  it("the shell line continuation survives as a backslash", () => {
+    // A trailing backslash on a shell line is a continuation, so the script
+    // must not lose it to JS escaping.
+    expect(profile).toMatch(/SHELL_CONT/);
+  });
+
+  it("uses the copyable component for every command block", () => {
+    expect(profile).toMatch(/CopyableCode/);
+  });
+});

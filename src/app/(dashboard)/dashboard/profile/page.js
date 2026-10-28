@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, Button, Toggle, Input } from "@/shared/components";
+import CopyableCode from "./components/CopyableCode";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
@@ -81,7 +82,33 @@ export default function ProfilePage() {
     'curl -H "x-backup-token: <TOKEN>"',
     `  "${pageOrigin}/api/backup/download"`,
     "  -o data.sqlite",
-  ].join(" \\n");
+  ].join("\n");
+  // The mirror script, written to disk once and then run from cron.
+  // A trailing backslash on a shell line is a continuation. Building it from a
+  // separate constant keeps the JS string free of escape sequences.
+  const SHELL_CONT = String.fromCharCode(92);
+  const mirrorScript = [
+    "#!/bin/sh",
+    'curl -fsS -H "x-backup-token: <TOKEN>" ' + SHELL_CONT,
+    `  "${pageOrigin}/api/backup/download" ` + SHELL_CONT,
+    '  -o "data-$(date +%Y%m%d-%H%M).sqlite"',
+  ].join("\n");
+  // The cron entry that runs it every six hours.
+  const cronLine = [
+    "0 */6 * * * /home/<user>/panrouter-backups/mirror.sh >> /home/<user>/panrouter-backups/mirror.log 2>&1",
+  ].join("\n");
+  // Optional: the same snapshot pushed to a git remote.
+  const gitSetup = [
+    "# on the mirror machine",
+    "sudo apt install git",
+    'ssh-keygen -t ed25519 -C "panrouter-mirror"',
+    "cat ~/.ssh/id_ed25519.pub   # paste into GitHub -> Settings -> SSH keys",
+    "ssh -T git@github.com        # check the login",
+    "",
+    "# then the mirror can push the same snapshot to the repo",
+    "cd ~/panrouter-backups",
+    "git init && git remote add origin git@github.com:<you>/<repo>.git",
+  ].join("\n");
   const oidcRedirectUri = origin ? `${origin}/api/auth/oidc/callback` : "/api/auth/oidc/callback";
   const samlAcsUrl = origin ? `${origin}/api/auth/saml/acs` : "/api/auth/saml/acs";
   const samlMetadataUrl = origin ? `${origin}/api/auth/saml/metadata` : "/api/auth/saml/metadata";
@@ -1124,15 +1151,15 @@ export default function ProfilePage() {
               </Button>
             </div>
 
-            <div className="p-3 rounded-lg bg-bg border border-border">
-              <p className="font-medium text-sm sm:text-base">Mirror the database</p>
-              <p className="text-xs sm:text-sm text-text-muted mb-2">
-                Run this on the machine that keeps a copy off the VPS. It writes the raw
-                SQLite file straight into the current directory.
-              </p>
-              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre">
-                {downloadCommand}
-              </code>
+            <div className="p-3 rounded-lg bg-bg border border-border flex flex-col gap-3">
+              <div>
+                <p className="font-medium text-sm sm:text-base">Mirror the database</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Run this on the machine that keeps a copy off the VPS. It writes the raw
+                  SQLite file straight into the current directory.
+                </p>
+              </div>
+              <CopyableCode code={downloadCommand} />
             </div>
 
             {backupStatus.message && (
@@ -1252,47 +1279,28 @@ export default function ProfilePage() {
                 download below, curl and a cron entry are enough.
               </p>
 
-              <p className="text-xs font-semibold text-text-muted mb-1">1 — Get the file</p>
-              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre mb-3">
-                {downloadCommand}
-              </code>
+              <CopyableCode label="1 — Get the file" code={downloadCommand} />
 
-              <p className="text-xs font-semibold text-text-muted mb-1">2 — Run it every N hours</p>
-              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre mb-3">
-{`mkdir -p ~/panrouter-backups
-cd ~/panrouter-backups
-cat > mirror.sh << 'EOS'
-#!/bin/sh
-curl -fsS -H "x-backup-token: <TOKEN>" \
-  "${pageOrigin}/api/backup/download" \
-  -o "data-$(date +%Y%m%d-%H%M).sqlite"
-EOS
-chmod +x mirror.sh`}
-              </code>
+              <CopyableCode
+                label="2 — Run it every N hours"
+                code={mirrorScript}
+                hint="Save it as mirror.sh, then make it executable with: chmod +x mirror.sh"
+              />
 
-              <p className="text-xs font-semibold text-text-muted mb-1">3 — Schedule it (cron)</p>
-              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre mb-3">
-{`crontab -e
-# every 6 hours
-0 */6 * * * /home/<user>/panrouter-backups/mirror.sh >> /home/<user>/panrouter-backups/mirror.log 2>&1`}
-              </code>
+              <CopyableCode
+                label="3 — Schedule it (cron)"
+                code={cronLine}
+                hint="Run crontab -e and paste this line. Adjust the path and the schedule."
+              />
 
-              <p className="text-xs font-semibold text-text-muted mb-1">Optional — mirror from a git remote instead</p>
-              <p className="text-xs sm:text-sm text-text-muted mb-2">
-                If the mirror should also keep a git copy, it needs git and a GitHub
-                login. An SSH key is the least fuss — no password prompt in cron.
-              </p>
-              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre">
-{`# on the mirror machine
-sudo apt install git
-ssh-keygen -t ed25519 -C "panrouter-mirror"
-cat ~/.ssh/id_ed25519.pub          # paste into GitHub → Settings → SSH keys
-ssh -T git@github.com             # check the login
-
-# then the mirror can push the same snapshot to the repo
-cd ~/panrouter-backups
-git init && git remote add origin git@github.com:<you>/<repo>.git`}
-              </code>
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-semibold text-text-muted">Optional — mirror from a git remote instead</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  If the mirror should also keep a git copy, it needs git and a GitHub
+                  login. An SSH key is the least fuss — no password prompt in cron.
+                </p>
+                <CopyableCode label="Install git and an SSH key" code={gitSetup} />
+              </div>
             </div>
           </div>
         </Card>
