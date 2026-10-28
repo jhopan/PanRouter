@@ -1,3 +1,26 @@
+# v0.5.88.14 (2026-10-27)
+
+## Perbaikan
+
+- **Panel "Automatic Backup" tidak lagi merusak hydration.** Panel itu
+  menaruh `window.location.origin` langsung ke markup. `window.location` kosong
+  saat render server, jadi HTML server berisi `/api/backup/download` sementara
+  render client pertama berisi `http://localhost:20127/api/backup/download`.
+  React melaporkan hydration mismatch dan meregenerasi seluruh tree.
+
+  Sekarang origin disimpan di state yang awalnya kosong — sama dengan render
+  server — dan diisi di effect setelah mount, jadi render client pertama sama
+  persis dengan HTML server.
+
+  (Variabel `origin` untuk redirect URI OIDC/SAML masih membaca window saat
+  render. Itu sudah ada sebelumnya dan tidak disentuh — panel yang berbeda dan
+  sudah berperilaku seperti biasa.)
+
+## Test
+
+- 5 test baru `db-backup-hydration.test.js`.
+- Suite: **3188 lulus**, 0 regresi baru.
+
 # v0.5.88.13 (2026-10-27)
 
 ## Fitur
