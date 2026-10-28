@@ -1,3 +1,46 @@
+# v0.5.88.22 (2026-10-29)
+
+## Perbaikan
+
+- **Jalur OAuth CodeBuddy Intl sekarang memakai identitas CLI yang sama dengan
+  jalur chat.** Registry mengiklankan `IDE/2.160.0 CodeBuddy/2.160.0` untuk
+  oauth, sementara executor chat mengirim `CLI/2.178.0 CodeBuddy/2.178.0`.
+  Satu akun, dua identitas — gateway bisa membedakannya, dan jalur chat
+  justru yang kena restricted.
+
+  Capture CLI 2.178.0 menunjukkan apa yang benar-benar dikirim saat refresh:
+
+  ```
+  User-Agent: CLI/2.178.0 CodeBuddy/2.178.0
+  X-User-Id: <id akun>
+  X-Request-ID: <32 hex>
+  Authorization: Bearer <access token yang masih valid>
+  Accept: application/json, text/plain, */*
+  X-Product: SaaS
+  X-Domain: www.codebuddy.ai
+  X-Refresh-Token / X-Auth-Refresh-Source: plugin
+  ```
+
+  Refresh di PanRouter sekarang mengirim semuanya: user agent CLI, id akun
+  dari claim `sub` token, request id per-request, access token sebagai bearer,
+  dan Accept header milik CLI.
+
+- **CodeBuddy CN** punya masalah yang sama terbalik — chat bilang
+  `CLI/2.108.1`, oauth bilang `CLI/2.63.2`. Sekarang keduanya
+  `CLI/2.108.1`.
+
+- **`userIdFromCredentials()` dipindah ke `open-sse/shared/codebuddyUserId.js`.**
+  Meng-import-nya dari executor akan menutup siklus
+  (executors -> services -> executors) yang gagal saat evaluasi modul dengan
+  "Cannot access 'm' before initialization" dan menjatuhkan seluruh build.
+  Modul baru tidak punya import sendiri, jadi dua sisi bisa bergantung
+  padanya.
+
+## Test
+
+- 32 test di `codebuddy-intl-cli-identity.test.js`.
+- Suite: **3217 lulus**.
+
 # v0.5.88.21 (2026-10-29)
 
 ## Perbaikan
