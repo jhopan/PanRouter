@@ -1,3 +1,43 @@
+# v0.5.88.13 (2026-10-27)
+
+## Fitur
+
+- **Interval backup sekarang bisa diatur.** Sebelumnya jadwalnya tetap satu
+  slot per hari. Sekarang intervalnya jadi pengaturan dalam jam, dipilih dari
+  dashboard:
+
+  | Opsi | Setiap |
+  |---|---|
+  | Every hour | 1 jam |
+  | Every 3 hours | 3 jam |
+  | Every 6 hours | 6 jam |
+  | Every 12 hours | 12 jam |
+  | **Every 24 hours (daily)** | 24 jam (default) |
+  | Every 48 hours | 48 jam |
+  | Every 7 days | 168 jam |
+
+  Scheduler tetap bangun tiap 5 menit lalu mengecek apakah intervalnya sudah
+  lewat. `resolveIntervalHours()` membatasi nilainya di 1–168 jam — snapshot
+  adalah salinan penuh database, jadi lebih sering dari satu jam hanya menambah
+  beban disk dan repo tanpa guna.
+
+- Panel "Automatic Backup" juga menampilkan **perintah persis** untuk mesin
+  mirror, jadi URL dan nama header tidak perlu dirangkai manual:
+
+  ```
+  curl -H "x-backup-token: <TOKEN>" "<origin>/api/backup/download" \
+    -o data.sqlite
+  ```
+
+  Diverifikasi live terhadap dev server yang jalan: `intervalHours=6` tersimpan
+  dan dikembalikan, `githubToken` tetap tidak ada di response mana pun, dan
+  endpoint download tetap melayani file (HTTP 200, 8.179.712 byte).
+
+## Test
+
+- 25 test `db-backup-service.test.js`.
+- Suite: **3176 lulus**, 0 regresi baru.
+
 # v0.5.88.12 (2026-10-27)
 
 ## Fitur
