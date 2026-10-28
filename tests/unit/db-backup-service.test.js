@@ -253,6 +253,28 @@ describe("backup interval", () => {
     expect(profile).not.toMatch(/git remote add origin/);
   });
 
+  it("never hardcodes a repository as the backup target", () => {
+    // A repository URL in the source must only ever be an example in a
+    // placeholder, never a default the backup would actually push to.
+    // (An earlier revision pushed a real snapshot to whatever URL was used as
+    // the example. The example has to stay an example.)
+    const codePaths = [
+      "src/shared/services/dbBackup.js",
+      "src/app/api/backup/config/route.js",
+      "src/app/(dashboard)/dashboard/profile/page.js",
+    ];
+    for (const rel of codePaths) {
+      const src = read(rel);
+      const urls = src.match(/https:\/\/github\.com\/[^\s"'`]+/g) || [];
+      for (const url of urls) {
+        // A URL in a placeholder attribute or a comment is fine; one that
+        // feeds the remote or the settings default is not.
+        const line = src.split("\n").find((l) => l.includes(url)) || "";
+        expect(line).toMatch(/placeholder|\/\/|\*|https:\/\/github\.com\/\$\{/);
+      }
+    }
+  });
+
   it("accepts a pasted repository URL in the repository field", () => {
     expect(profile).toMatch(/https:\/\/github\.com\/jhopan12\/AutoBuy\.git/);
     expect(profile).toMatch(/githubRepoUrl/);

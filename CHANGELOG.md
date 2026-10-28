@@ -1,3 +1,30 @@
+# v0.5.88.20 (2026-10-29)
+
+## Perbaikan
+
+- **Guard: repository URL di source code tidak boleh jadi target push default.**
+  Saat memverifikasi fitur "repository URL", snapshot database sungguhan didorong
+  ke repository yang dipakai sebagai **contoh** di placeholder UI. Repository itu
+  punya project asli di dalamnya — bukan tempat menyimpan backup.
+
+  Sekarang ada test yang memindai file sumber (service, config route, halaman
+  dashboard) dan gagal kalau ada URL GitHub yang tidak berada di placeholder,
+  komentar, atau interpolasi. Contoh di UI tetap boleh ada; yang tidak boleh
+  ada adalah URL yang diam-diam jadi tujuan push.
+
+## Perbaikan pada repository target
+
+- `jhopan12/AutoBuy` — `main` dikembalikan ke commit `6d2918bf` (sebelum push
+  snapshot). Dua commit asing ("db backup 2026-10-29" dan "remove test backup")
+  dilepas dari branch; file `panrouter-db-2026-10-29.sqlite` tidak lagi ada di
+  working tree. Commit-nya masih tersimpan di object store GitHub sampai
+  garbage collection, tapi tidak reachable dari branch mana pun, jadi tidak
+  muncul di riwayat repository.
+
+## Test
+
+- 52 test di `db-backup-service.test.js` (1 guard baru).
+
 # v0.5.88.19 (2026-10-29)
 
 ## Fitur
