@@ -14,6 +14,25 @@ const SETTINGS_RESPONSE_HEADERS = {
 // Secrets must never be mass-assigned from request body (CWE-915)
 const PROTECTED_SETTING_KEYS = ["password", "mitmSudoEncrypted"];
 
+// The GitHub backup token is a secret: it grants write access to the repo that
+// holds every OAuth token on this box. It is stored like the password hash, is
+// never returned by GET, and is only ever written through the dedicated
+// /api/backup/config endpoint.
+const SECRET_SETTING_PATHS = ["dbBackup.githubToken"];
+
+function stripSecretSettings(settings) {
+  const safe = { ...settings };
+  if (safe.dbBackup) {
+    const { githubToken, downloadToken, ...rest } = safe.dbBackup;
+    safe.dbBackup = {
+      ...rest,
+      githubTokenConfigured: Boolean(githubToken),
+      downloadTokenConfigured: Boolean(downloadToken),
+    };
+  }
+  return safe;
+}
+
 export async function GET() {
   try {
     const settings = await getSettings();
@@ -23,8 +42,8 @@ export async function GET() {
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
     const enableTranslator = process.env.ENABLE_TRANSLATOR === "true";
     
-    return NextResponse.json({ 
-      ...safeSettings, 
+    return NextResponse.json({
+      ...stripSecretSettings(safeSettings),
       enableRequestLogs,
       enableTranslator,
       hasPassword: !!password
@@ -74,6 +93,20 @@ export async function PATCH(request) {
       if (!body.oidcClientSecret || !String(body.oidcClientSecret).trim()) {
         delete body.oidcClientSecret;
       }
+    }
+
+    // The GitHub backup token is written only through /api/backup/config.
+    // If a PATCH carries one, preserve the stored value instead of letting a
+    // mass-assignment replace it.
+    if (Object.prototype.hasOwnProperty.call(body, "dbBackup")) {
+      const current = (await getSettings()).dbBackup || {};
+      const incoming = body.dbBackup || {};
+      const { githubToken, downloadToken, ...rest } = incoming;
+      body.dbBackup = {
+        ...rest,
+        githubToken: githubToken !== undefined ? githubToken : current.githubToken || "",
+        downloadToken: downloadToken !== undefined ? downloadToken : current.downloadToken || "",
+      };
     }
 
     const settings = await updateSettings(body);

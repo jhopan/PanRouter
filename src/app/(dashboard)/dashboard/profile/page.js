@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, Button, Toggle, Input } from "@/shared/components";
 import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
@@ -33,6 +33,17 @@ export default function ProfilePage() {
   const [dbLoading, setDbLoading] = useState(false);
   const [dbStatus, setDbStatus] = useState({ type: "", message: "" });
   const [dbAuth, setDbAuth] = useState({ open: false, mode: "", password: "" });
+  // Automatic backup to a private GitHub repo.
+  const [backupForm, setBackupForm] = useState({
+    enabled: false,
+    githubUser: "",
+    githubToken: "",
+    githubRepo: "",
+  });
+  const [backupStatus, setBackupStatus] = useState({ type: "", message: "" });
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [downloadToken, setDownloadToken] = useState("");
   const pendingImportRef = useRef(null);
   const [oidcForm, setOidcForm] = useState({
     authMode: "password",
@@ -693,6 +704,71 @@ export default function ProfilePage() {
     }
   };
 
+  // ── Automatic backup to a private GitHub repo ──────────────────────────
+  const loadBackupConfig = useCallback(async () => {
+    try {
+      const res = await fetch("/api/backup/config", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setBackupForm((prev) => ({
+        ...prev,
+        enabled: data.enabled === true,
+        githubUser: data.githubUser || "",
+        githubRepo: data.githubRepo || "",
+        githubToken: "",
+      }));
+    } catch {
+      /* the panel simply stays empty */
+    }
+  }, []);
+
+  // Loaded on mount through the async callback (the fetch resolves later, so
+  // the setState is not synchronous inside the effect body).
+  useEffect(() => {
+    const t = setTimeout(() => { loadBackupConfig(); }, 0);
+    return () => clearTimeout(t);
+  }, [loadBackupConfig]);
+
+  const saveBackupConfig = useCallback(async () => {
+    setBackupLoading(true);
+    setBackupStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/backup/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(backupForm),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to save the backup settings");
+      if (data.downloadToken) setDownloadToken(data.downloadToken);
+      setBackupForm((prev) => ({ ...prev, githubToken: "" }));
+      setBackupStatus({ type: "success", message: "Backup settings saved" });
+      loadBackupConfig();
+    } catch (error) {
+      setBackupStatus({ type: "error", message: error.message || "Failed to save the backup settings" });
+    } finally {
+      setBackupLoading(false);
+    }
+  }, [backupForm, loadBackupConfig]);
+
+  const runBackupNow = useCallback(async () => {
+    setBackupBusy(true);
+    setBackupStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/backup/run", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "The backup failed");
+      setBackupStatus({
+        type: "success",
+        message: `Backup pushed — ${data.fileName} (${(data.bytes / 1024 / 1024).toFixed(2)} MB)`,
+      });
+    } catch (error) {
+      setBackupStatus({ type: "error", message: error.message || "The backup failed" });
+    } finally {
+      setBackupBusy(false);
+    }
+  }, []);
+
   const handleImportDatabase = (event) => {
     const file = event.target.files?.[0];
     if (importFileRef.current) importFileRef.current.value = "";
@@ -836,6 +912,112 @@ export default function ProfilePage() {
             {dbStatus.message && (
               <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
                 {dbStatus.message}
+              </p>
+            )}
+          </div>
+        </Card>
+
+        {/* Automatic backup — daily snapshot pushed to a private GitHub repo.
+            The database holds every provider credential on this box, so a
+            copy that lives OFF the box is the only real safety net. */}
+        <Card>
+          <h2 className="text-lg font-semibold mb-4">Automatic Backup</h2>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-bg border border-border">
+              <div className="min-w-0">
+                <p className="font-medium text-sm sm:text-base">Daily backup to GitHub</p>
+                <p className="text-xs sm:text-sm text-text-muted">
+                  Pushes a snapshot of the database to a private repository every day. The
+                  repository must be private — a public one would publish every credential.
+                </p>
+              </div>
+              <Toggle
+                checked={backupForm.enabled}
+                onChange={(v) => setBackupForm((prev) => ({ ...prev, enabled: v }))}
+                disabled={backupLoading}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs sm:text-sm text-text-muted" htmlFor="backup-github-user">
+                  GitHub username
+                </label>
+                <Input
+                  id="backup-github-user"
+                  value={backupForm.githubUser}
+                  onChange={(e) => setBackupForm((prev) => ({ ...prev, githubUser: e.target.value }))}
+                  placeholder="jhopan"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs sm:text-sm text-text-muted" htmlFor="backup-github-repo">
+                  Repository
+                </label>
+                <Input
+                  id="backup-github-repo"
+                  value={backupForm.githubRepo}
+                  onChange={(e) => setBackupForm((prev) => ({ ...prev, githubRepo: e.target.value }))}
+                  placeholder="jhopan/panrouter-backups"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs sm:text-sm text-text-muted" htmlFor="backup-github-token">
+                GitHub token
+              </label>
+              <Input
+                id="backup-github-token"
+                type="password"
+                value={backupForm.githubToken}
+                onChange={(e) => setBackupForm((prev) => ({ ...prev, githubToken: e.target.value }))}
+                placeholder={backupForm.githubTokenConfigured ? "•••••••• (saved — leave blank to keep)" : "ghp_..."}
+                autoComplete="off"
+              />
+              <p className="text-xs text-text-muted">
+                A fine-grained token with write access to the repository. It is stored on the server
+                and never shown again.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="secondary"
+                icon="save"
+                onClick={saveBackupConfig}
+                loading={backupLoading}
+                className="w-full sm:w-auto"
+              >
+                Save
+              </Button>
+              <Button
+                variant="outline"
+                icon="backup"
+                onClick={runBackupNow}
+                loading={backupBusy}
+                disabled={backupLoading}
+                className="w-full sm:w-auto"
+              >
+                Back up now
+              </Button>
+            </div>
+
+            {downloadToken && (
+              <div className="p-3 rounded-lg bg-bg border border-border">
+                <p className="font-medium text-sm sm:text-base">Download token</p>
+                <p className="text-xs sm:text-sm text-text-muted mb-2">
+                  Use this on the machine that mirrors the database. It is shown once — copy it now.
+                </p>
+                <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2">
+                  {downloadToken}
+                </code>
+              </div>
+            )}
+
+            {backupStatus.message && (
+              <p className={`text-sm ${backupStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                {backupStatus.message}
               </p>
             )}
           </div>

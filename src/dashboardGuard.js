@@ -31,6 +31,11 @@ const PUBLIC_API_PATHS = [
   "/api/auth/saml",
   "/api/version",
   "/api/settings/require-login",
+  // The database mirror for the Debian box. It carries its OWN token
+  // (x-backup-token), compared in constant time inside the route, so the
+  // general dashboard auth must not gate it — the machine holds that token,
+  // not a dashboard session.
+  "/api/backup/download",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).

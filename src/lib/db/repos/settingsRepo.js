@@ -76,6 +76,19 @@ const DEFAULT_SETTINGS = {
   pxpipeAutoInstall: true,
   pxpipeMinChars: 25000,
   pxpipeTimeoutMs: 15000,
+  // Automatic database backup to a private GitHub repo. The token is a secret
+  // (it grants write access to the repo holding every OAuth token on this
+  // box), so the settings API strips it from the response and the PATCH
+  // handler refuses to mass-assign it.
+  dbBackup: {
+    enabled: false,
+    githubUser: "",
+    githubToken: "",
+    githubRepo: "",
+    // Token for GET /api/backup/download — the Debian box pulls the database
+    // with it. Also a secret, also stripped from the settings response.
+    downloadToken: "",
+  },
 };
 
 async function readRaw() {

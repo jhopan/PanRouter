@@ -147,6 +147,13 @@ async function runHeavyStartup() {
     .then((n) => { if (n > 0) console.log(`[AG_QUOTA] restored ${n} ineligible account(s)`); })
     .catch((e) => console.log("[AG_QUOTA] eligibility restore failed (non-fatal):", e.message));
 
+  // Automatic database backup to a private GitHub repo. The scheduler is
+  // idempotent and is also configured from the settings endpoint when the
+  // operator turns it on.
+  import("@/shared/services/dbBackup.js")
+    .then(({ configureDbBackup }) => configureDbBackup(settings))
+    .catch((e) => console.log("[DB_BACKUP] scheduler start failed:", e.message));
+
   // Proactive OAuth token refresh (e.g. grok-cli ~6h TTL). Module is idempotent
   // and also started from custom-server.js when that entry is used.
   import("@/sse/services/backgroundTokenRefresh.js")
