@@ -11,7 +11,6 @@
 // before the configuration is accepted, so a typo that points at a public repo
 // is caught at setup time rather than at the first backup.
 import { NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
 
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { verifyDashboardPassword } from "@/lib/auth/dashboardSession";
@@ -37,7 +36,6 @@ export async function GET(request) {
       githubUser: cfg.githubUser || "",
       githubRepo: cfg.githubRepo || "",
       githubTokenConfigured: Boolean(cfg.githubToken),
-      downloadTokenConfigured: Boolean(cfg.downloadToken),
     });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -66,11 +64,6 @@ export async function POST(request) {
     const current = (await getSettings()).dbBackup || {};
     const githubToken = incomingToken || current.githubToken || "";
 
-    // The download token is for the Debian box. It is generated once and shown
-    // to the operator only at creation time — it cannot be read back later.
-    const incomingDownload = String(body.downloadToken || "").trim();
-    const downloadToken = incomingDownload || current.downloadToken || randomBytes(24).toString("hex");
-
     if (!githubUser || !githubRepo) {
       return NextResponse.json({ error: "GitHub username and repo are required" }, { status: 400 });
     }
@@ -89,7 +82,7 @@ export async function POST(request) {
     }
 
     const settings = await updateSettings({
-      dbBackup: { enabled, intervalHours, githubUser, githubRepo, githubToken, downloadToken },
+      dbBackup: { enabled, intervalHours, githubUser, githubRepo, githubToken },
     });
 
     // Start or stop the scheduler to match.
@@ -102,10 +95,6 @@ export async function POST(request) {
       githubUser,
       githubRepo: `${repoOwner}/${githubRepo}`,
       githubTokenConfigured: true,
-      downloadTokenConfigured: true,
-      // Shown once, at creation. It is stored hashed-by-obscurity (compared in
-      // constant time) and can never be read back through the API.
-      downloadToken,
     });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

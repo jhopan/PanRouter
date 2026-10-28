@@ -106,8 +106,8 @@ describe("download endpoint for the Debian box", () => {
     expect(route).toMatch(/data\.sqlite/);
   });
 
-  it("compares the token in constant time", () => {
-    expect(route).toMatch(/timingSafeEqual/);
+  it("verifies the token through the token repo", () => {
+    expect(route).toMatch(/verifyBackupToken/);
   });
 
   it("is reachable: the general dashboard auth must not gate it", () => {
@@ -129,9 +129,9 @@ describe("the backup config endpoint", () => {
     expect(route).toMatch(/repoParts/);
   });
 
-  it("generates a download token and shows it once", () => {
-    expect(route).toMatch(/randomBytes/);
-    expect(route).toMatch(/downloadToken/);
+  it("no longer mints a download token", () => {
+    // Download tokens moved to their own table and endpoint.
+    expect(route).not.toMatch(/randomBytes/);
   });
 
   it("never returns the GitHub token", () => {
@@ -195,5 +195,48 @@ describe("the mirror command must not break hydration", () => {
     // from window during render — that is pre-existing and not part of this
     // panel, so the command must use the state instead.
     expect(profile).toMatch(/\$\{pageOrigin\}\/api\/backup\/download/);
+  });
+});
+
+describe("backup download tokens", () => {
+  const tokenUtil = read("src/shared/utils/backupToken.js");
+  const repo = read("src/lib/db/repos/backupTokensRepo.js");
+  const tokensRoute = read("src/app/api/backup/tokens/route.js");
+  const schema = read("src/lib/db/schema.js");
+
+  it("has its own prefix, distinct from an API key", () => {
+    expect(tokenUtil).toMatch(/const PREFIX = "bk"/);
+    expect(tokenUtil).toMatch(/sk-/);
+  });
+
+  it("uses the same shape as an API key: machine id, key id, crc", () => {
+    // bk-{machineId16}-{keyId6}-{crc8}
+    expect(tokenUtil).toMatch(/KEY_ID_LEN = 6/);
+    expect(tokenUtil).toMatch(/CRC_LEN = 8/);
+    expect(tokenUtil).toMatch(/createHmac/);
+  });
+
+  it("never stores the full token", () => {
+    // Only the key id, the machine id and the crc are kept, so a database
+    // dump does not hand out mirror access.
+    expect(repo).toMatch(/crc/);
+    expect(repo).toMatch(/keyId/);
+  });
+
+  it("has a table for them", () => {
+    expect(schema).toMatch(/backupTokens/);
+  });
+
+  it("can be listed, created, revoked and deleted", () => {
+    expect(tokensRoute).toMatch(/export async function GET/);
+    expect(tokensRoute).toMatch(/export async function POST/);
+    expect(tokensRoute).toMatch(/export async function PATCH/);
+    expect(tokensRoute).toMatch(/export async function DELETE/);
+    expect(repo).toMatch(/revokeBackupToken/);
+    expect(repo).toMatch(/deleteBackupToken/);
+  });
+
+  it("the download route rejects a revoked token", () => {
+    expect(repo).toMatch(/revoked/);
   });
 });

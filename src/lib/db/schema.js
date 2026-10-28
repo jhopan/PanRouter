@@ -88,6 +88,23 @@ export const TABLES = {
     },
     indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
   },
+  // Backup download tokens: one per machine that mirrors the database off the
+  // box. The token itself is NOT stored — only its key id and the CRC, so a
+  // database dump does not hand out mirror access. The CRC is recomputed from
+  // the machine id and key id, so the full token can be reconstructed.
+  backupTokens: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      keyId: "TEXT UNIQUE NOT NULL",
+      name: "TEXT",
+      machineId: "TEXT",
+      crc: "TEXT NOT NULL",
+      isActive: "INTEGER DEFAULT 1",
+      lastUsedAt: "TEXT",
+      createdAt: "TEXT NOT NULL",
+    },
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_bt_keyid ON backupTokens(keyId)"],
+  },
   combos: {
     columns: {
       id: "TEXT PRIMARY KEY",

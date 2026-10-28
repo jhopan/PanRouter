@@ -5,44 +5,34 @@
 //
 // Why a dedicated token instead of the dashboard password: the Debian box runs
 // unattended, so it needs a credential it can hold without a human present, and
-// it must not be able to reach anything else on this server. The token is
-// scoped to exactly one route and compared in constant time.
+// it must not be able to reach anything else on this server. A backup token
+// (bk-...) is scoped to exactly this route — an API key (sk-...) would reach
+// the whole LLM surface, which is far too much for a mirror.
 //
-// The token is stored next to the backup configuration (dbBackup.downloadToken)
-// and is never returned by the settings GET.
+// The token is checked against the stored records, so it can be revoked or
+// deleted from the dashboard without touching the file on the machine.
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { getSettings } from "@/lib/localDb";
+import { verifyBackupToken, touchBackupToken } from "@/lib/db/repos/backupTokensRepo";
 import { DATA_DIR } from "@/lib/dataDir";
 
 const DB_FILE = path.join(DATA_DIR, "db", "data.sqlite");
 
-/** Constant-time compare so the token cannot be guessed by timing. */
-function safeEqual(a, b) {
-  const bufA = Buffer.from(String(a || ""), "utf8");
-  const bufB = Buffer.from(String(b || ""), "utf8");
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
-
 export async function GET(request) {
   try {
-    const settings = await getSettings();
-    const expected = settings.dbBackup?.downloadToken || "";
-    if (!expected) {
-      return NextResponse.json({ error: "The download endpoint is not configured" }, { status: 404 });
-    }
-
     const provided =
       request.headers.get("x-backup-token") ||
       new URL(request.url).searchParams.get("token") ||
       "";
-    if (!safeEqual(provided, expected)) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+
+    const verdict = await verifyBackupToken(provided);
+    if (!verdict.ok) {
+      return NextResponse.json({ error: verdict.reason || "Invalid token" }, { status: 401 });
     }
+    // Best effort — a failed touch must not break the download.
+    try { await touchBackupToken(verdict.record.keyId); } catch { /* advisory */ }
 
     if (!fs.existsSync(DB_FILE)) {
       return NextResponse.json({ error: "Database file not found" }, { status: 404 });

@@ -45,6 +45,11 @@ export default function ProfilePage() {
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [downloadToken, setDownloadToken] = useState("");
+  // Backup download tokens: one per machine that mirrors the database.
+  const [mirrorTokens, setMirrorTokens] = useState([]);
+  const [mirrorTokenName, setMirrorTokenName] = useState("");
+  const [mirrorStatus, setMirrorStatus] = useState({ type: "", message: "" });
+  const [mirrorLoading, setMirrorLoading] = useState(false);
   const pendingImportRef = useRef(null);
   const [oidcForm, setOidcForm] = useState({
     authMode: "password",
@@ -769,6 +774,77 @@ export default function ProfilePage() {
     }
   }, [backupForm, loadBackupConfig]);
 
+  // ── Backup download tokens (one per mirror machine) ─────────────────────
+  const loadMirrorTokens = useCallback(async () => {
+    try {
+      const res = await fetch("/api/backup/tokens", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setMirrorTokens(Array.isArray(data.tokens) ? data.tokens : []);
+    } catch {
+      /* the panel simply stays empty */
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => { loadMirrorTokens(); }, 0);
+    return () => clearTimeout(t);
+  }, [loadMirrorTokens]);
+
+  const createMirrorToken = useCallback(async () => {
+    setMirrorLoading(true);
+    setMirrorStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/backup/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: mirrorTokenName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to create the token");
+      setDownloadToken(data.token || "");
+      setMirrorTokenName("");
+      setMirrorStatus({
+        type: "success",
+        message: "Token created — copy it now, it is shown only once",
+      });
+      loadMirrorTokens();
+    } catch (error) {
+      setMirrorStatus({ type: "error", message: error.message || "Failed to create the token" });
+    } finally {
+      setMirrorLoading(false);
+    }
+  }, [mirrorTokenName, loadMirrorTokens]);
+
+  const setMirrorTokenActive = useCallback(async (id, isActive) => {
+    setMirrorStatus({ type: "", message: "" });
+    try {
+      const res = await fetch("/api/backup/tokens", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, isActive }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to update the token");
+      loadMirrorTokens();
+    } catch (error) {
+      setMirrorStatus({ type: "error", message: error.message || "Failed to update the token" });
+    }
+  }, [loadMirrorTokens]);
+
+  const removeMirrorToken = useCallback(async (id) => {
+    setMirrorStatus({ type: "", message: "" });
+    try {
+      const res = await fetch(`/api/backup/tokens?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to delete the token");
+      setMirrorStatus({ type: "success", message: "Token deleted" });
+      loadMirrorTokens();
+    } catch (error) {
+      setMirrorStatus({ type: "error", message: error.message || "Failed to delete the token" });
+    }
+  }, [loadMirrorTokens]);
+
   const runBackupNow = useCallback(async () => {
     setBackupBusy(true);
     setBackupStatus({ type: "", message: "" });
@@ -1059,11 +1135,55 @@ export default function ProfilePage() {
               </code>
             </div>
 
+            {backupStatus.message && (
+              <p className={`text-sm ${backupStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                {backupStatus.message}
+              </p>
+            )}
+          </div>
+        </Card>
+
+        {/* Periodic download — a machine that pulls the database on a schedule.
+            Separate from the GitHub backup: this is the copy that lives on a
+            second machine, so the VPS going down does not take the data with
+            it. */}
+        <Card>
+          <h2 className="text-lg font-semibold mb-1">Periodic Download</h2>
+          <p className="text-xs sm:text-sm text-text-muted mb-4">
+            A machine pulls the database over HTTP on a schedule. Each machine gets its
+            own token, so a token can be revoked or deleted without touching the others.
+          </p>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row gap-2 items-end">
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="text-xs sm:text-sm text-text-muted" htmlFor="mirror-token-name">
+                  Token name
+                </label>
+                <Input
+                  id="mirror-token-name"
+                  value={mirrorTokenName}
+                  onChange={(e) => setMirrorTokenName(e.target.value)}
+                  placeholder="debian-mirror"
+                />
+              </div>
+              <Button
+                variant="secondary"
+                icon="add"
+                onClick={createMirrorToken}
+                loading={mirrorLoading}
+                className="w-full sm:w-auto"
+              >
+                Create token
+              </Button>
+            </div>
+
             {downloadToken && (
-              <div className="p-3 rounded-lg bg-bg border border-border">
-                <p className="font-medium text-sm sm:text-base">Download token</p>
+              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                <p className="font-medium text-sm sm:text-base">New token — copy it now</p>
                 <p className="text-xs sm:text-sm text-text-muted mb-2">
-                  Use this on the machine that mirrors the database. It is shown once — copy it now.
+                  It is shown only once. The server keeps just the key id and a checksum,
+                  so a database copy never carries mirror access with it.
                 </p>
                 <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2">
                   {downloadToken}
@@ -1071,11 +1191,109 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {backupStatus.message && (
-              <p className={`text-sm ${backupStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
-                {backupStatus.message}
+            {mirrorTokens.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {mirrorTokens.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg bg-bg border border-border"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{t.name}</p>
+                      <p className="text-xs text-text-muted font-mono truncate">
+                        bk-…-{t.keyId}
+                        {t.machineId ? ` · ${t.machineId}` : ""}
+                      </p>
+                      <p className="text-[11px] text-text-muted/80">
+                        created {String(t.createdAt || "").slice(0, 10)}
+                        {t.lastUsedAt ? ` · last used ${String(t.lastUsedAt).slice(0, 16).replace("T", " ")}` : " · never used"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          t.isActive
+                            ? "bg-green-500/10 text-green-600 dark:text-green-400"
+                            : "bg-surface-2 text-text-muted"
+                        }`}
+                      >
+                        {t.isActive ? "active" : "revoked"}
+                      </span>
+                      <Button
+                        variant="outline"
+                        onClick={() => setMirrorTokenActive(t.id, !t.isActive)}
+                        className="w-full sm:w-auto"
+                      >
+                        {t.isActive ? "Revoke" : "Re-enable"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => removeMirrorToken(t.id)}
+                        className="w-full sm:w-auto"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {mirrorStatus.message && (
+              <p className={`text-sm ${mirrorStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
+                {mirrorStatus.message}
               </p>
             )}
+
+            <div className="p-3 rounded-lg bg-bg border border-border">
+              <p className="font-medium text-sm sm:text-base">Set it up on the mirror machine</p>
+              <p className="text-xs sm:text-sm text-text-muted mb-3">
+                Git is only needed if the mirror pulls from a git remote. For the HTTP
+                download below, curl and a cron entry are enough.
+              </p>
+
+              <p className="text-xs font-semibold text-text-muted mb-1">1 — Get the file</p>
+              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre mb-3">
+                {downloadCommand}
+              </code>
+
+              <p className="text-xs font-semibold text-text-muted mb-1">2 — Run it every N hours</p>
+              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre mb-3">
+{`mkdir -p ~/panrouter-backups
+cd ~/panrouter-backups
+cat > mirror.sh << 'EOS'
+#!/bin/sh
+curl -fsS -H "x-backup-token: <TOKEN>" \
+  "${pageOrigin}/api/backup/download" \
+  -o "data-$(date +%Y%m%d-%H%M).sqlite"
+EOS
+chmod +x mirror.sh`}
+              </code>
+
+              <p className="text-xs font-semibold text-text-muted mb-1">3 — Schedule it (cron)</p>
+              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre mb-3">
+{`crontab -e
+# every 6 hours
+0 */6 * * * /home/<user>/panrouter-backups/mirror.sh >> /home/<user>/panrouter-backups/mirror.log 2>&1`}
+              </code>
+
+              <p className="text-xs font-semibold text-text-muted mb-1">Optional — mirror from a git remote instead</p>
+              <p className="text-xs sm:text-sm text-text-muted mb-2">
+                If the mirror should also keep a git copy, it needs git and a GitHub
+                login. An SSH key is the least fuss — no password prompt in cron.
+              </p>
+              <code className="block text-xs font-mono break-all p-2 rounded bg-surface-2 whitespace-pre">
+{`# on the mirror machine
+sudo apt install git
+ssh-keygen -t ed25519 -C "panrouter-mirror"
+cat ~/.ssh/id_ed25519.pub          # paste into GitHub → Settings → SSH keys
+ssh -T git@github.com             # check the login
+
+# then the mirror can push the same snapshot to the repo
+cd ~/panrouter-backups
+git init && git remote add origin git@github.com:<you>/<repo>.git`}
+              </code>
+            </div>
           </div>
         </Card>
 

@@ -23,12 +23,8 @@ const SECRET_SETTING_PATHS = ["dbBackup.githubToken"];
 function stripSecretSettings(settings) {
   const safe = { ...settings };
   if (safe.dbBackup) {
-    const { githubToken, downloadToken, ...rest } = safe.dbBackup;
-    safe.dbBackup = {
-      ...rest,
-      githubTokenConfigured: Boolean(githubToken),
-      downloadTokenConfigured: Boolean(downloadToken),
-    };
+    const { githubToken, ...rest } = safe.dbBackup;
+    safe.dbBackup = { ...rest, githubTokenConfigured: Boolean(githubToken) };
   }
   return safe;
 }
@@ -101,11 +97,10 @@ export async function PATCH(request) {
     if (Object.prototype.hasOwnProperty.call(body, "dbBackup")) {
       const current = (await getSettings()).dbBackup || {};
       const incoming = body.dbBackup || {};
-      const { githubToken, downloadToken, ...rest } = incoming;
+      const { githubToken, ...rest } = incoming;
       body.dbBackup = {
         ...rest,
         githubToken: githubToken !== undefined ? githubToken : current.githubToken || "",
-        downloadToken: downloadToken !== undefined ? downloadToken : current.downloadToken || "",
       };
     }
 

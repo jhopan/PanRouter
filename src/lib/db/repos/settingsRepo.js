@@ -87,9 +87,6 @@ const DEFAULT_SETTINGS = {
     githubUser: "",
     githubToken: "",
     githubRepo: "",
-    // Token for GET /api/backup/download — the Debian box pulls the database
-    // with it. Also a secret, also stripped from the settings response.
-    downloadToken: "",
   },
 };
 
