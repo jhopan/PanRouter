@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { DefaultExecutor } from "./default.js";
+import { userIdFromCredentials } from "../shared/codebuddyUserId.js";
 
 /**
  * CodeBuddyIntlExecutor — talks to https://www.codebuddy.ai/v2/chat/completions
@@ -19,6 +20,8 @@ import { DefaultExecutor } from "./default.js";
  */
 
 // From the installed @tencent-ai/codebuddy-code 2.170.0 bundle.
+export { userIdFromCredentials };
+
 const CB_IDE_VERSION = "2.178.0";
 // The Stainless SDK version the CLI embeds, and the Node runtime it reports.
 // Both are observable on the wire, so they are pinned rather than taken from
@@ -94,41 +97,6 @@ function stableConversationId(seed) {
  */
 function perTurnId() {
   return uuidV1(randomUUID(), Date.now());
-}
-
-/**
- * Read the account id out of the bearer token.
- *
- * The CLI sends an `X-User-Id` header on every request and the value is the
- * token's `sub` claim (a UUID). The gateway ties the request to that account,
- * so the header has to match the token it was sent with.
- *
- * @param {object} credentials
- * @returns {string|null}
- */
-export function userIdFromCredentials(credentials) {
-  const raw =
-    credentials?.accessToken ||
-    credentials?.access_token ||
-    credentials?.token ||
-    credentials?.apiKey ||
-    credentials?.api_key ||
-    "";
-  const token = String(raw).trim();
-  if (!token) return null;
-
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-
-  try {
-    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const json = Buffer.from(payload, "base64").toString("utf8");
-    const claims = JSON.parse(json);
-    const sub = claims?.sub;
-    return typeof sub === "string" && sub ? sub : null;
-  } catch {
-    return null;
-  }
 }
 
 export class CodeBuddyIntlExecutor extends DefaultExecutor {

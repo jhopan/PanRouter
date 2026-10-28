@@ -2,6 +2,8 @@ import { PROVIDERS, PROVIDER_OAUTH } from "../../config/providers.js";
 import { OAUTH_ENDPOINTS, GITHUB_COPILOT, buildKimiHeaders } from "../../config/appConstants.js";
 import { proxyAwareFetch } from "../../utils/proxyFetch.js";
 import { dedupRefresh } from "./dedup.js";
+import { randomUUID } from "node:crypto";
+import { userIdFromCredentials } from "../../shared/codebuddyUserId.js";
 import { buildExternalIdpRefreshParams } from "../../../src/lib/oauth/kiroExternalIdp.js";
 
 let _xaiServiceSingleton = null;
@@ -595,22 +597,35 @@ export async function refreshCodebuddyToken(refreshToken, log) {
   }, log);
 }
 
-export async function refreshCodebuddyIntlToken(refreshToken, log) {
+export async function refreshCodebuddyIntlToken(refreshToken, log, credentials = null) {
   if (!refreshToken) return null;
   return dedupRefresh("codebuddy-intl", refreshToken, async () => {
     const oauth = PROVIDER_OAUTH["codebuddy-intl"] || {};
+    // The CLI refreshes with the same identity headers it chats with: the
+    // account id (the token's "sub" claim), a per-request id, and the CLI
+    // user agent. A refresh that looks like a different client is a refresh
+    // that gets treated differently.
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/plain, */*",
+      "User-Agent": oauth.userAgent,
+      "X-Requested-With": "XMLHttpRequest",
+      "X-Domain": "www.codebuddy.ai",
+      "X-Refresh-Token": refreshToken,
+      "X-Auth-Refresh-Source": "plugin",
+      "X-Product": "SaaS",
+      "X-Request-ID": randomUUID().replace(/-/g, ""),
+    };
+    const userId = userIdFromCredentials(credentials);
+    if (userId) headers["X-User-Id"] = userId;
+    // The CLI also sends the (still valid) access token as a bearer on the
+    // refresh call. Without it the refresh looks like it comes from a client
+    // that never talks to the chat API.
+    const accessToken = credentials?.accessToken || credentials?.access_token;
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
     const response = await fetch(oauth.refreshUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "User-Agent": oauth.userAgent,
-        "X-Requested-With": "XMLHttpRequest",
-        "X-Domain": "www.codebuddy.ai",
-        "X-Refresh-Token": refreshToken,
-        "X-Auth-Refresh-Source": "plugin",
-        "X-Product": "SaaS",
-      },
+      headers,
       body: "{}",
     });
 

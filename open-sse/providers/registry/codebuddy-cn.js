@@ -73,7 +73,7 @@ export default {
     stateUrl: "https://copilot.tencent.com/v2/plugin/auth/state",
     tokenUrl: "https://copilot.tencent.com/v2/plugin/auth/token",
     refreshUrl: "https://copilot.tencent.com/v2/plugin/auth/token/refresh",
-    userAgent: "CLI/2.63.2 CodeBuddy/2.63.2",
+    userAgent: "CLI/2.108.1 CodeBuddy/2.108.1",
     platform: "CLI",
     pollInterval: 5000,
   },

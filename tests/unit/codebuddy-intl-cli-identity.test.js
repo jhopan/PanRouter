@@ -185,6 +185,48 @@ describe("codebuddy-intl — CLI 2.178.0 identity", () => {
   });
 });
 
+describe("codebuddy-intl — OAuth identity matches the CLI", () => {
+  // The CLI refreshes its token with the same identity it chats with: the
+  // CLI user agent, the account id, a request id and the still-valid access
+  // token as a bearer. The registry used to advertise "IDE/2.160.0" while
+  // the chat path said "CLI/2.178.0" — one account, two identities.
+  const fs = require("node:fs");
+  const registry = fs.readFileSync(
+    require("node:path").resolve("../open-sse/providers/registry/codebuddy-intl.js"),
+    "utf8",
+  );
+  const refresh = fs.readFileSync(
+    require("node:path").resolve("../open-sse/services/tokenRefresh/providers.js"),
+    "utf8",
+  );
+
+  it("advertises the CLI user agent everywhere, not the IDE one", () => {
+    expect(registry).toMatch(/CLI\/2\.178\.0 CodeBuddy\/2\.178\.0/);
+    expect(registry).not.toMatch(/IDE\/2\.160\.0/);
+    // Both the chat header and the oauth user agent must agree.
+    const uas = registry.match(/CLI\/2\.178\.0 CodeBuddy\/2\.178\.0/g) || [];
+    expect(uas.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("sends the account id and a request id on the refresh call", () => {
+    expect(refresh).toMatch(/headers\["X-User-Id"\] = userId/);
+    expect(refresh).toMatch(/X-Request-ID/);
+    expect(refresh).toMatch(/headers\["Authorization"\] = `Bearer/);
+  });
+
+  it("reads the account id from a module with no imports of its own", () => {
+    // The refresh service and the executor both need this helper. Importing
+    // the executor from the refresh service closes a cycle that fails at
+    // module-evaluation time, so the helper lives in its own leaf module.
+    const leaf = fs.readFileSync(
+      require("node:path").resolve("../open-sse/shared/codebuddyUserId.js"),
+      "utf8",
+    );
+    expect(leaf).toMatch(/export function userIdFromCredentials/);
+    expect(leaf).not.toMatch(/^import /m);
+  });
+});
+
 describe("codebuddy-intl — gzipped request body", () => {
   it("compresses the body and labels it gzip", async () => {
     const headers = {};
