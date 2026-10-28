@@ -1,3 +1,52 @@
+# v0.5.88.12 (2026-10-27)
+
+## Fitur
+
+- **Backup otomatis harian ke repo GitHub private.** VPS menyimpan setiap
+  koneksi provider beserta token OAuth-nya. Kalau disk mati atau rilis
+  merusak skema, semuanya hilang — token satu-satunya jalan kembali. Salinan
+  yang hidup **di luar** box itu jaring pengaman.
+
+  Yang ditambahkan:
+
+  - `src/shared/services/dbBackup.js` — snapshot diambil dengan `VACUUM INTO`
+    supaya salinan konsisten **saat server sedang menulis**. Copy file biasa
+    dari SQLite yang hidup diam-diam melewatkan semua yang masih ada di
+    write-ahead log. `assertRepoIsPrivate()` jadi **gerbang keras**: push
+    ditolak kecuali GitHub melaporkan repo itu private — repo publik akan
+    menerbitkan setiap token OAuth di box itu. Push memakai remote HTTPS biasa
+    dengan token, bentuk yang sama dengan script `vpn-backup` yang sudah jalan
+    di VPS ini, jadi tidak perlu tooling tambahan (tidak ada `gh` CLI di server).
+  - `POST /api/backup/config` — menyimpan username, token, dan repo GitHub,
+    plus membuat **token download terpisah** untuk mesin mirror. Repo
+    diverifikasi private **sebelum** konfigurasi diterima. Token GitHub hanya
+    bisa ditulis lewat endpoint ini; settings GET menapisnya dan PATCH
+    mempertahankan nilai yang tersimpan.
+  - `GET /api/backup/download` — menyajikan database ke mesin mirror, dijaga
+    token sendiri yang dibandingkan dengan `timingSafeEqual`. Route-nya
+    masuk daftar public di guard karena mesin itu memegang token backup, bukan
+    session dashboard — tanpa itu request ditolak sebelum route-nya jalan.
+  - `POST /api/backup/run` — tombol "Back up now" supaya setup bisa
+    diverifikasi tanpa menunggu malam.
+  - Profile → "Automatic Backup" — toggle, username, repo, field token, Save,
+    Back up now, dan token download yang ditampilkan sekali saat dibuat.
+
+  Diverifikasi live terhadap dev server yang jalan:
+
+  | | Hasil |
+  |---|---|
+  | Backup | `panrouter-db-2026-10-28.sqlite`, 7.278.592 B, 6,6 detik |
+  | GitHub | file ada, ukuran cocok |
+  | Download | HTTP 200, 8.179.712 B, `application/vnd.sqlite3` |
+  | Restore | `PRAGMA integrity_check = ok`, koneksi terbaca |
+  | Auth | tanpa token → 401, token salah → 401, token benar → 200 |
+  | Gerbang | repo publik ditolak ("is NOT private — refusing to upload") |
+
+## Test
+
+- 20 test `db-backup-service.test.js`.
+- Suite: **3162 lulus**, 0 regresi baru.
+
 # v0.5.88.11 (2026-10-27)
 
 ## Perbaikan
