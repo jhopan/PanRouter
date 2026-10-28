@@ -61,11 +61,20 @@ export default function ProfilePage() {
   const [oidcExpanded, setOidcExpanded] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // The origin as seen by the browser. window.location is empty during the
+  // server render, so using it directly in the markup makes the first client
+  // render differ from the server HTML and React throws a hydration mismatch.
+  // The state starts empty (same as the server) and is filled after mount.
+  const [pageOrigin, setPageOrigin] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => { setPageOrigin(window.location.origin); }, 0);
+    return () => clearTimeout(t);
+  }, []);
   // The exact command the mirror machine runs. Shown so the operator does not
   // have to assemble the URL and the header name by hand.
   const downloadCommand = [
     'curl -H "x-backup-token: <TOKEN>"',
-    `  "${origin}/api/backup/download"`,
+    `  "${pageOrigin}/api/backup/download"`,
     "  -o data.sqlite",
   ].join(" \\n");
   const oidcRedirectUri = origin ? `${origin}/api/auth/oidc/callback` : "/api/auth/oidc/callback";

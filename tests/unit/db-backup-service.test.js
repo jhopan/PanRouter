@@ -176,3 +176,24 @@ describe("backup interval", () => {
     expect(profile).toMatch(/x-backup-token/);
   });
 });
+
+describe("the mirror command must not break hydration", () => {
+  it("takes the origin from state, not from window during render", () => {
+    // window.location is empty during the server render, so using it directly
+    // in the markup makes the first client render differ from the server HTML
+    // and React throws a hydration mismatch (the whole tree is regenerated).
+    expect(profile).toMatch(/pageOrigin/);
+    expect(profile).toMatch(/useState\(""\)/);
+  });
+
+  it("fills the origin after mount", () => {
+    expect(profile).toMatch(/setPageOrigin\(window\.location\.origin\)/);
+  });
+
+  it("the rendered command uses the state, not the raw origin", () => {
+    // The `origin` variable (used for the OIDC/SAML redirect) is still read
+    // from window during render — that is pre-existing and not part of this
+    // panel, so the command must use the state instead.
+    expect(profile).toMatch(/\$\{pageOrigin\}\/api\/backup\/download/);
+  });
+});
