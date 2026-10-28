@@ -1,3 +1,63 @@
+# v0.5.88.21 (2026-10-29)
+
+## Perbaikan
+
+- **CodeBuddy Intl sekarang meniru wire format CLI 2.178.0 persis.** Akun-akun
+  CodeBuddy Intl terus balik sebagai 11140 "request illegal" / "account
+  restricted due to unusual activity". CLI 2.178.0 Ditangkap lewat MITM, lalu
+  request-nya dicocokkan header per header.
+
+  Yang.capture menunjukkan, dan yang berubah:
+
+  | Header | Sebelum | Sesudah |
+  |---|---|---|
+  | `Accept` | `text/event-stream` | `application/json` |
+  | `Content-Encoding` | (tidak ada) | `gzip` |
+  | `X-User-Id` | (tidak ada) | id akun dari claim `sub` token |
+  | `X-Stainless-Package-Version` | `6.25.0` | `7.39.0` |
+  | `X-Stainless-Runtime-Version` | dari host | `v26.7.0` |
+  | `User-Agent` | `CLI/2.170.0` | `CLI/2.178.0 CodeBuddy/2.178.0` |
+  | `X-App` | ada | **dihapus** |
+  | `X-Product-Version` | ada | **dihapus** |
+  | `X-Stainless-Helper-Method` | ada | **dihapus** |
+
+  Mengirim header yang tidak pernah dikirim klien resmi itu sendiri adalah
+  sinyal, jadi tiga header ekstra itu dihapus, bukan cuma dibiarkan.
+
+  `X-User-Id` dibaca dari claim `sub` token lewat fungsi baru
+  `userIdFromCredentials()`; dilewati kalau token tidak punya id akun.
+
+  Gzip butuh hook body, jadi base executor bertambah
+  `encodeRequestBody(bodyStr, headers)` — defaultnya mengembalikan string
+  apa adanya, jadi provider lain tetap kirim JSON polos. Executor CodeBuddy
+  yang meng-override-nya.
+
+- **Auto-ping CodeBuddy Intl dimatikan.** Fitur ini mengirim satu chat ke
+  setiap koneksi setiap hari, dan burst harian itulah yang membuat akun-akun
+  kena flag. Service sekarang punya master switch
+  (`CODEBUDDY_AUTOPING_ENABLED=0` secara default) dan toggle-nya dihapus dari
+  halaman provider maupun quota tracker, jadi tidak bisa diaktifkan dari
+  dashboard.
+
+## Verifikasi
+
+Production build, CLI dan PanRouter lewat MITM yang sama dengan token yang
+sama:
+
+```
+CLI 2.178.0  -> 200 "Hi! What are we working on in PanRouter today?"
+PanRouter    -> 200 "Hi! What can I do for you?"
+```
+
+Diff header antara dua request itu: tidak ada header yang hanya salah satu
+kirim, tidak ada header dengan nilai berbeda. Sisa perbedaan cuma nilai acak
+per-request (trace id, conversation id) — memang harus beda.
+
+## Test
+
+- 29 test di `codebuddy-intl-cli-identity.test.js`.
+- Suite: **3219 lulus**, 0 regresi (19 file failed, sama dengan baseline).
+
 # v0.5.88.20 (2026-10-29)
 
 ## Perbaikan
