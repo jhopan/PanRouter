@@ -1,3 +1,60 @@
+# v0.5.88.15 (2026-10-27)
+
+## Fitur
+
+- **Token download backup berdiri sendiri — satu per mesin mirror.** Sebelumnya
+  hanya satu string opaque di dalam settings. Sekarang punya bentuk sendiri
+  seperti API key:
+
+  ```
+  bk-{machineId16}-{keyId6}-{crc8}
+  ```
+
+  - prefix berbeda, jadi token backup tidak pernah tertukar dengan API key
+  - machine id terembed, jadi token yang bocor memberi tahu mesinnya
+  - crc = HMAC atas machine id + key id, jadi token rusak ditolak **tanpa**
+    menyentuh database
+  - berlaku hanya untuk satu route (`GET /api/backup/download`). API key
+    menjangkau seluruh permukaan LLM — terlalu banyak untuk sebuah mirror
+
+  **Token penuh tidak pernah disimpan.** Yang disimpan hanya key id, machine id,
+  dan crc — jadi salinan database (persis yang disalin fitur backup ini) tidak
+  ikut membawa akses mirror. Token bisa direkonstruksi dari bagian-bagian itu
+  lalu dicocokkan dengan yang presented.
+
+  - `src/shared/utils/backupToken.js` — generate / parse / verify
+  - `src/lib/db/repos/backupTokensRepo.js` — list, create, revoke, enable,
+    delete, verify, touch (last-used)
+  - `src/lib/db/schema.js` — tabel `backupTokens`
+  - `src/app/api/backup/tokens` — GET list, POST create, PATCH revoke/re-enable,
+    DELETE remove
+
+  Dashboard dapat card **"Periodic Download"**: buat token per mesin, lihat mana
+  yang aktif, revoke atau hapus, dan salin perintah curl + cron yang dijalankan
+  mirror.
+
+  Card GitHub juga dijelaskan: **git hanya perlu** kalau mirror-nya mau ambil
+  dari git remote. Untuk download HTTP cukup curl + entri cron. Kalau tetap mau
+  salinan git, ditampilkan setup SSH key (tanpa prompt password di cron).
+
+  Diverifikasi live terhadap dev server yang jalan:
+
+  | | Hasil |
+  |---|---|
+  | Create | `bk-a32d75a563140403-w6d3ga-bec0dd9c` |
+  | Download | HTTP 200, 8.179.712 byte |
+  | CRC salah | HTTP 401 "Invalid token" |
+  | Bentuk salah | HTTP 401 "Malformed token" |
+  | Revoke | HTTP 401 "Token has been revoked" |
+  | Re-enable | HTTP 200 |
+  | Delete | HTTP 401 "Unknown token" |
+  | Dua token | terdaftar terpisah |
+
+## Test
+
+- 39 test di `db-backup-service.test.js` + `db-backup-hydration.test.js`.
+- Suite: **3191 lulus**, 0 regresi baru.
+
 # v0.5.88.14 (2026-10-27)
 
 ## Perbaikan
