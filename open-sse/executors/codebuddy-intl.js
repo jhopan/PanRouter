@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { DefaultExecutor } from "./default.js";
 
 /**
@@ -18,7 +19,12 @@ import { DefaultExecutor } from "./default.js";
  */
 
 // From the installed @tencent-ai/codebuddy-code 2.170.0 bundle.
-const CB_IDE_VERSION = "2.170.0";
+const CB_IDE_VERSION = "2.178.0";
+// The Stainless SDK version the CLI embeds, and the Node runtime it reports.
+// Both are observable on the wire, so they are pinned rather than taken from
+// the host: the gateway compares them against the shipped CLI.
+const CB_SDK_VERSION = "7.39.0";
+const CB_NODE_VERSION = "v26.7.0";
 // CLI sets User-Agent and IDE headers to "CLI", not "IDE". The gateway tracks
 // the caller type and "IDE" triggers IDE-mode fingerprinting.
 const CB_UA = `CLI/${CB_IDE_VERSION} CodeBuddy/${CB_IDE_VERSION}`;
@@ -90,6 +96,41 @@ function perTurnId() {
   return uuidV1(randomUUID(), Date.now());
 }
 
+/**
+ * Read the account id out of the bearer token.
+ *
+ * The CLI sends an `X-User-Id` header on every request and the value is the
+ * token's `sub` claim (a UUID). The gateway ties the request to that account,
+ * so the header has to match the token it was sent with.
+ *
+ * @param {object} credentials
+ * @returns {string|null}
+ */
+export function userIdFromCredentials(credentials) {
+  const raw =
+    credentials?.accessToken ||
+    credentials?.access_token ||
+    credentials?.token ||
+    credentials?.apiKey ||
+    credentials?.api_key ||
+    "";
+  const token = String(raw).trim();
+  if (!token) return null;
+
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+
+  try {
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = Buffer.from(payload, "base64").toString("utf8");
+    const claims = JSON.parse(json);
+    const sub = claims?.sub;
+    return typeof sub === "string" && sub ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export class CodeBuddyIntlExecutor extends DefaultExecutor {
   constructor() {
     super("codebuddy-intl");
@@ -146,8 +187,6 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     // caller as third-party automation and eventually returns 11140.
     headers["User-Agent"] = CB_UA;
     headers["X-Product"] = "SaaS";
-    headers["X-Product-Version"] = CB_IDE_VERSION;
-    headers["X-App"] = "cli";
     headers["X-IDE-Type"] = "CLI";
     headers["X-IDE-Name"] = "CLI";
     headers["X-IDE-Version"] = CB_IDE_VERSION;
@@ -213,18 +252,47 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     };
 
     headers["X-Stainless-Lang"] = "js";
-    headers["X-Stainless-Package-Version"] = "6.25.0";
+    headers["X-Stainless-Package-Version"] = CB_SDK_VERSION;
     headers["X-Stainless-OS"] = normalizePlatform(process.platform);
     headers["X-Stainless-Arch"] = normalizeArch(process.arch);
     headers["X-Stainless-Runtime"] = "node";
-    headers["X-Stainless-Runtime-Version"] = process.version || "v22.0.0";
+    headers["X-Stainless-Runtime-Version"] = CB_NODE_VERSION;
     headers["X-Stainless-Retry-Count"] = "0";
-    headers["X-Stainless-Helper-Method"] = "stream";
+    // The CLI does NOT send X-Stainless-Helper-Method. Sending a header the
+    // official client never sends is itself a signal, so it is dropped.
 
     // Domain tells the gateway which product surface the call belongs to.
     if (!headers["X-Domain"]) headers["X-Domain"] = "www.codebuddy.ai";
 
+    // ── Headers the CLI sends that the base executor does not ────────────
+    //
+    // Accept: the CLI asks for JSON, not an event stream. The base executor
+    // sets "text/event-stream" for every streaming call.
+    headers["Accept"] = "application/json";
+
+    // X-User-Id: the account id, taken from the token's "sub" claim. The CLI
+    // sends it on every request and the gateway uses it to tie the request to
+    // the account behind the token.
+    const userId = userIdFromCredentials(credentials);
+    if (userId) headers["X-User-Id"] = userId;
+
     return headers;
+  }
+
+  /**
+   * Compress the request body the way the official CLI does.
+   *
+   * The CLI sends `Content-Encoding: gzip` with a gzipped JSON payload. A
+   * plain JSON body is still accepted, but the compressed form is what the
+   * shipped client puts on the wire.
+   *
+   * @param {string} bodyStr
+   * @param {object} headers
+   * @returns {Buffer}
+   */
+  async encodeRequestBody(bodyStr, headers) {
+    headers["Content-Encoding"] = "gzip";
+    return gzipSync(Buffer.from(bodyStr, "utf8"));
   }
 
   transformRequest(model, body, stream, credentials) {

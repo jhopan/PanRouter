@@ -59,13 +59,13 @@ const KIRO_METHOD_LABELS = {
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
-  "codebuddy-intl": "codebuddyIntlAutoPing",
+  // CodeBuddy Intl auto-ping is off — the daily chat burst is what got
+  // accounts flagged with "request illegal" (11140). No toggle is offered.
 };
 
 const AUTO_PING_TOOLTIPS = {
   claude: "When your 5h quota runs out, auto-sends a request the moment it resets so a new window starts right away.",
   codex: "Auto-starts the next 5h Codex window after reset by sending a tiny gpt-5.5 request. Consumes a small amount of quota.",
-  "codebuddy-intl": "Auto-ping (Check-in harian): Sekali sehari mengirim chat kecil dengan model termurah (fast-model) pada jam acak untuk memicu aktivitas harian.",
 };
 
 function kiroMethodLabel(conn) {
@@ -134,7 +134,7 @@ export default function ProviderLimits() {
   const [loading, setLoading] = useState({});
   const [errors, setErrors] = useState({});
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {}, "codebuddy-intl": {} });
+  const [autoPingMaps, setAutoPingMaps] = useState({ claude: {}, codex: {} });
   const [lastUpdated, setLastUpdated] = useState(null);
   const [hasHydratedAutoRefresh, setHasHydratedAutoRefresh] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -579,7 +579,6 @@ export default function ProviderLimits() {
         setAutoPingMaps({
           claude: s?.claudeAutoPing?.connections || {},
           codex: s?.codexAutoPing?.connections || {},
-          "codebuddy-intl": s?.codebuddyIntlAutoPing?.connections || {},
         });
         setQuotaVisibility(s?.quotaVisibility || {});
       })

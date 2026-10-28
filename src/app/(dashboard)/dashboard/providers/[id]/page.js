@@ -29,7 +29,9 @@ const ONE_BY_ONE_DELAY_MS = 1000;
 const AUTO_PING_SETTINGS_KEYS = {
   claude: "claudeAutoPing",
   codex: "codexAutoPing",
-  "codebuddy-intl": "codebuddyIntlAutoPing",
+  // CodeBuddy Intl auto-ping is off. The daily chat burst is what got
+  // accounts flagged with "request illegal" (11140), so the toggle is not
+  // offered for this provider.
 };
 
 function sleep(ms) {

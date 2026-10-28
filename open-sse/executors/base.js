@@ -77,6 +77,21 @@ export class BaseExecutor {
   }
 
   // Override in subclass for provider-specific transformations
+  /**
+   * Encode the request body before it goes on the wire.
+   *
+   * The default returns the JSON string unchanged. A provider that compresses
+   * (or otherwise transforms) the body overrides this and adjusts the headers
+   * it is given in place.
+   *
+   * @param {string} bodyStr
+   * @param {object} headers - mutable; the override may add or change headers
+   * @returns {string|Buffer|Uint8Array}
+   */
+  async encodeRequestBody(bodyStr, headers) {
+    return bodyStr;
+  }
+
   transformRequest(model, body, stream, credentials) {
     return body;
   }
@@ -140,12 +155,16 @@ export class BaseExecutor {
 
       try {
         const bodyStr = JSON.stringify(transformedBody);
+        // A provider may compress the request body (the official CodeBuddy CLI
+        // sends gzip). The default is the plain JSON string.
+        const requestBody = await this.encodeRequestBody(bodyStr, headers);
+        const bodyBytes = Buffer.isBuffer(requestBody) ? requestBody.length : requestBody.length;
         const fetchT0 = Date.now();
-        dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyStr.length}B | connectTimeout=${timeoutMs}ms`);
+        dbg("FETCH", `${this.provider.toUpperCase()} → ${url} | body=${bodyBytes}B | connectTimeout=${timeoutMs}ms`);
         let response = await proxyAwareFetch(url, {
           method: "POST",
           headers,
-          body: bodyStr,
+          body: requestBody,
           signal: mergedSignal
         }, proxyOptions);
         clearTimeout(connectTimer);

@@ -1,53 +1,123 @@
-// 11140 "account restricted due to unusual activity" is a different gate from
-// 11128 (channel verification). The request is valid; the ACCOUNT is flagged.
+// The intl executor must look like the official CodeBuddy CLI on the wire.
 //
-// The intl executor used to send 6 static headers. The official CLI 2.170.0
-// sends ~30, including the X-Stainless-* SDK fingerprint and the X-Agent-*
-// caller identity. A request missing those still passes 11128 but reads as
-// third-party automation, which is what trips 11140.
+// Source of truth: a live MITM capture of CodeBuddy Code CLI 2.178.0 on
+// Windows/x64 (2026-10-28), taken through the proxy at
+// scripts/codebuddy-mitm-addon.py. The capture is the authority — not the
+// bundle source, which normalizes some values the compiled CLI does not.
+//
+// The captured header set (of which the ones below are the ones the gateway
+// can key on):
+//
+//   accept: application/json
+//   content-encoding: gzip
+//   baggage: codebuddy.session_id=<uuid>,codebuddy.conversation_request_id=<hex>
+//   traceparent / b3 / X-B3-* / X-Trace-ID
+//   X-Agent-Intent: craft          X-Agent-Purpose: conversation
+//   X-Agent-Type: main             X-Agent-Runtime: other
+//   X-IDE-Type: CLI                X-IDE-Name: CLI
+//   X-IDE-Version: 2.178.0         User-Agent: CLI/2.178.0 CodeBuddy/2.178.0
+//   X-Product: SaaS                X-Domain: www.codebuddy.ai
+//   X-Private-Data: false          X-Requested-With: XMLHttpRequest
+//   X-CodeBuddy-Request: 1
+//   X-Conversation-ID / X-Conversation-Request-ID / X-Conversation-Message-ID
+//   X-Root-Request-ID / X-Request-ID
+//   X-User-Id: <the token's sub claim>
+//   X-Stainless-*: js, 7.39.0, Windows, x64, node, v26.7.0, 0
+//
+// Three headers the CLI does NOT send: X-App, X-Product-Version and
+// X-Stainless-Helper-Method. Sending a header the official client never
+// sends is itself a tell.
 import { describe, expect, it } from "vitest";
-import { CodeBuddyIntlExecutor } from "../../open-sse/executors/codebuddy-intl.js";
+import { gzipSync } from "node:zlib";
+import {
+  CodeBuddyIntlExecutor,
+  userIdFromCredentials,
+} from "../../open-sse/executors/codebuddy-intl.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const HEX32_RE = /^[0-9a-f]{32}$/;
+const HEX16_RE = /^[0-9a-f]{16}$/;
 
 const exec = new CodeBuddyIntlExecutor();
-const creds = { accessToken: "test-token" };
-const build = (body = { messages: [{ role: "user", content: "hi" }] }) =>
-  exec.buildHeaders(creds, true, "https://www.codebuddy.ai/v2/chat/completions", "deepseek-v4.1-flash", body);
+const URL = "https://www.codebuddy.ai/v2/chat/completions";
 
-describe("codebuddy-intl — CLI identity headers", () => {
-  it("sends the full CLI identity set", () => {
+// A JWT-shaped token whose payload carries the account id, the same way the
+// CLI's bearer token does.
+function jwtWithSub(sub) {
+  const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  return `${b64({ alg: "HS256" })}.${b64({ sub })}.sig`;
+}
+
+const USER_ID = "85482e42-2454-468d-a2b0-f1f6311f0f81";
+const creds = { accessToken: jwtWithSub(USER_ID) };
+const build = (body = { messages: [{ role: "user", content: "hi" }] }) =>
+  exec.buildHeaders(creds, true, URL, "deepseek-v4.1-flash", body);
+
+describe("codebuddy-intl — CLI 2.178.0 identity", () => {
+  it("sends the CLI identity set", () => {
     const h = build();
     for (const key of [
-      "X-Product", "X-Product-Version", "X-App",
-      "X-IDE-Type", "X-IDE-Name", "X-IDE-Version",
+      "X-Product", "X-IDE-Type", "X-IDE-Name", "X-IDE-Version",
       "X-Private-Data", "X-Requested-With", "X-CodeBuddy-Request",
-      "X-Domain", "X-Request-ID",
+      "X-Domain", "X-Request-ID", "Accept",
     ]) {
       expect(h[key], `missing ${key}`).toBeTruthy();
     }
   });
 
-  it("sends the Stainless SDK fingerprint", () => {
+  it("does not send headers the CLI never sends", () => {
+    const h = build();
+    // The official CLI has no X-App, no X-Product-Version and no
+    // X-Stainless-Helper-Method. Sending them looks like a hand-rolled client.
+    expect(h["X-App"]).toBeUndefined();
+    expect(h["X-Product-Version"]).toBeUndefined();
+    expect(h["X-Stainless-Helper-Method"]).toBeUndefined();
+  });
+
+  it("sends the Stainless SDK fingerprint the CLI ships", () => {
     const h = build();
     for (const key of [
       "X-Stainless-Lang", "X-Stainless-Package-Version", "X-Stainless-OS",
       "X-Stainless-Arch", "X-Stainless-Runtime", "X-Stainless-Runtime-Version",
-      "X-Stainless-Retry-Count", "X-Stainless-Helper-Method",
+      "X-Stainless-Retry-Count",
     ]) {
       expect(h[key], `missing ${key}`).toBeTruthy();
     }
     expect(h["X-Stainless-Lang"]).toBe("js");
     expect(h["X-Stainless-Runtime"]).toBe("node");
-    // Values must match the CLI's normalizePlatform()/normalizeArch(), not the
-    // raw process values: x64 is advertised as "amd64", arm as "arm32".
-    expect(h["X-Stainless-Package-Version"]).toBe("6.25.0");
+    expect(h["X-Stainless-Package-Version"]).toBe("7.39.0");
+    expect(h["X-Stainless-Runtime-Version"]).toBe("v26.7.0");
+    expect(h["X-Stainless-Retry-Count"]).toBe("0");
     expect(h["X-Stainless-OS"]).toMatch(/^(Windows|MacOS|Linux|FreeBSD|OpenBSD|Unknown|Other:.+)$/);
     expect(h["X-Stainless-Arch"]).toMatch(/^(amd64|arm32|ppc32|arm64|x64|ia32)$/);
-    // Live MITM capture (2026-10-27) shows CLI 2.170.0 on Windows/x64 sends
-    // "x64", not "amd64". The bundle source has a normalizeArch that maps x64→amd64
-    // but the compiled CLI does NOT apply that mapping. Trust the wire.
-    // (arm and ppc are still normalized to arm32/ppc32 — only x64 differs.)
+  });
+
+  it("asks for JSON like the CLI does, not an event stream", () => {
+    // The base executor sets text/event-stream for streaming calls. The CLI
+    // sends application/json and still receives text/event-stream back.
+    expect(build()["Accept"]).toBe("application/json");
+  });
+
+  it("sends the account id from the token's sub claim", () => {
+    expect(build()["X-User-Id"]).toBe(USER_ID);
+  });
+
+  it("omits X-User-Id when the token carries no account id", () => {
+    const h = exec.buildHeaders(
+      { accessToken: "not-a-jwt" },
+      true,
+      URL,
+      "deepseek-v4.1-flash",
+      { messages: [{ role: "user", content: "hi" }] },
+    );
+    expect(h["X-User-Id"]).toBeUndefined();
+  });
+
+  it("reads the account id out of a bearer token", () => {
+    expect(userIdFromCredentials({ accessToken: jwtWithSub(USER_ID) })).toBe(USER_ID);
+    expect(userIdFromCredentials({ access_token: jwtWithSub(USER_ID) })).toBe(USER_ID);
+    expect(userIdFromCredentials({ accessToken: "opaque-token" })).toBeNull();
+    expect(userIdFromCredentials({})).toBeNull();
   });
 
   it("sends the agent identity the CLI declares", () => {
@@ -58,10 +128,10 @@ describe("codebuddy-intl — CLI identity headers", () => {
     expect(h["X-Agent-Runtime"]).toBe("other");
   });
 
-  it("advertises the installed CLI version in UA and X-IDE-Version", () => {
+  it("advertises the CLI version in UA and X-IDE-Version", () => {
     const h = build();
-    expect(h["User-Agent"]).toMatch(/^CLI\/\d+\.\d+\.\d+ CodeBuddy\/\d+\.\d+\.\d+$/);
-    expect(h["X-IDE-Version"]).toBe(h["User-Agent"].match(/CodeBuddy\/(\d+\.\d+\.\d+)/)[1]);
+    expect(h["User-Agent"]).toBe("CLI/2.178.0 CodeBuddy/2.178.0");
+    expect(h["X-IDE-Version"]).toBe("2.178.0");
   });
 
   it("has no duplicate header names differing only by case", () => {
@@ -70,11 +140,12 @@ describe("codebuddy-intl — CLI identity headers", () => {
     expect(new Set(lowered).size).toBe(keys.length);
   });
 
-  it("still carries the X-Conversation-* family (11128 gate)", () => {
+  it("carries the X-Conversation-* family", () => {
     const h = build();
     expect(h["X-Conversation-ID"]).toMatch(UUID_RE);
     expect(h["X-Conversation-Request-ID"]).toMatch(UUID_RE);
     expect(h["X-Conversation-Message-ID"]).toMatch(UUID_RE);
+    expect(h["X-Root-Request-ID"]).toMatch(UUID_RE);
   });
 
   it("keeps the conversation id stable but rotates the request id", () => {
@@ -89,6 +160,39 @@ describe("codebuddy-intl — CLI identity headers", () => {
     const h = build();
     expect(h["X-Conversation-Message-ID"]).toBe(h["X-Conversation-Request-ID"]);
     expect(h["X-Request-ID"]).toBe(h["X-Conversation-Request-ID"]);
+  });
+
+  it("sends the tracing headers in the CLI's format", () => {
+    const h = build();
+    expect(h["X-B3-TraceId"]).toMatch(HEX32_RE);
+    expect(h["X-B3-SpanId"]).toMatch(HEX16_RE);
+    expect(h["X-B3-ParentSpanId"]).toMatch(HEX16_RE);
+    expect(h["X-B3-Sampled"]).toBe("1");
+    expect(h["X-Trace-ID"]).toBe(h["X-B3-TraceId"]);
+    expect(h["traceparent"]).toMatch(
+      new RegExp(`^00-${h["X-B3-TraceId"]}-${h["X-B3-SpanId"]}-01$`),
+    );
+    expect(h["b3"]).toBe(
+      `${h["X-B3-TraceId"]}-${h["X-B3-SpanId"]}-1-${h["X-B3-ParentSpanId"]}`,
+    );
+  });
+
+  it("sends baggage in the CLI's format", () => {
+    const h = build();
+    expect(h["baggage"]).toMatch(
+      /^codebuddy\.session_id=[0-9a-f-]{36},codebuddy\.conversation_request_id=[0-9a-f]{32}$/,
+    );
+  });
+});
+
+describe("codebuddy-intl — gzipped request body", () => {
+  it("compresses the body and labels it gzip", async () => {
+    const headers = {};
+    const body = JSON.stringify({ model: "deepseek-v4.1-flash", messages: [] });
+    const encoded = await exec.encodeRequestBody(body, headers);
+    expect(headers["Content-Encoding"]).toBe("gzip");
+    expect(Buffer.isBuffer(encoded)).toBe(true);
+    expect(gzipSync(Buffer.from(body, "utf8")).equals(encoded)).toBe(true);
   });
 });
 
@@ -142,7 +246,7 @@ describe("codebuddy-intl — cross-platform fingerprint", () => {
   const normalizeArch = (a) => {
     if (a === "arm") return "arm32";
     if (a === "ppc") return "ppc32";
-    // Wire observation: CLI 2.170.0 sends "x64" raw, not "amd64".
+    // Wire observation: the CLI sends "x64" raw, not "amd64".
     return a || "unknown";
   };
 
@@ -159,18 +263,12 @@ describe("codebuddy-intl — cross-platform fingerprint", () => {
     expect(normalizeArch(arch)).toBe(cpu);
   });
 
-  it("sends x64 as-is (live wire shows CLI does NOT map x64→amd64)", () => {
+  it("sends x64 as-is (live wire shows the CLI does NOT map x64→amd64)", () => {
     expect(normalizeArch("x64")).toBe("x64");
   });
 
   it("falls back to Other:<platform> for an unknown OS instead of lying", () => {
     expect(normalizePlatform("sunos")).toBe("Other:sunos");
-  });
-
-  it("reports the real runtime version, not a hardcoded one", () => {
-    const h = build();
-    expect(h["X-Stainless-Runtime-Version"]).toBe(process.version);
-    expect(h["X-Stainless-Runtime"]).toBe("node");
   });
 
   it("OS and arch always agree with the host process", () => {

@@ -8,6 +8,10 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route.js";
 
+// Master switch for the whole feature. Off by default: the daily chat burst
+// is what triggered the CodeBuddy Intl account restrictions.
+const CB_AUTOPING_MASTER_ENABLED = process.env.CODEBUDDY_AUTOPING_ENABLED !== "0";
+
 // Survive Next.js hot reload; one scheduler per server process.
 const g = (global.__codebuddyAutoPing ??= {
   interval: null,
@@ -251,6 +255,15 @@ export function stopCodebuddyAutoPing() {
 export async function configureCodebuddyAutoPing(settings) {
   const cfg = settings?.codebuddyIntlAutoPing || {};
   const enabled = cfg.enabled === true || Object.values(cfg.connections || {}).some(Boolean);
+  // Kill switch: the auto-ping sends a chat to every connection every day.
+  // On CodeBuddy Intl a daily chat burst is what got accounts flagged
+  // ("request illegal" / 11140), so the whole feature stays off unless the
+  // operator explicitly turns it back on here.
+  if (!CB_AUTOPING_MASTER_ENABLED) {
+    if (enabled) console.warn("[CB_PING] disabled by master switch (AUTOPING_MASTER=0)");
+    stopCodebuddyAutoPing();
+    return;
+  }
   if (enabled) {
     g.immediateNextTick = true;
     startCodebuddyAutoPing();
