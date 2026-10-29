@@ -8,9 +8,17 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route.js";
 
-// Master switch for the whole feature. Off by default: the daily chat burst
-// is what triggered the CodeBuddy Intl account restrictions.
-const CB_AUTOPING_MASTER_ENABLED = process.env.CODEBUDDY_AUTOPING_ENABLED !== "0";
+// Master switch for the whole feature.
+//
+// Off by default. The daily chat burst is what triggered the CodeBuddy Intl
+// account restrictions (11140 "request illegal"), so the feature has to be
+// switched on deliberately — an environment variable that has to be SET to
+// "1", not one that has to be unset.
+//
+// This was originally written as `!== "0"`, which defaults to ON: the
+// operator was never asked, the scheduler started anyway, and it kept pinging
+// accounts that were already restricted.
+const CB_AUTOPING_MASTER_ENABLED = process.env.CODEBUDDY_AUTOPING_ENABLED === "1";
 
 // Survive Next.js hot reload; one scheduler per server process.
 const g = (global.__codebuddyAutoPing ??= {
@@ -238,6 +246,12 @@ export async function runCodebuddyAutoPingTick() {
 
 export function startCodebuddyAutoPing() {
   if (g.interval) return;
+  // The master switch gates the scheduler itself, not just the configure
+  // path — otherwise any other caller could start it again.
+  if (!CB_AUTOPING_MASTER_ENABLED) {
+    console.warn("[CB_PING] scheduler not started (CODEBUDDY_AUTOPING_ENABLED != 1)");
+    return;
+  }
   console.log("[CB_PING] scheduler started");
   g.immediateNextTick = true;
   runCodebuddyAutoPingTick().catch(() => {});
@@ -254,7 +268,10 @@ export function stopCodebuddyAutoPing() {
 
 export async function configureCodebuddyAutoPing(settings) {
   const cfg = settings?.codebuddyIntlAutoPing || {};
-  const enabled = cfg.enabled === true || Object.values(cfg.connections || {}).some(Boolean);
+  // The per-connection map only says WHICH connections ping, not WHETHER the
+  // feature runs. Enabling it requires the master toggle: a leftover "true" in
+  // the connection map must not start the scheduler on its own.
+  const enabled = cfg.enabled === true;
   // Kill switch: the auto-ping sends a chat to every connection every day.
   // On CodeBuddy Intl a daily chat burst is what got accounts flagged
   // ("request illegal" / 11140), so the whole feature stays off unless the
