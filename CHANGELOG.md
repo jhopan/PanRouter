@@ -1,3 +1,37 @@
+# v0.5.88.23 (2026-10-29)
+
+## Perbaikan
+
+- **Auto-ping CodeBuddy Intl harus mati kecuali diaktifkan secara eksplisit.**
+  Master switch sebelumnya membaca `process.env.CODEBUDDY_AUTOPING_ENABLED !== "0"`,
+  yang **default-nya ON**. Operator tidak pernah meminta auto-ping, scheduler tetap
+  jalan, dan terus ping akun-akun yang sudah kena flag — log menunjukkan
+  Account 22 dan Account 27 kena 11140 "request illegal" berulang kali.
+
+  Dua bug terpisah membuatnya jalan:
+
+  1. **Switch default ON.** Sekarang wajib eksplisit `"1"`:
+     `process.env.CODEBUDDY_AUTOPING_ENABLED === "1"`.
+
+  2. **Pengecekan enabled meng-OR dengan peta per-koneksi:**
+     `cfg.enabled === true || Object.values(cfg.connections || {}).some(Boolean)`.
+     Dengan `enabled: false` tapi empat koneksi masih `true`, itu sudah cukup
+     untuk menyalakan scheduler. Peta per-koneksi menentukan **koneksi mana**
+     yang di-ping, bukan **apakah** fiturnya jalan — sekarang hanya `cfg.enabled`
+     yang menentukan.
+
+  Fungsi start scheduler juga dikunci switch-nya, jadi tidak ada pemanggil lain
+  yang bisa menyalakannya lagi.
+
+  Di VPS, setting tersimpan adalah `{enabled: false, connections: {empat id:
+  true}}`; sekarang `{enabled: false, connections: {}}` dan scheduler yang
+  sedang jalan dihentikan lewat settings API (PATCH /api/settings → 200).
+
+## Test
+
+- 5 test baru di `codebuddy-autoping-master-switch.test.js`.
+- Suite: **3223 lulus**, 0 kegagalan baru.
+
 # v0.5.88.22 (2026-10-29)
 
 ## Perbaikan
