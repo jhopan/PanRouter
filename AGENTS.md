@@ -136,7 +136,7 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
   5. `.github/workflows/release.yml` then runs on `ubuntu-latest`: `npm run cli:pack`, and `gh release create` for **two** releases — the versioned one (`vX.Y.Z`) and a `latest` release whose tag is force-moved to the same commit, carrying `panrouter-latest.tgz` for the stable install URL.
 - **Never upload the package by hand.** `*.tgz` is gitignored for exactly this reason — CI builds the artifact. Do not commit one.
 - **Verify after the run finishes**, do not trust a green status alone: `gh release view vX.Y.Z --json assets` for both releases, then confirm the documented URL actually serves the new version (`package/package.json` inside the tgz).
-- **Deploying to a remote server is NOT part of a release.** Updating neva (or anything else) stays a separate, explicitly-authorized action — see Remote servers above.
+- **Deploying to a remote server is NOT part of a release.** Updating neva / `vps-jhopanneva` (or anything else) stays a separate, explicitly-authorized action — see Remote servers above. A release ends at the GitHub tag; the operator installs it on the VPS themselves. Do not SSH in to install it.
 
 ### Git workflow (mandatory)
 
@@ -148,7 +148,13 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 ### Remote servers (mandatory)
 
-- **NEVER modify anything on remote servers (VPS neva, Render dashboard config, etc.) — local edits only.** No crontab changes, no config edits, no file writes, no service restarts on remotes unless the user explicitly asks for THAT exact change first. Investigation/read-only SSH is fine; mutation is not.
+- **NEVER modify anything on remote servers (VPS neva / `vps-jhopanneva`, Render dashboard config, etc.) — local edits only.** No crontab changes, no config edits, no file writes, no service restarts on remotes unless the user explicitly asks for THAT exact change first. Investigation/read-only SSH is fine; mutation is not.
+- **NEVER touch a remote server without the user's explicit, absolute command for that exact change.** "Coba cek", "jelaskan", "kenapa error", or a pasted log is NOT permission to SSH in and change anything. Read-only inspection (reading logs, querying the DB, `dig`/`curl` probes) is allowed; writing, restarting, killing, reinstalling, editing `/etc`, patching the DB, or touching the service manager is not.
+  - A request about a REMOTE host (the VPS) is still a local task: change the code in this repo, ship a release, and let the operator deploy. The operator owns the VPS.
+  - "Update the VPS", "restart the service" and "install the release" are separate, explicit instructions. Never fold them into a larger request.
+  - If a remote change seems clearly beneficial, still ask first. One question is cheaper than an unwanted mutation.
+- **Diagnosing on the VPS is fine; fixing on the VPS is not.** Read the logs, read the DB, probe DNS/TLS, list processes — then implement the fix in the repo and release it.
+- **Local verification only.** `npm run build` / `npm run dev` / tests run here. The remote box is not a test target.
 
 ### AgentRouter (provider + translate layer)
 
