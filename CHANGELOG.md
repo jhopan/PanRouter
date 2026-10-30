@@ -1,3 +1,63 @@
+# v0.5.88.24 (2026-10-29)
+
+## Perbaikan
+
+- **Stream watchdog tidak lagi mematikan turn MiniMax yang sehat.** MiniMax Code
+  Global meng-abort percakapan panjang dengan `stream stall timeout`. Provider-nya
+  sebenarnya masih bekerja: turn 199 pesan dengan konteks 120k token butuh lebih
+  dari enam menit reasoning, dan watchdog menghitung diamnya terhadap budget
+  enam menit yang disiapkan untuk model kecil-cepat.
+
+  Enam cacat, semuanya diperbaiki:
+
+  1. **Satu budget untuk dua fase berbeda.** Watchdog mulai menghitung saat pipe
+     dibangun, jadi prefill lambat memakan budget inter-chunk. Sekarang chunk
+     pertama punya budget sendiri yang lebih panjang (`firstChunkTimeoutMs`), dan
+     timer berpindah ke budget inter-chunk setelah byte pertama tiba.
+
+  2. **MiniMax tidak punya timeout sendiri**, jadi mewarisi default 6 menit.
+     Kedua registry MiniMax sekarang menyetel `stallTimeoutMs: 15m` dan
+     `firstChunkTimeoutMs: 10m`.
+
+  3. **Pesan abort tanpa keterangan** — hanya string "stream stall timeout",
+     tanpa fase, tanpa angka, sehingga provider lambat dan provider mati terlihat
+     identik. Sekarang menyebut fase dan membawa elapsed/chunks/bytes:
+
+     ```
+     stream no first chunk (waited 92000ms, budget 600000ms)
+     stream stalled after first chunk (no data for 412000ms, budget 900000ms)
+     ```
+
+  4. **Error tidak punya penanda machine-readable**, jadi pemanggil tidak bisa
+     membedakan stall dari client disconnect. Sekarang membawa
+     `code: "STREAM_STALL"`, `isStreamStall: true`, plus `phase`, `chunks`, `bytes`.
+
+  5. **Log tidak bisa membedakan dua attempt dari satu percakapan.** Tag warna
+     mengidentifikasi SESI (stabil antar retry — itu yang membuat percakapan CLI
+     terbaca), sehingga error dari attempt yang stall terlihat milik request baru
+     yang baru mulai. Itulah sebabnya request 41 detik bisa melaporkan 575774ms.
+     Setiap attempt sekarang mendapat id `REQ:<6hex>`, dicetak di baris request dan
+     di kedua baris error.
+
+  6. **Kegagalan refresh MiniMax hanya mencatat "refresh failed".** Sekarang
+     dicatat: kegagalan transport, status HTTP, kode error provider, dan body
+     response. Refresh token yang tidak ada dinyatakan eksplisit, bukan
+     mengembalikan null dalam diam. 401/403 dilaporkan sebagai "sign-in required".
+
+  Diverifikasi dengan menjalankan watchdog langsung:
+
+  ```
+  fast first chunk, small gap              -> tidak abort
+  slow prefill melewati budget first-chunk -> "no first chunk (waited 202ms...)"
+  chunk lalu diam melewati budget stall    -> "stalled after first chunk ..."
+  ```
+
+## Test
+
+- 14 test baru di `stream-stall-minimax.test.js`, plus test abort-terminal
+  diperbarui untuk bentuk pesan baru.
+- Suite: **3237 lulus**, 0 kegagalan baru.
+
 # v0.5.88.23 (2026-10-29)
 
 ## Perbaikan
