@@ -135,8 +135,12 @@ describe("stall abort through pipeWithDisconnect", () => {
     );
 
     const text = await readAll(out);
-    expect(seen).toBe("stream stall timeout");
-    expect(text).toContain('"stream stall timeout"');
+    // The watchdog names the phase it gave up on and carries the numbers, so a
+    // slow provider can be told apart from a dead one. The one chunk arrived
+    // before the silence, so this is the inter-chunk budget that expired.
+    expect(seen).toMatch(/^stream stalled after first chunk/);
+    expect(seen).toMatch(/no data for \d+ms/);
+    expect(text).toContain("stream stalled after first chunk");
     expect(text).toContain("data: [DONE]");
   });
 });

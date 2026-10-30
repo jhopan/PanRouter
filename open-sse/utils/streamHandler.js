@@ -1,5 +1,5 @@
 // Stream handler with disconnect detection - shared for all providers
-import { STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { STREAM_STALL_TIMEOUT_MS, STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
 // Get HH:MM:SS timestamp
@@ -192,10 +192,11 @@ export function createDisconnectAwareStream(transformStream, streamController, o
  * @param {TransformStream} transformStream - Transform stream for SSE
  * @param {object} streamController - Stream controller from createStreamController
  */
-export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS) {
+export function pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal = null, stallTimeoutMs = STREAM_STALL_TIMEOUT_MS, firstChunkTimeoutMs = STREAM_FIRST_CHUNK_TIMEOUT_MS) {
   let stallTimer = null;
   let chunkCount = 0;
   let totalBytes = 0;
+  let sawChunk = false;
   let lastChunkAt = Date.now();
   let abortMessage = "upstream connection lost";
   const t0 = Date.now();
@@ -203,15 +204,46 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
   const clearStall = () => {
     if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
   };
+  /**
+   * Arm the watchdog for the current phase.
+   *
+   * The two phases measure different things and are sized differently:
+   *
+   *   - Before the first chunk the provider is prefilling the prompt. On a
+   *     large context (120k tokens) that is legitimately slow — 27-30s is
+   *     normal, minutes happen. Charging that against the inter-chunk budget
+   *     meant a slow prefill looked like a dead stream.
+   *   - Once chunks are flowing, silence means something is wrong. That
+   *     budget is the inter-chunk one.
+   *
+   * The abort message names the phase and carries the numbers, so the log
+   * distinguishes "provider is slow" from "provider is dead" without guessing.
+   */
   const armStall = () => {
     clearStall();
+    const budgetMs = sawChunk ? stallTimeoutMs : firstChunkTimeoutMs;
+    const phase = sawChunk ? "stalled after first chunk" : "no first chunk";
     stallTimer = setTimeout(() => {
       stallTimer = null;
-      abortMessage = "stream stall timeout";
-      dbg(tag, `STALL TIMEOUT ${stallTimeoutMs}ms | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${Date.now() - lastChunkAt}ms`);
-      streamController.handleError?.(new Error("stream stall timeout"));
+      const elapsed = Date.now() - t0;
+      const sinceLast = Date.now() - lastChunkAt;
+      abortMessage = sawChunk
+        ? `stream ${phase} (no data for ${sinceLast}ms, budget ${budgetMs}ms)`
+        : `stream ${phase} (waited ${elapsed}ms, budget ${budgetMs}ms)`;
+      dbg(tag, `STALL TIMEOUT ${budgetMs}ms | phase=${phase} | chunks=${chunkCount} | bytes=${totalBytes} | sinceLast=${sinceLast}ms | total=${elapsed}ms`);
+      // Tag the error so callers can tell a provider stall apart from a client
+      // disconnect or a genuine transport failure. A stall is a transient
+      // provider problem — the account loop can fail over on it instead of
+      // parking the account or reporting 499 "client aborted".
+      const stallError = new Error(abortMessage);
+      stallError.code = "STREAM_STALL";
+      stallError.isStreamStall = true;
+      stallError.phase = phase;
+      stallError.chunks = chunkCount;
+      stallError.bytes = totalBytes;
+      streamController.handleError?.(stallError);
       streamController.abort?.();
-    }, stallTimeoutMs);
+    }, budgetMs);
   };
 
   // Wrap controller so every termination path clears the stall timer.
@@ -238,6 +270,9 @@ export function pipeWithDisconnect(providerResponse, transformStream, streamCont
       const now = Date.now();
       const gap = now - lastChunkAt;
       lastChunkAt = now;
+      // The first chunk ends the prefill phase: from here on silence is
+      // measured against the inter-chunk budget.
+      sawChunk = true;
       if (isDebugEnabled && (chunkCount <= 5 || chunkCount % 20 === 0 || gap > 5000)) {
         dbg(tag, `chunk #${chunkCount} | size=${sz}B | gap=${gap}ms | total=${totalBytes}B`);
       }

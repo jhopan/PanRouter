@@ -75,6 +75,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
   })();
   const reqTag = log?.tagForSession ? log.tagForSession(sessionSeed) : (log?.nextTag ? log.nextTag() : "");
+  // Per-attempt id. The colour tag identifies the session (stable across
+  // retries of one conversation); this one identifies THIS attempt, so the
+  // request line and its error line can be matched when two attempts of the
+  // same session overlap — otherwise a stalled attempt's error looks like it
+  // belongs to the fresh request that just started.
+  const reqId = log?.requestId ? log.requestId() : "";
 
   const sourceFormat = sourceFormatOverride || detectFormat(body);
 
@@ -237,6 +243,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     if (toolN) parts.push(`${toolN} TOOL`);
     if (think) parts.push(`THINK:${think}`);
     parts.push(`ACC:${acc}`);
+    if (reqId) parts.push(`REQ:${reqId}`);
     log.line(reqTag, "▶", parts.join(" · "));
   }
 
@@ -418,7 +425,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     }
     const errMsg = formatProviderError(error, provider, model, HTTP_STATUS.BAD_GATEWAY);
     if (log?.errorLine) {
-      log.errorLine(reqTag, "✗", `ERROR ${error?.status || HTTP_STATUS.BAD_GATEWAY} · ${provider}/${model} · ${Date.now() - requestStartTime}ms\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
+      log.errorLine(reqTag, "✗", `ERROR ${error?.status || HTTP_STATUS.BAD_GATEWAY} · ${provider}/${model} · ${Date.now() - requestStartTime}ms${reqId ? ` · REQ:${reqId}` : ""}\n    ${errMsg}${error.stack ? `\n    ${error.stack}` : ""}`);
     }
     // Carry the executor's own status (429/409 quota gates) when it threw one;
     // fall back to 502 for generic throws.
@@ -513,7 +520,7 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const errMsg = formatProviderError(new Error(message), provider, model, statusCode);
     if (log?.errorLine) {
       const urlStr = providerUrl ? `\n    URL: ${providerUrl}` : "";
-      log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${model} · ${Date.now() - requestStartTime}ms${urlStr}\n    ${errMsg}`);
+      log.errorLine(reqTag, "✗", `ERROR ${statusCode} · ${provider}/${model} · ${Date.now() - requestStartTime}ms${reqId ? ` · REQ:${reqId}` : ""}${urlStr}\n    ${errMsg}`);
     }
     reqLogger.logError(new Error(message), finalBody || translatedBody);
     return createErrorResult(

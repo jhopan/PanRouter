@@ -53,6 +53,21 @@ export function tagForSession(seed) {
   return REQ_TAGS[Math.abs(h) % REQ_TAGS.length];
 }
 
+/**
+ * Short id for one request attempt.
+ *
+ * The colour tag identifies the SESSION, which is what makes a CLI
+ * conversation readable — but it means two attempts of the same conversation
+ * (a stall, then the retry) carry the same tag, and their lines interleave
+ * with no way to tell which ended. This id is per attempt, so the request
+ * line and its matching error line can be tied together.
+ *
+ * @returns {string} six hex chars
+ */
+export function requestId() {
+  return Math.random().toString(16).slice(2, 8);
+}
+
 // Print one correlated line: [time] tag symbol message
 export function line(tag, symbol, message) {
   if (LEVEL > LOG_LEVELS.INFO) return;

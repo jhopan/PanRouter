@@ -22,6 +22,9 @@ export default {
   },
   category: "oauth",
   authModes: ["oauth"],
+  // Same reasoning as the global entry: long prefill on a large context.
+  stallTimeoutMs: 15 * 60 * 1000,
+  firstChunkTimeoutMs: 10 * 60 * 1000,
   hasOAuth: true,
   features: { usage: true },
   modelsFetcher: { url: "https://agent.minimax.cn/mavis/api/v1/models?region=cn&buildEnv=prod", type: "minimax-code" },

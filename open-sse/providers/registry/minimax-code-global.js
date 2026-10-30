@@ -16,6 +16,12 @@ export default {
   },
   category: "oauth",
   authModes: ["oauth"],
+  // MiniMax reasons for a long time on a large context: a 199-message turn
+  // over 120k tokens took >6 minutes with no byte emitted, which the 6-minute
+  // default read as a dead stream. Give the prefill and the inter-chunk gap
+  // room, and let the watchdog's own error message say which phase expired.
+  stallTimeoutMs: 15 * 60 * 1000,
+  firstChunkTimeoutMs: 10 * 60 * 1000,
   hasOAuth: true,
   features: { usage: true },
   modelsFetcher: { url: "https://agent.minimax.io/mavis/api/v1/models?region=en&buildEnv=prod", type: "minimax-code" },

@@ -763,10 +763,21 @@ const MINIMAX_CODE_SITES = {
 
 export async function refreshMiniMaxCodeToken(provider, refreshToken, log) {
   const tokenUrl = MINIMAX_CODE_SITES[provider];
-  if (!tokenUrl || !refreshToken) return null;
+  if (!tokenUrl) {
+    log?.error?.("TOKEN_REFRESH", `MiniMax refresh: no token endpoint for provider "${provider}"`);
+    return null;
+  }
+  if (!refreshToken) {
+    // Reaching here means the stored credential has no refresh token at all,
+    // which is a different problem from "the provider rejected it" — say so
+    // instead of returning null into silence.
+    log?.error?.("TOKEN_REFRESH", `MiniMax refresh (${provider}): credential has no refresh token — sign-in required`);
+    return null;
+  }
   return dedupRefresh(provider, refreshToken, async () => {
+    let response;
     try {
-      const response = await fetch(tokenUrl, {
+      response = await fetch(tokenUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -781,29 +792,42 @@ export async function refreshMiniMaxCodeToken(provider, refreshToken, log) {
         }).toString(),
         signal: AbortSignal.timeout(30000),
       });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || (data && typeof data.error === "string" && data.error)) {
-        const code = data?.error || `HTTP ${response.status}`;
-        if (response.status === 400 && data?.error === "invalid_grant") {
-          log?.warn?.("TOKEN_REFRESH", `MiniMax refresh token spent/rejected (${provider}) — sign-in gone`);
-          return { error: "invalid_grant" };
-        }
-        log?.error?.("TOKEN_REFRESH", `MiniMax token refresh failed (${provider})`, { status: response.status, error: code });
-        return null;
-      }
-      if (!data?.access_token) {
-        log?.error?.("TOKEN_REFRESH", `MiniMax refresh returned no access_token (${provider})`);
-        return null;
-      }
-      return {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token || refreshToken,
-        expiresIn: data.expires_in,
-      };
     } catch (error) {
-      log?.error?.("TOKEN_REFRESH", `Error refreshing MiniMax token (${provider}): ${error.message}`);
+      // Transport failure: the request never reached the provider. Log the
+      // cause (DNS, timeout, TLS) — "refresh failed" alone cannot tell this
+      // apart from "the provider said no".
+      const cause = error?.cause?.code || error?.cause?.message || "";
+      log?.error?.("TOKEN_REFRESH", `MiniMax refresh (${provider}) transport error: ${error.message}${cause ? ` [${cause}]` : ""}`);
       return null;
     }
+
+    const text = await response.text().catch(() => "");
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { /* non-JSON body */ }
+
+    if (!response.ok || (data && typeof data.error === "string" && data.error)) {
+      const code = data?.error || data?.error_description || `HTTP ${response.status}`;
+      const detail = data?.error_description || (text ? text.slice(0, 200) : "");
+      if (response.status === 400 && data?.error === "invalid_grant") {
+        log?.warn?.("TOKEN_REFRESH", `MiniMax refresh token spent/rejected (${provider}) — sign-in gone`);
+        return { error: "invalid_grant" };
+      }
+      if (response.status === 401 || response.status === 403) {
+        log?.warn?.("TOKEN_REFRESH", `MiniMax refresh rejected (${provider}) HTTP ${response.status}: ${code}${detail ? ` — ${detail}` : ""} — sign-in required`);
+        return { error: "invalid_grant" };
+      }
+      log?.error?.("TOKEN_REFRESH", `MiniMax token refresh failed (${provider}) HTTP ${response.status}: ${code}${detail ? ` — ${detail}` : ""}`);
+      return null;
+    }
+    if (!data?.access_token) {
+      log?.error?.("TOKEN_REFRESH", `MiniMax refresh returned no access_token (${provider}) — body: ${text.slice(0, 200) || "<empty>"}`);
+      return null;
+    }
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || refreshToken,
+      expiresIn: data.expires_in,
+    };
   }, log);
 }
 

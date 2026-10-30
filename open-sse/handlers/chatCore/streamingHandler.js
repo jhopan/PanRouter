@@ -3,7 +3,7 @@ import { needsTranslation } from "../../translator/index.js";
 import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
-import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS, STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildStreamErrorBytes } from "../../utils/streamHelpers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
@@ -107,13 +107,18 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   const onAbortTerminal = isResponsesPassthrough
     ? buildAbortedResponsesTerminalBytes
     : (message) => buildStreamErrorBytes(HTTP_STATUS.GATEWAY_TIMEOUT, message, sourceFormat);
+  // Both budgets are per-provider: a provider with a large context window
+  // prefills for longer, and its reasoning turns have longer silent stretches
+  // than a small fast model. Falling back to the global defaults keeps every
+  // other provider on the old behaviour.
   const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
+  const firstChunkTimeoutMs = PROVIDERS[provider]?.firstChunkTimeoutMs || STREAM_FIRST_CHUNK_TIMEOUT_MS;
 
   // Build a fresh providerResponse whose body is the (possibly translated) stream.
   const pipedResponse = providerResponse.body === sseBody
     ? providerResponse
     : new Response(sseBody, { status: providerResponse.status, headers: providerResponse.headers });
-  const transformedBody = pipeWithDisconnect(pipedResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs);
+  const transformedBody = pipeWithDisconnect(pipedResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs, firstChunkTimeoutMs);
 
   saveRequestDetail(buildRequestDetail({
     provider, model, connectionId,
