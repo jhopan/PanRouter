@@ -17,6 +17,7 @@ import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
 import { appendPxpipeEvent } from "@/lib/pxpipe/events.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { formatRetryAfter } from "open-sse/services/accountFallback.js";
 import { globalCapacityLimit } from "open-sse/config/quotaWindows.js";
 import { upstreamResponseHeaders } from "open-sse/utils/upstreamHeaders.js";
 import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
@@ -478,8 +479,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     // conversation id consistent. The retry happens BEFORE the account is
     // locked, because a lock would push the next attempt onto a different
     // account — exactly the rotation the retry is meant to avoid.
+    // A 429 is NOT transient. The provider named the moment the quota reopens
+    // ("your usage will reset at 2026-11-02 10:05:00"), so asking the same
+    // account again two seconds later is a guaranteed refusal — and the
+    // repeated hammering is what the gateway reads as automation and answers
+    // with 11140 "request illegal" (a 30-day account ban). A rate limit gets
+    // zero retries here; it goes straight to the lock below, which parks the
+    // account until the provider's own reset time.
+    const isRateLimited = result.status === HTTP_STATUS.RATE_LIMITED;
     if (result.banned !== true
         && result.fatal !== true
+        && !isRateLimited
         && sameAccountRetries < SAME_ACCOUNT_RETRIES
         && provider === "codebuddy-intl") {
       sameAccountRetries += 1;
@@ -505,6 +515,37 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         )).shouldFallback;
 
     if (shouldFallback) {
+      // ── CodeBuddy Intl: one limit stops everything ─────────────────────
+      //
+      // A 429 from CodeBuddy is not "this account is empty, try the next one".
+      // The body names the reset time ("your usage will reset at 2026-11-02
+      // 10:05:00") and the gateway starts watching the traffic. Walking the
+      // pool after that is what produced the field log below:
+      //
+      //   Account 1  429  ->  retry same account  ->  429
+      //   Account 29 429  ->  ...
+      //   all 29 accounts locked  ->  next attempt answered 11140 "request
+      //   illegal" — a 30-day ban on the accounts that were only rate-limited.
+      //
+      // 29 requests in two seconds IS the automation pattern. The account is
+      // already parked until the provider's own reset time (markAccountUnavailable
+      // above), so nothing is lost by stopping here: the next request will find
+      // every account locked and return the same reset time without touching the
+      // provider at all.
+      const CODEBUDDY_STOP_ON_LIMIT = provider === "codebuddy-intl"
+        && result.status === HTTP_STATUS.RATE_LIMITED;
+      if (CODEBUDDY_STOP_ON_LIMIT) {
+        const retrySec = Math.max(1, Math.round(((resetsAtMs || 0) - Date.now()) / 1000)) || 60;
+        log.warn("CHAT", `[${provider}/${model}] rate limited — stopping the rotation here instead of walking the pool (reset in ${formatRetryAfter(resetsAtMs)})`);
+        return unavailableResponse(
+          HTTP_STATUS.RATE_LIMITED,
+          `[${provider}/${model}] ${result.error}`,
+          retrySec,
+          `rate limited, retry in ${formatRetryAfter(resetsAtMs)}`,
+          upstreamResponseHeaders(result.response?.headers),
+        );
+      }
+
       // A provider ban means the account is refused outright. Mark it banned and
       // move on to the next one — but do NOT stop early. The pool is the
       // operator's; every account that is still healthy should get its chance.

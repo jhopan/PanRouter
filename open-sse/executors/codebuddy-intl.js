@@ -22,6 +22,16 @@ import { userIdFromCredentials } from "../shared/codebuddyUserId.js";
 // From the installed @tencent-ai/codebuddy-code 2.170.0 bundle.
 export { userIdFromCredentials };
 
+// Safety margin added on top of a provider-supplied reset time.
+//
+// The provider says "your usage will reset at 2026-11-02 10:05:00 UTC+8". That
+// is when the quota refills on THEIR clock; the request in flight, the clock
+// skew between the box and the gateway, and the moment the counter actually
+// rolls over are not the same instant. Asking one second early earns another
+// 429 — and a retry is what the gateway reads as automation. Ten minutes is
+// cheap insurance against a whole extra refusal cycle.
+const RESET_SAFETY_MARGIN_MS = 10 * 60 * 1000;
+
 const CB_IDE_VERSION = "2.178.0";
 // The Stainless SDK version the CLI embeds, and the Node runtime it reports.
 // Both are observable on the wire, so they are pinned rather than taken from
@@ -372,8 +382,12 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
             const tz = match[3]
               ? (match[3].includes(":") ? (match[3].startsWith("+") ? match[3] : `+${match[3]}`) : `+${match[3].padStart(2, "0")}:00`)
               : "+08:00";
+            // The offset comes from the body ("UTC+8"), so the epoch is
+            // absolute: 10:05 at UTC+8 is 02:05 UTC regardless of whether the
+            // server runs WIB (UTC+7) or anything else. Building this from the
+            // server's local zone would shift the lock by the difference.
             const dt = new Date(`${dp}T${tp}${tz}`);
-            if (!isNaN(dt.getTime())) resetsAtMs = dt.getTime();
+            if (!isNaN(dt.getTime())) resetsAtMs = dt.getTime() + RESET_SAFETY_MARGIN_MS;
           }
           return {
             status: 429,

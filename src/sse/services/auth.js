@@ -390,6 +390,15 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // because it changes how a provider-supplied timestamp is bounded below.
   const quotaExhausted = isQuotaExhaustedError(errorText) || !!thResetAtMs;
 
+  // A rate limit that names its own reset time. CodeBuddy 6004 says "usage
+  // exceeds frequency limit, but don't worry, your usage will reset at
+  // 2026-11-02 10:05:00" — that date is the provider's word for when the
+  // account works again, so it must not be shortened to the burst ceiling.
+  const isRateLimitWithResetDate = Number(status) === 429
+    && /usage will reset at|reset at \d{4}-\d{2}-\d{2}/i.test(String(errorText || ""));
+  // Whether a provider-supplied reset time exists at all for this error.
+  const hasProviderResetDate = Number(resetsAtMs) > Date.now();
+
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   let shouldFallback, cooldownMs, newBackoffLevel, banned = false;
   const preciseResetAtMs = githubResetAtMs || thResetAtMs;
@@ -407,9 +416,24 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     // router re-select an account that was empty for days. Quota-class errors are
     // bounded by the provider's own quota ceiling instead (antigravity keeps its
     // exact per-model resetAt for the same reason).
-    const isQuotaClass = quotaExhausted || resolveProviderId(provider) === "antigravity";
+    // A provider-supplied reset time is the provider's own word for "this
+    // account is done until then". CodeBuddy says "your usage will reset at
+    // 2026-11-02 10:05:00" — about 30 hours — and capping that at the 30-minute
+    // burst ceiling brought every account back while it was still
+    // rate-limited. That repeated hammering is what produced the 11140 bans.
+    //
+    // The burst ceiling still applies to a rate limit with NO reset time (a
+    // plain "too many requests"), where the ceiling is the whole point.
+    const isQuotaClass = quotaExhausted
+      || resolveProviderId(provider) === "antigravity"
+      // A frequency-limit refusal that names a reset date is a quota window,
+      // not a burst: the window reopens at that moment. The generic
+      // isQuotaExhaustedError deliberately sends "frequency limit" to the burst
+      // branch (a 15-minute throttle must not park the account on the monthly
+      // calendar), so the presence of the date is what makes it quota class.
+      || (hasProviderResetDate && isRateLimitWithResetDate);
     const ceiling = isQuotaClass
-      ? quotaWindowFor(provider).maxCooldownMs
+      ? Math.max(quotaWindowFor(provider).maxCooldownMs, resetsAtMs - Date.now())
       : MAX_RATE_LIMIT_COOLDOWN_MS;
     cooldownMs = Math.min(resetsAtMs - Date.now(), ceiling);
     newBackoffLevel = 0;
