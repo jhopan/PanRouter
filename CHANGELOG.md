@@ -1,3 +1,53 @@
+# v0.5.88.25 (2026-11-02)
+
+## Perbaikan
+
+- **CodeBuddy Intl: sekali kena limit, seluruh rotasi berhenti.** Log lapangan
+  menunjukkan Account 1 kena 429, router mengulang akun YANG SAMA dua detik
+  kemudian, lalu berjalan sampai Account 29 — 29 request ke seluruh pool dalam
+  dua detik. Gateway menjawab burst itu dengan 11140 "request illegal", yaitu ban
+  30 hari untuk akun-akun yang sebenarnya hanya kena rate limit.
+
+  Tiga cacat diperbaiki:
+
+  1. **Retry akun yang sama ikut jalan untuk 429.** Retry itu ada untuk penolakan
+     channel-verification (11128) yang bersifat sementara; 429 bukan sementara —
+     provider menyebutkan kapan kuota terbuka. Rate limit sekarang **nol retry**.
+
+  2. **Cooldown dipotong ceiling 30 menit** meskipun provider menyebutkan reset
+     30 jam kemudian. Setiap akun kembali saat masih di-rate-limit, dan
+     menanyakan lagi itulah yang menghasilkan ban. 429 yang menyebutkan tanggal
+     reset sekarang masuk kelas quota, dan reset kelas quota tidak dipotong
+     ceiling burst.
+
+  3. **Rotasi tetap berjalan setelah 429.** CodeBuddy sekarang berhenti pada
+     limit pertama: akun sudah diparkir sampai waktu reset, jadi tidak ada yang
+     hilang dengan mengembalikan waktu reset ke pemanggil alih-alih menyentuh 28
+     akun sisanya.
+
+  Margin keamanan sepuluh menit ditambahkan di atas waktu reset provider.
+  "Your usage will reset at 2026-11-02 10:05:00 UTC+8" menjadi lock sampai
+  10:15 WITA — request yang sedang berjalan, selisih jam antara box dan gateway,
+  dan saat counter benar-benar berputar bukanlah instan yang sama, dan bertanya
+  satu detik lebih awal berarti satu penolakan lagi.
+
+  Offset diambil dari body, bukan zona server: server berjalan WIB (UTC+7) dan
+  akun di WITA (UTC+8), dan 10:05 UTC+8 adalah 02:05 UTC pada keduanya.
+  Diverifikasi dengan parser asli:
+
+  ```
+  provider bilang   2026-11-05 10:05:00 WITA
+  dikunci sampai    2026-11-05 10:15:00 WITA  (09:15 WIB, 02:15 UTC)
+  ```
+
+  429 burst tanpa tanggal reset tetap memakai ceiling 30 menit — ceiling ada
+  justru untuk kasus itu.
+
+## Test
+
+- 17 test di `rate-limit-no-ban.test.js`.
+- Suite: **3254 lulus**.
+
 # v0.5.88.24 (2026-10-29)
 
 ## Perbaikan
