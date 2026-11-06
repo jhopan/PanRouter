@@ -23,6 +23,10 @@ const STRIP_RULES = [
   { provider: "volcengine-ark", match: /kimi/i, maxOutputCap: 32768, clampToModelMaxOutput: true },
   // OpenCode Go rejects response_format for its DeepSeek relay family (HTTP 400).
   { provider: "opencode-go", match: /^deepseek/i, drop: ["response_format"] },
+  // Agnes AI: hard server-side cap of 4096 output tokens. Any request with
+  // max_tokens > 4096 returns HTTP 400 "max_tokens exceeds the limit of 4096".
+  // Clamp before sending so the request never reaches that error path.
+  { provider: "agnes", maxOutputCap: 4096 },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.

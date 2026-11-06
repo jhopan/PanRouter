@@ -1,3 +1,22 @@
+# v0.5.88.27 (2026-11-06)
+
+## Perbaikan
+
+- **Agnes AI: `max_tokens` di-clamp ke 4096 sebelum request dikirim.**
+
+  Agnes hard-cap output token = **4096**. Request dengan `max_tokens` lebih
+  dari itu langsung di-reject upstream:
+  `HTTP 400 "max_tokens exceeds the limit of 4096"`.
+
+  Perbaikan: tambah rule di `open-sse/translator/concerns/paramSupport.js`:
+  `{ provider: "agnes", maxOutputCap: 4096 }` — `stripUnsupportedParams()`
+  clamp `max_tokens` ke 4096 sebelum request keluar, provider lain tidak
+  terpengaruh.
+
+## Test
+
+- 6 test baru di `unit/agnes-max-tokens-cap.test.js`.
+
 # v0.5.88.26 (2026-11-06)
 
 ## Perbaikan
