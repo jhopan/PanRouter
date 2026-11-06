@@ -78,6 +78,10 @@ export const QUOTA_WINDOWS = {
     tokenharbor: { scope: QUOTA_SCOPES.WEEKLY, usageKey: null },
     // ── Calendar-only providers ────────────────────────────────────────────
     cline: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 0 },
+    // Agnes AI: free-tier daily quota resets at 00:00 UTC.
+    // Body: "You have used up today's text quota and are now limited to
+    // 1 request every 3 minutes. Try again after HH:MM:SS."
+    agnes: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 0 },
     default: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 0 },
   },
 
@@ -167,6 +171,10 @@ export const QUOTA_EXHAUSTED_SIGNALS = [
   // TokenHarbor free-tier rolling window: "You've used this period's free
   // allowance. Your next rolling 7-day period starts on <date> at <hh:mm> UTC."
   "free allowance",
+  // Agnes AI: "You have used up today's text quota and are now limited to
+  // 1 request every 3 minutes." — the account is empty until the next UTC day,
+  // not in a burst window; park it until 00:00 UTC.
+  "used up today",
   // Antigravity/Google quota refusals: "Individual quota reached. Please
   // upgrade your subscription to increase your limits. Resets in 74h19m34s."
   // with status RESOURCE_EXHAUSTED in the body.
@@ -202,6 +210,13 @@ export function isQuotaExhaustedError(errorText) {
   // a PLAN/credit exhaustion, not a burst throttle — the balance is gone, so
   // the account must wait for the plan window, not a few seconds. It is checked
   // before the frequency guard below.
+  // Agnes AI wraps a daily quota refusal inside a JSON body that also carries
+  // `code:"rate_limit_exceeded"`. That code matches the frequency-limit guard
+  // below and would return false (burst), but the message text is unambiguous:
+  // "You have used up today's text quota". Check it before the frequency guard
+  // so the account gets parked until 00:00 UTC, not retried in 2 seconds.
+  if (/used up today/i.test(lower)) return true;
+
   if (!/insufficient balance/.test(lower)
       && /frequency limit|rate.?limit|too many requests|exceeds? frequency|请求过于频繁/i.test(lower)) {
     return false;

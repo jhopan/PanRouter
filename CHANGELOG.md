@@ -1,3 +1,41 @@
+# v0.5.88.26 (2026-11-06)
+
+## Perbaikan
+
+- **Agnes AI: quota harian dikunci sampai 00:00 UTC, bukan 2 detik.**
+
+  Body 429 Agnes: `"You have used up today's text quota and are now limited to
+  1 request every 3 minutes. Try again after 10:29:15."` — akun kosong sampai
+  besok UTC, bukan dalam burst window.
+
+  Tiga bug menyebabkannya tidak terdeteksi sebagai quota:
+
+  1. **`"used up today"` tidak ada di `QUOTA_EXHAUSTED_SIGNALS`** — 429 Agnes
+     jatuh ke jalur backoff biasa (2 detik).
+
+  2. **`code:"rate_limit_exceeded"` di body Agnes** cocok dengan regex frequency
+     guard (`rate.?limit`), yang men-short-circuit `isQuotaExhaustedError` dan
+     return `false` sebelum sinyal quota diperiksa.
+
+  3. **`agnes` tidak ada di `QUOTA_WINDOWS.providers`** — walau quota terdeteksi,
+     tidak ada scope harian, sehingga lock tidak sampai 00:00 UTC.
+
+  **Yang diperbaiki:**
+
+  - `"used up today"` ditambahkan ke `QUOTA_EXHAUSTED_SIGNALS`.
+  - Early-exit sebelum frequency guard: kalau body mengandung `"used up today"`,
+    langsung return `true` (quota exhausted) — `code:"rate_limit_exceeded"` tidak
+    bisa memblokir deteksi ini.
+  - `agnes: { scope: DAILY, resetUtcHour: 0 }` ditambahkan ke
+    `QUOTA_WINDOWS.providers` — akun dikunci sampai 00:00 UTC hari berikutnya.
+  - Plain burst 429 Agnes (tanpa "used up today") tetap **tidak** masuk quota
+    exhaustion — tidak akan dikunci harian.
+
+## Test
+
+- 6 test baru di `unit/agnes-daily-quota.test.js`.
+- Suite: **3259 lulus**, 0 regresi baru.
+
 # v0.5.88.25 (2026-11-02)
 
 ## Perbaikan
