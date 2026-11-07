@@ -1,3 +1,36 @@
+# v0.5.88.28 (2026-11-07)
+
+## Perbaikan
+
+- **Antigravity: bucket kuota basi diverifikasi ulang sebelum akun di-skip.**
+
+  Pre-filter auth menolak akun berdasarkan bucket mingguan yang tersimpan di
+  cache. Penolakan itu terjadi **sebelum** request keluar, sehingga jalur error
+  chat — satu-satunya yang pernah me-refresh cache ini — tidak pernah jalan.
+  Nilai 0% yang basi atau salah karena itu mengunci akun sampai `resetAt`-nya
+  sendiri, berhari-hari.
+
+  Terbukti live: `gemini_weekly` 0% tersimpan dengan resetAt
+  `2026-11-08T05:12:35Z` menahan akun sehat dari rotasi selama **27j 9m 39s**,
+  padahal bucket mingguan upstream membaca `0.9955` (99,55% tersedia) dan CLI
+  resmi melayani akun yang sama tanpa keluhan. Tidak ada yang bisa membersihkan
+  entri itu, karena pembersihannya butuh request yang justru diblokir entri itu.
+
+  Perbaikan: baca ulang kuota untuk koneksi yang **akan** di-skip, dibatasi
+  cooldown 5 menit per koneksi dan fail-open. Satu panggilan quota API — tidak
+  pernah panggilan chat.
+
+- **Log `all N accounts locked` tidak lagi mencetak `undefined`.**
+
+  Ketika lock berasal dari quota cache, tidak ada koneksi terkunci dan tidak ada
+  error tingkat-koneksi untuk disebut. Sekarang dicetak
+  `skipped by quota pre-filter`.
+
+## Test
+
+- 13 test baru di `unit/antigravity-revalidate-skip.test.js`.
+- Suite: **3276 lulus**, 0 regresi (dibandingkan dengan HEAD lewat `git stash`).
+
 # v0.5.88.27 (2026-11-06)
 
 ## Perbaikan
