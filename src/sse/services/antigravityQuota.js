@@ -239,6 +239,84 @@ export function antigravityFamilyKey(model) {
   return null;
 }
 
+// ── Pre-skip re-verification ───────────────────────────────────────────────
+// The auth pre-filter skips an account whose cached weekly bucket reads 0%.
+// That skip happens BEFORE any request goes out — so the chat error path, the
+// only thing that ever refreshed this cache, never runs. A stale or wrong 0%
+// therefore froze the account until its own cached resetAt.
+//
+// Observed live (VPS, 2026-11-07): a cached gemini_weekly 0% with resetAt
+// 2026-11-08T05:12:35Z kept a healthy account out of rotation for 27h 9m 39s,
+// while the upstream weekly bucket read 0.9955 (99.55% available) and the
+// official CLI served the same account without complaint. Nothing could clear
+// the entry, because clearing required a request that the entry itself blocked.
+//
+// So: verify an exhausted bucket before believing it. One quota API call —
+// never a chat call — bounded per connection, and fail-open.
+const REVALIDATE_COOLDOWN_MS = 5 * 60_000;
+const lastRevalidateAt = new Map();
+
+/** Test hook: forget re-verification timestamps. */
+export function _clearRevalidateState() {
+  lastRevalidateAt.clear();
+}
+
+/**
+ * Which connections are about to be skipped on a cached, still-future
+ * exhausted family bucket and are due for re-verification?
+ * Pure selection — no network, safe to unit-test.
+ *
+ * @param {Array} connections - connection rows (need id + accessToken)
+ * @param {string} model - the model being routed
+ * @param {number} [now]
+ * @returns {string[]} connection ids
+ */
+export function selectAntigravitySkipsToRevalidate(connections, model, now = Date.now()) {
+  if (!Array.isArray(connections) || !model) return [];
+  const familyKey = antigravityFamilyKey(model);
+  if (!familyKey) return [];
+  const ids = [];
+  for (const c of connections) {
+    if (!c?.id) continue;
+    const bucket = quotaCache.get(c.id)?.[familyKey];
+    if (!bucket) continue;
+    // Only a bucket that would actually block this request is worth a call.
+    if (!(Number(bucket.remainingPercentage) <= 0)) continue;
+    if (!bucket.resetAt || new Date(bucket.resetAt).getTime() <= now) continue;
+    // The quota API needs the account's own token.
+    if (!c.accessToken) continue;
+    if (now - (lastRevalidateAt.get(c.id) || 0) < REVALIDATE_COOLDOWN_MS) continue;
+    ids.push(c.id);
+  }
+  return ids;
+}
+
+/**
+ * Re-verify the cached exhausted buckets we are about to skip on.
+ * Fail-open: never throws, never lets a bad quota call block the request path.
+ *
+ * @param {Array} connections
+ * @param {string} model
+ * @param {{ now?: number, refresh?: Function }} [opts] - refresh is injectable for tests
+ */
+export async function revalidateAntigravityExhausted(connections, model, opts = {}) {
+  const now = opts.now ?? Date.now();
+  const refresh = opts.refresh || refreshAntigravityQuota;
+  const ids = selectAntigravitySkipsToRevalidate(connections, model, now);
+  if (!ids.length) return;
+  await Promise.all(ids.map(async (id) => {
+    const c = connections.find((x) => x?.id === id);
+    // Record before awaiting: a slow quota call must not let the next request
+    // start a second one for the same connection.
+    lastRevalidateAt.set(id, now);
+    try {
+      await refresh(id, c.accessToken, c.providerSpecificData);
+    } catch (e) {
+      log.warn("AG_QUOTA", `${id.slice(0, 8)} | pre-skip re-verify failed (non-fatal): ${e.message}`);
+    }
+  }));
+}
+
 /**
  * Handle Antigravity 409/429 — refresh RAM cache and return model resetAt when exhausted.
  * Called from chat handler error path.

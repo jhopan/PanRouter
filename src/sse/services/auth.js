@@ -5,7 +5,7 @@ import { MAX_RATE_LIMIT_COOLDOWN_MS, BANNED_ACCOUNT_COOLDOWN_MS } from "open-sse
 import { isQuotaExhaustedError, resolveQuotaResetAt } from "open-sse/services/quotaWindow.js";
 import { quotaWindowFor } from "open-sse/config/quotaWindows.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
-import { getAntigravityQuotaCache, antigravityFamilyKey } from "./antigravityQuota.js";
+import { getAntigravityQuotaCache, antigravityFamilyKey, revalidateAntigravityExhausted } from "./antigravityQuota.js";
 import { shouldSkipAntigravityAccount, getAntigravityIneligibility } from "open-sse/services/antigravityCapCache.js";
 import { shouldSkipKiroAccount, markKiroCapped, recordKiroUsage } from "open-sse/services/kiroCapCache.js";
 import { isBannedConnection, banFields, clearBanFields } from "open-sse/services/bannedAccounts.js";
@@ -145,6 +145,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // Antigravity quota cache is lazy: only populated after that account returns 409/429.
     const isAntigravity = providerId === "antigravity";
     const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
+    // Verify before skipping. The pre-filter below refuses an account on a
+    // cached exhausted weekly bucket, and that refusal is what keeps the cache
+    // from ever being refreshed (no request → no 429 → no error path). A stale
+    // 0% therefore held healthy accounts out of rotation for as long as its own
+    // cached resetAt, days away. Re-read the quota for the accounts we are
+    // about to skip, bounded by a cooldown, fail-open.
+    if (isAntigravity && model) {
+      await revalidateAntigravityExhausted(connections, model);
+    }
     // Kiro monthly cap: the usage API already reports used/total/nextDateReset, so
     // an account that is capped can be skipped BEFORE the request goes upstream
     // instead of discovering it via 402 on every model.
@@ -238,8 +247,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
       const earliest = expiries.sort()[0] || null;
       if (earliest) {
-        const earliestConn = lockedConns[0];
-        log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
+        // `earliest` can come from a lazy Antigravity quota-cache reset rather
+        // than a persisted lock, in which case there IS no locked connection and
+        // there is no connection-level error to name. Say that, instead of
+        // interpolating a bare `undefined` that reads like a lost error.
+        const earliestConn = lockedConns[0] || null;
+        const cause = earliestConn
+          ? `lastError=${earliestConn.lastError?.slice(0, 50)}`
+          : "skipped by quota pre-filter";
+        log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | ${cause}`);
         return {
           allRateLimited: true,
           retryAfter: earliest,
