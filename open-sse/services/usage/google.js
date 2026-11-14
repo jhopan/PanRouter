@@ -2,8 +2,8 @@
  * Google usage handlers (Gemini CLI + Antigravity)
  */
 
-import { CLIENT_METADATA } from "../../config/appConstants.js";
-import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION, ANTIGRAVITY_OAUTH_CLIENT } from "../../providers/shared.js";
+import { CLIENT_METADATA, ANTIGRAVITY_LOAD_CODE_ASSIST_METADATA } from "../../config/appConstants.js";
+import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_OAUTH_CLIENT } from "../../providers/shared.js";
 import { U, parseResetTime, normalizeCloudCodeProjectId, fetchWithTimeout } from "./shared.js";
 import { fetchAntigravityWeeklyQuota } from "./antigravity-weekly.js";
 
@@ -140,8 +140,11 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
         "Authorization": `Bearer ${accessToken}`,
         "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
         "Content-Type": "application/json",
-        "X-Client-Name": "antigravity",
-        "X-Client-Version": ANTIGRAVITY_IDE_VERSION,
+        // No X-Client-Name/X-Client-Version here: the shipped Hub 2.32.1 sends
+        // only user-agent + authorization + content-type on fetchAvailableModels
+        // (captured 2026-11-15, see ANTIGRAVITY_LOAD_CODE_ASSIST_METADATA). The
+        // weekly quota summary keeps them only because that endpoint was not part
+        // of the capture — see antigravity-weekly.js.
       },
       body: JSON.stringify({
         ...(projectId ? { project: projectId } : {})
@@ -344,7 +347,7 @@ async function getAntigravitySubscriptionInfo(accessToken, proxyOptions = null) 
         "User-Agent": ANTIGRAVITY_CONFIG.userAgent,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ metadata: CLIENT_METADATA, mode: 1 }),
+      body: JSON.stringify({ metadata: ANTIGRAVITY_LOAD_CODE_ASSIST_METADATA }),
     }, 10000, proxyOptions);
 
     if (!response.ok) return null;

@@ -180,6 +180,25 @@ export const LOAD_CODE_ASSIST_METADATA = {
   pluginType: PLUGIN_TYPE.GEMINI,
 };
 
+// What the shipped Hub 2.32.1 actually puts in `metadata` on loadCodeAssist and
+// onboardUser — nothing else. Captured 2026-11-15 by launching the installed Hub
+// (Antigravity.exe) with CLOUD_CODE_URL pointed at a local listener; the language
+// server inherits that override (its own log line: "Overriding CloudCodeServerURL
+// via CLOUD_CODE_URL environment variable"). Bodies it sent:
+//   loadCodeAssist -> {"metadata":{"ideType":"ANTIGRAVITY"}}
+//   onboardUser    -> {"tierId":"free-tier","metadata":{"ideType":"ANTIGRAVITY"}}
+//   listExperiments-> {"metadata":{"updateChannel":"stable"}}
+// Headers on every captured call: user-agent (the Hub UA), authorization,
+// accept-encoding, plus content-type/content-length on POST — no X-Goog-*,
+// no Client-Metadata. `platform`/`pluginType` belong to the Gemini CLI client,
+// not the Hub: a real Hub request never carries them.
+export const ANTIGRAVITY_LOAD_CODE_ASSIST_METADATA = {
+  // Proto JSON enum NAME, not our numeric IDE_TYPE map: the Hub sends the
+  // string "ANTIGRAVITY" on the wire (verified in the capture above), while
+  // `IDE_TYPE.ANTIGRAVITY` is 9.
+  ideType: "ANTIGRAVITY",
+};
+
 // System prompts
 export const CLAUDE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
 // Rewrite rules applied to Antigravity system prompts: competing-client branding

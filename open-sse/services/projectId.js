@@ -7,7 +7,7 @@
  * This significantly reduces the risk of being flagged by Google's anti-abuse systems.
  */
 
-import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS, LOAD_CODE_ASSIST_METADATA } from "../config/appConstants.js";
+import { CLOUD_CODE_API, LOAD_CODE_ASSIST_HEADERS, ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS, LOAD_CODE_ASSIST_METADATA, ANTIGRAVITY_LOAD_CODE_ASSIST_METADATA } from "../config/appConstants.js";
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
 // connectionId -> { projectId: string, fetchedAt: number }
@@ -148,6 +148,17 @@ export function removeConnection(connectionId) {
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
+ * `metadata` for loadCodeAssist / onboardUser.
+ *
+ * The Hub client sends only `{ideType}` (captured 2026-11-15, see
+ * ANTIGRAVITY_LOAD_CODE_ASSIST_METADATA); `platform`/`pluginType` belong to the
+ * Gemini CLI client and are kept for that provider only.
+ */
+function loadCodeAssistMetadata(provider) {
+    return provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_METADATA : LOAD_CODE_ASSIST_METADATA;
+}
+
+/**
  * Fetch project ID via loadCodeAssist endpoint.
  * Falls back to onboardUser when loadCodeAssist returns no project.
  *
@@ -161,7 +172,7 @@ async function fetchProjectId(accessToken, signal, provider) {
     const response = await fetch(endpoints.loadCodeAssist, {
         method: "POST",
         headers: { ...headers, "Authorization": `Bearer ${accessToken}` },
-        body: JSON.stringify({ metadata: LOAD_CODE_ASSIST_METADATA }),
+        body: JSON.stringify({ metadata: loadCodeAssistMetadata(provider) }),
         signal
     });
 
@@ -201,7 +212,7 @@ async function fetchProjectId(accessToken, signal, provider) {
 async function onboardUser(accessToken, tierID, externalSignal, endpoints, provider) {
     console.log(`[ProjectId] Onboarding user with tier: ${tierID}`);
 
-    const reqBody = { tierId: tierID, metadata: LOAD_CODE_ASSIST_METADATA };
+    const reqBody = { tierId: tierID, metadata: loadCodeAssistMetadata(provider) };
     const headers = provider === "antigravity" ? ANTIGRAVITY_LOAD_CODE_ASSIST_HEADERS : LOAD_CODE_ASSIST_HEADERS;
     const MAX_ATTEMPTS = Number(process.env.ONBOARD_MAX_ATTEMPTS) || 2;
     const BASE_RETRY_DELAY_MS = Number(process.env.ONBOARD_RETRY_DELAY_MS) || 12_000;
