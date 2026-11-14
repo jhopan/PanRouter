@@ -1,3 +1,77 @@
+# v0.5.88.32 (2026-11-15)
+
+## Port strict-provider (Antigravity, CodeBuddy intl)
+
+Prinsip: semua tambahan **aditif**. Logika Antigravity yang sudah berjalan di
+PanRouter (family mapper `antigravityFamilyKey`, re-verifikasi bucket basi,
+strike breaker, skip akun ineligible sebelum request) tetap utuh — upstream
+hanya menambah bucket/predikat baru di sampingnya.
+
+## Antigravity
+
+- **Parkir 24 jam untuk lock akun.** `TOS_VIOLATION` ("This service has been
+  disabled in this account for violation of Terms of Service") dan
+  `VALIDATION_REQUIRED` kini memarkir akun 24 jam, bukan mengikuti cooldown 403
+  generik 2 menit yang membuat akun mati dicoba ulang tiap 2 menit. Aturan ini
+  provider-scoped (`antigravity`; alias `ag` sudah di-resolve lebih dulu oleh
+  `checkFallbackError`), dan 403 generik tetap 2 menit. Port intent upstream PR
+  #5688 (belum merged di upstream).
+- **`isProviderRefusalBody()`** mengenali kedua string itu, jadi 403 tersebut
+  tidak lagi memicu refresh token yang sia-sia.
+- **Bucket kuota `gemini_argon_weekly` terpisah** (upstream `8a833631`):
+  matcher `/argon/i` sebelum `/gemini/i` di weekly quota, baris Argon tidak
+  dicampur ke Gemini, rekonsiliasi "semua model Argon 0% tapi bucket
+  mengaku >0" memakai reset terjauh, `gemini-4-argon-{high,medium,low}`
+  ditambahkan ke model penting, dan dashboard memisahkan baris Argon dari
+  agregat Gemini. Konsumsi bucket memakai helper aditif
+  `antigravityArgonBucket()`: bucket Argon dipakai kalau akun melaporkannya,
+  selain itu jalur family PanRouter yang lama yang jalan — dan bucket Argon
+  yang habis tidak pernah "diselamatkan" kuota Gemini biasa.
+- **Tier dari effort klien** (upstream `82aeb907`): `getModelUpstreamId` kini
+  menerima body klien dan membaca `reasoning_effort` /
+  `output_config.effort` / `thinking.budget_tokens` (`xhigh|max → high`,
+  `minimal → low`, budget >16384 → high, ≤4096 → low). Batasan kita: id tier
+  hanya dipakai kalau model `-<tier>` benar-benar ada di registry; kalau tidak,
+  resolusi kembali ke base id — tidak ada id sintetis. Suffix `(level)` tetap
+  menang dan perilaku provider lain tidak berubah (body hanya dikirim untuk
+  Antigravity).
+- **Predikat tipe protobuf pada schema tool** (upstream `8db1f4ae`): `items`
+  hanya pada `type:"array"` (dan selalu object non-kosong), `properties`/
+  `required` hanya pada `type:"object"`, `required` dipangkas ke key yang ada di
+  `properties`, pemilihan tipe union mengikuti struktur node. Rekursi
+  memisahkan key `properties` dari node schema, jadi parameter bernama `items`
+  atau `required` tidak ikut terhapus.
+
+## CodeBuddy intl
+
+- **System prompt klien dipertahankan** (upstream `3ca04639`): sebelumnya
+  seluruh system/developer message dibuang dan diganti
+  `"You are CodeBuddy Code."` — instruksi pengguna hilang di setiap request.
+  Sekarang prompt klien digabung jadi satu system prompt pembuka, dan hanya
+  penanda identitas agen pihak ketiga yang dinetralkan (Claude Code/anthropic
+  official CLI, Cursor, Windsurf, Cline, Aider, Continue, Copilot, Cody,
+  `cc_entrypoint=`, `<agent-identity>`, `<Role>`, `<Behavior_Instructions>`,
+  dll). Kalau klien tidak mengirim system prompt sama sekali, default lama
+  tetap dipakai. Regex/flatten teks dipindah ke
+  `open-sse/shared/codebuddySystemPrompt.js` dan dipakai kedua executor
+  CodeBuddy (intl + CN) tanpa menduplikasi.
+- Tidak ada perubahan header, user-agent, atau string versi
+  (`IDE/2.160.0 CodeBuddy/2.160.0` tetap).
+
+## Test
+
+- Test baru: `antigravity-tos-cooldown`, `antigravity-tier-effort`,
+  `antigravity-schema-predicates`, `antigravity-argon-family`,
+  `codebuddy-intl-system-prompt`.
+- Test lama yang men-pin nilai usang diperbarui ke sumber tunggal, bukan
+  dihapus: UA Antigravity di `antigravity-retry-hook` dan
+  `antigravity-weekly-quota` kini memakai `ANTIGRAVITY_IDE_USER_AGENT` /
+  `ANTIGRAVITY_IDE_VERSION`; `antigravity-error-parse` memakai jam palsu agar
+  timestamp fixture tidak kedaluwarsa.
+- Battery strict: 26 file Antigravity + semua `codebuddy-*` + translator
+  Antigravity/Gemini → 0 gagal. Baseline provider/alias tetap byte-for-byte,
+  lint bersih di seluruh file yang diubah.
+
 # v0.5.88.31 (2026-11-15)
 
 ## Port sisa upstream 9router (`1855aa44`)
