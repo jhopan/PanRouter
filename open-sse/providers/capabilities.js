@@ -184,6 +184,13 @@ export const PROVIDER_CAPABILITIES = {
     "deepseek-ai/deepseek-v4-pro": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
     "deepseek-ai/deepseek-v4-flash": { reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
   },
+  // OpenCode Free lanes.
+  // deepseek-v4.1-flash-free: the backend rejects requests above ~330k prompt
+  // tokens (#5097). Cap the published window at 330000 so clients (VS Code
+  // Copilot etc.) compact instead of hard-failing mid-session.
+  "opencode": {
+    "deepseek-v4.1-flash-free": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 330000, maxOutput: 128000 },
+  },
   // glm-5.3-flash on OpenCode Go is served by a backend that rejects the z.ai
   // `thinking` object (400: unknown field "thinking") and wants reasoning_effort.
   // Overrides the global entry, whose z.ai shape is correct for z.ai itself.
