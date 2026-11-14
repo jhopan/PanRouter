@@ -31,6 +31,10 @@ const STRIP_RULES = [
   // ("Use 'max_completion_tokens' instead"). Clients send `max_tokens`, so the
   // parameter is renamed rather than dropped — the caller's value is preserved.
   { provider: "openai", renameParams: { max_tokens: "max_completion_tokens" } },
+  // NVIDIA NIM treats `reasoning` and `reasoning_content` as aliases for one
+  // field; sending both makes its deserializer report a duplicate field. Keep
+  // the OpenAI canonical spelling on assistant history.
+  { provider: "nvidia", renameMessageFields: { reasoning: "reasoning_content" } },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.
@@ -56,6 +60,23 @@ export function stripUnsupportedParams(provider, model, body) {
       if (body[from] === undefined) continue;
       if (body[to] === undefined) body[to] = body[from];
       delete body[from];
+    }
+    // Normalize and drop assistant-message fields (clients replay reasoning here).
+    if ((rule.renameMessageFields || rule.dropMessageFields) && Array.isArray(body.messages)) {
+      for (const msg of body.messages) {
+        if (!msg || typeof msg !== "object" || msg.role !== "assistant") continue;
+        for (const [from, to] of Object.entries(rule.renameMessageFields || {})) {
+          if (msg[from] === undefined) continue;
+          const existing = msg[to];
+          if (existing === undefined || existing === null || (typeof existing === "string" && !existing.trim())) {
+            msg[to] = msg[from];
+          }
+          delete msg[from];
+        }
+        for (const key of rule.dropMessageFields || []) {
+          if (msg[key] !== undefined) delete msg[key];
+        }
+      }
     }
     for (const key of rule.drop || []) {
       if (body[key] !== undefined) delete body[key];
