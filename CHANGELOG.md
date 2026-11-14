@@ -1,3 +1,53 @@
+# v0.5.88.31 (2026-11-15)
+
+## Port sisa upstream 9router (`1855aa44`)
+
+## Fitur
+
+- **Codex OAuth STT** (`codex-transcribe`): transkripsi memakai akun Codex
+  OAuth — handler baru `codexStt.js`/`codexSttAudio.js`, dispatch di
+  `sttCore.js`, refresh token + satu retry paksa saat 401 di `src/sse/handlers/stt.js`,
+  proxy per koneksi, dan 400/413/504 tidak jatuh ke akun lain. Registry Codex
+  dapat `serviceKinds` + `sttConfig` + model `transcribe`, kartu STT dashboard
+  ikut membaca format respons per model. Port `421f2262`.
+
+## Perbaikan
+
+- **OpenCode free lane**: dukungan reasoning penuh untuk `mimo-v2.6-flash-free`
+  (level minimal..max, override capability, alias reasoning di jalur chat dan
+  JSON non-stream) dan `deepseek-v4.1-flash-free` menghormati `low|high|max`
+  (sebelumnya `low` runtuh ke `high`). Port `b8331283` (hunk
+  `openai-to-antigravity` **tidak** diambil — strict provider) dan `313559f4`.
+- **Effort `max`** untuk GPT-5.6/GPT-6 di node `openai-compatible-*` tidak lagi
+  diturunkan. Port `763fb687`.
+- **Claude Haiku 5+** mempertahankan adaptive thinking + effort di jalur
+  passthrough; sebelumnya regex `/haiku/i` mematikannya. Port `0ad0a722`.
+- **DashScope**: cache marker Claude dipertahankan saat menumpuk system block
+  (`preserveCacheControl`), termasuk konversi pesan dengan opsi. Port `a61b5a6f`.
+- **CommandCode**: nama/limit `individual-go-v1`, alias plan, persentase +
+  `colorPercentage`/`percentageIsUsed` di tabel kuota, dan probe koneksi ke
+  `/alpha/whoami?limits=1`. Port `4a76b8de`.
+- **Non-stream**: body upstream yang berisi `error` tidak lagi dianggap sukses —
+  status 400-599 diteruskan, selain itu 502, tanpa efek samping sukses. Port
+  `56dbf466`.
+- **Copilot fallback catalog** disegarkan ke set terverifikasi (gpt-6.1-sol,
+  fable 5/5.1, haiku-5.5, opus-5.5, sonnet-5.5, gemini-4-argon, kimi-k3, dst).
+  Port `dbdbb648`.
+- **Panduan API key** di dashboard tidak lagi menyebut klaim sekali-tampil;
+  teks diperbarui di 7 locale. Port `a3ca2f9b`.
+
+## Tidak diport
+
+- `e70ea24d` "Fix OpenCode": perbaikan packaging `lazyRuntime` untuk modul
+  runtime yang tidak ada di repo ini — dead code kalau diport.
+
+## Test
+
+- Snapshot `golden-request` diregenerasi untuk `is_error` (perubahan
+  `7372d38d` di v0.5.88.29) dan `golden-url-header` tetap hijau.
+- 114 test baru/hijau di slice ini; baseline provider 107 entri byte-for-byte
+  sama.
+
 # v0.5.88.30 (2026-11-15)
 
 ## Port upstream 9router gelombang kedua (masih `1855aa44`)
