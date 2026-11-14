@@ -93,7 +93,7 @@
       "Anthropic-Version": "2023-06-01",
       "Anthropic-Beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
       "Anthropic-Dangerous-Direct-Browser-Access": "true",
-      "User-Agent": "claude-cli/2.1.280 (external, sdk-cli)",
+      "User-Agent": "claude-cli/2.1.322 (external, sdk-cli)",
       "X-App": "cli",
       "X-Stainless-Helper-Method": "stream",
       "X-Stainless-Retry-Count": "0",
@@ -168,6 +168,9 @@
         "clineHeaders"
       ]
     },
+    "usage": {
+      "url": "https://api.cline.bot/api/v1/users/me/plan/usage-limits"
+    },
     "format": "openai",
     "tokenUrl": "https://api.cline.bot/api/v1/auth/token"
   },
@@ -203,11 +206,11 @@
     "baseUrl": "https://chatgpt.com/backend-api/codex/responses",
     "format": "openai-responses",
     "forceStream": true,
-    "cliVersion": "0.159.0",
+    "cliVersion": "0.167.1",
     "headers": {
       "originator": "codex_cli_rs",
-      "User-Agent": "codex_cli_rs/0.159.0",
-      "version": "0.159.0"
+      "User-Agent": "codex_cli_rs/0.167.1",
+      "version": "0.167.1"
     },
     "usage": {
       "url": "https://chatgpt.com/backend-api/wham/usage",
@@ -567,7 +570,7 @@
     "headers": {
       "Content-Type": "application/json",
       "Accept": "application/vnd.amazon.eventstream",
-      "User-Agent": "aws-sdk-js/1.0.0 ua/2.1 os/win32#10.0.26200 lang/js md/nodejs#26.7.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-1.4.178-d3253ca5f340f762054342ccb2a987f42a7de4dd1584f54add497f3c4423173a",
+      "User-Agent": "aws-sdk-js/1.0.0 ua/2.1 os/win32#10.0.26200 lang/js md/nodejs#24.11.0 api/codewhispererruntime#1.0.0 m/N,E KiroIDE-1.4.178-d3253ca5f340f762054342ccb2a987f42a7de4dd1584f54add497f3c4423173a",
       "X-Amz-User-Agent": "aws-sdk-js/1.0.0 KiroIDE-1.4.178-d3253ca5f340f762054342ccb2a987f42a7de4dd1584f54add497f3c4423173a"
     },
     "tokenUrl": "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
@@ -763,7 +766,8 @@
           "combined": true,
           "header": "Authorization",
           "scheme": "bearer"
-        }
+        },
+        "thinkingFormat": "openai-responses"
       }
     ]
   },
@@ -1092,7 +1096,7 @@
       "Anthropic-Version": "2023-06-01",
       "Anthropic-Beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
       "Anthropic-Dangerous-Direct-Browser-Access": "true",
-      "User-Agent": "claude-cli/2.1.280 (external, sdk-cli)",
+      "User-Agent": "claude-cli/2.1.322 (external, sdk-cli)",
       "X-App": "cli",
       "X-Stainless-Helper-Method": "stream",
       "X-Stainless-Retry-Count": "0",
@@ -1373,6 +1377,39 @@
     "stallTimeoutMs": 120000,
     "usage": {
       "url": "https://openapi.qoder.com.cn/api/v2/quota/usage"
+    },
+    "format": "openai"
+  },
+  "synthetic": {
+    "baseUrl": "https://api.synthetic.new/openai/v1/chat/completions",
+    "validateUrl": "https://api.synthetic.new/v2/quotas",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "usage": {
+      "url": "https://api.synthetic.new/v2/quotas"
+    },
+    "format": "openai"
+  },
+  "sensenova": {
+    "baseUrl": "https://token.sensenova.cn/v1/chat/completions",
+    "validateUrl": "https://token.sensenova.cn/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "format": "openai"
+  },
+  "sensenova-intl": {
+    "baseUrl": "https://token.sensenova.ai/v1/chat/completions",
+    "validateUrl": "https://token.sensenova.ai/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
     },
     "format": "openai"
   }

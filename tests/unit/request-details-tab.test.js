@@ -7,6 +7,11 @@ import path from "node:path";
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 
 import { removeTempDir } from "../helpers/tmp.js";
+import {
+  getCachedTokens,
+  getCacheCreationTokens,
+  getInputTokens,
+} from "@/app/(dashboard)/dashboard/usage/components/tokenDisplay.js";
 const originalDataDir = process.env.DATA_DIR;
 let tempDir;
 let db;
@@ -113,19 +118,8 @@ describe("request details — tab crash-risk cases", () => {
   });
 });
 
-// Mirror of RequestDetailsTab token helpers (component is "use client",
-// helpers are not exported). Keep in sync with the component.
-function getCachedTokens(tokens) {
-  return tokens?.cached_tokens || tokens?.cache_read_input_tokens || 0;
-}
-function getCacheCreationTokens(tokens) {
-  return tokens?.cache_creation_input_tokens || 0;
-}
-function getInputTokens(tokens) {
-  const prompt = tokens?.prompt_tokens || tokens?.input_tokens || 0;
-  const cache = getCachedTokens(tokens);
-  return prompt < cache ? cache : prompt;
-}
+// Token helpers live in the component's tokenDisplay.js module (the component
+// itself is "use client" JSX, so the pure helpers are imported directly).
 
 describe("backupDbLite — excludes requestDetails, keeps critical data", () => {
   it("backup file omits requestDetails rows but keeps other tables", async () => {
