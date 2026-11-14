@@ -1,7 +1,7 @@
 // Gemini helper functions for translator
 
 import { safeParseJSON } from "../concerns/json.js";
-import { OPENAI_BLOCK } from "../schema/index.js";
+import { DEFAULT_IMAGE_MIME, OPENAI_BLOCK } from "../schema/index.js";
 import { isGemini4Model } from "../../providers/capabilities.js";
 
 // Unsupported JSON Schema constraints that should be removed for Antigravity
@@ -49,6 +49,22 @@ export const DEFAULT_SAFETY_SETTINGS = [
 ];
 
 // Convert OpenAI content to Gemini parts
+/**
+ * Gemini wants a concrete MIME type for a remote image; it rejects the
+ * placeholder `image/*`. Derive it from the URL path and fall back to the
+ * shared default when the extension is unknown.
+ */
+function remoteImageMimeType(url) {
+  let pathname;
+  try { pathname = new URL(url).pathname.toLowerCase(); }
+  catch { return DEFAULT_IMAGE_MIME; }
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".gif")) return "image/gif";
+  if (pathname.endsWith(".bmp")) return "image/bmp";
+  return DEFAULT_IMAGE_MIME;
+}
+
 export function convertOpenAIContentToParts(content) {
   const parts = [];
 
@@ -72,7 +88,7 @@ export function convertOpenAIContentToParts(content) {
         }
       } else if (item.type === OPENAI_BLOCK.IMAGE_URL && item.image_url?.url && (item.image_url.url.startsWith("http://") || item.image_url.url.startsWith("https://"))) {
         parts.push({
-          fileData: { fileUri: item.image_url.url, mimeType: "image/*" }
+          fileData: { fileUri: item.image_url.url, mimeType: remoteImageMimeType(item.image_url.url) }
         });
       } else if (item.type === OPENAI_BLOCK.INPUT_AUDIO && item.input_audio?.data) {
         const format = item.input_audio.format || "wav";
@@ -311,7 +327,17 @@ function flattenTypeArrays(obj) {
 function ensureObjectType(obj) {
   if (!obj || typeof obj !== "object") return;
   if (obj.properties && !obj.type) obj.type = "object";
-  for (const v of Object.values(obj)) if (v && typeof v === "object") ensureObjectType(v);
+  // A tool parameter may legitimately be NAMED "properties". Recurse into that
+  // map's entries instead of treating the map itself as a schema node — otherwise
+  // the parameter object gets type=object sprayed onto it (#4620).
+  for (const [key, v] of Object.entries(obj)) {
+    if (!v || typeof v !== "object") continue;
+    if (key === "properties" && !Array.isArray(v)) {
+      for (const sub of Object.values(v)) ensureObjectType(sub);
+    } else {
+      ensureObjectType(v);
+    }
+  }
 }
 
 // Convert prefixItems (tuple validation) to items — Gemini cannot express tuples,

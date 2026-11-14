@@ -70,7 +70,7 @@ function stripStoredItemReferences(body) {
 }
 
 // Flatten Chat-Completions tool shape into Responses flat format + filter unsupported tools
-function normalizeCodexTools(body) {
+export function normalizeCodexTools(body) {
   if (!Array.isArray(body.tools)) return;
   const validNames = new Set();
   // Codex's schema validator has no Unicode property escapes; a `pattern`
@@ -104,11 +104,16 @@ function normalizeCodexTools(body) {
     const parameters = (tool.parameters && typeof tool.parameters === "object" && !Array.isArray(tool.parameters))
       ? tool.parameters
       : (fn?.parameters && typeof fn.parameters === "object" && !Array.isArray(fn.parameters) ? fn.parameters : { type: "object", properties: {} });
+    // Read the explicit strict flag BEFORE the wipe below: rebuilding the tool
+    // from scratch would silently drop it, and a client that set strict:false
+    // expects optional arguments to stay optional.
+    const strict = typeof tool.strict === "boolean" ? tool.strict : fn?.strict;
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
     tool.name = name.slice(0, 128);
     if (description) tool.description = description;
     tool.parameters = stripCodexUnsupportedPatterns(parameters, patternStats);
+    if (typeof strict === "boolean") tool.strict = strict;
     validNames.add(name);
     return true;
   });
