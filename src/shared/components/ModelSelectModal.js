@@ -213,10 +213,22 @@ export default function ModelSelectModal({
       ? NO_AUTH_PROVIDER_IDS.filter((id) => (AI_PROVIDERS[id]?.serviceKinds || ["llm"]).includes(kindFilter))
       : NO_AUTH_PROVIDER_IDS;
 
+    // Compatible nodes (OpenAI/Anthropic Compatible) that already have user-added
+    // custom models should be selectable even without an API-key connection: local
+    // and self-hosted endpoints often need no stored key, so gating on connections
+    // hides models the user already added. These nodes are LLM-only, so surface
+    // them only when no kind filter is active (#4177, #2113, #2119, #1988).
+    const compatibleNodeIds = kindFilter
+      ? []
+      : customModels
+          .map((m) => m.providerAlias)
+          .filter((alias) => alias && (isOpenAICompatibleProvider(alias) || isAnthropicCompatibleProvider(alias)));
+
     // Only show connected providers (including both standard and custom)
     const providerIdsToShow = new Set([
       ...activeConnectionIds,  // Only connected providers
       ...noAuthIds,            // No-auth providers (kind-filtered)
+      ...compatibleNodeIds,    // Compatible nodes with user-added models
     ]);
 
     // Sort by PROVIDER_ORDER
