@@ -318,9 +318,9 @@ describe("fetchAntigravityWeeklyQuota", () => {
 
     await fetchAntigravityWeeklyQuota("token", "project-1");
 
-    // Pin the single source of truth (the verified Hub client identity), not a
-    // literal that rots every time the client version is re-captured.
-    const { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION } = await import("open-sse/providers/shared.js");
+    // Pin the single source of truth (the verified Hub client identity) and the
+    // captured header set: the Hub sends no X-Client-* on this endpoint either.
+    const { ANTIGRAVITY_IDE_USER_AGENT } = await import("open-sse/providers/shared.js");
     const [url, opts] = proxyAwareFetch.mock.calls[0];
     expect(url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary");
     expect(opts.method).toBe("POST");
@@ -328,9 +328,9 @@ describe("fetchAntigravityWeeklyQuota", () => {
       "Authorization": "Bearer token",
       "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
       "Content-Type": "application/json",
-      "X-Client-Name": "antigravity",
-      "X-Client-Version": ANTIGRAVITY_IDE_VERSION,
     });
+    expect(opts.headers["X-Client-Name"]).toBeUndefined();
+    expect(opts.headers["X-Client-Version"]).toBeUndefined();
     expect(opts.body).toBe(JSON.stringify({ project: "project-1" }));
   });
 });

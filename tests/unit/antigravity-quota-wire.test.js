@@ -49,12 +49,16 @@ describe("Antigravity quota wire shape (Hub 2.32.1 capture)", () => {
     expect(call.init.headers["User-Agent"]).toMatch(/^antigravity\/hub\/\d+\.\d+\.\d+ \(aidev_client; /);
   });
 
-  it("keeps the weekly quota summary headers that the capture did not cover", async () => {
+  it("sends no X-Client-* headers on retrieveUserQuotaSummary either", async () => {
     await getAntigravityUsage("token", {}, null);
     const call = calls.find((c) => c.url.includes("retrieveUserQuotaSummary"));
     expect(call).toBeDefined();
-    // Documented asymmetry: this endpoint is opened from the Hub UI, so it was
-    // not in the startup capture. PanRouter keeps its previous headers here.
-    expect(call.init.headers["X-Client-Name"]).toBe("antigravity");
+    // Captured from the shipped Hub: this endpoint carries only user-agent,
+    // authorization and content-type, and its body is .
+    expect(Object.keys(call.init.headers).map((h) => h.toLowerCase()).sort()).toEqual([
+      "authorization",
+      "content-type",
+      "user-agent",
+    ]);
   });
 });

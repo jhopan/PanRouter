@@ -4,7 +4,7 @@
  */
 
 import { U, parseResetTime, fetchWithTimeout } from "./shared.js";
-import { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION } from "../../providers/shared.js";
+import { ANTIGRAVITY_IDE_USER_AGENT } from "../../providers/shared.js";
 
 // — Weekly quota summary config ——————————————————————————————
 const WEEKLY_CONFIG = {
@@ -123,8 +123,10 @@ export async function fetchAntigravityWeeklyQuota(accessToken, projectId, proxyO
           "Authorization": `Bearer ${accessToken}`,
           "User-Agent": WEEKLY_CONFIG.userAgent,
           "Content-Type": "application/json",
-          "X-Client-Name": "antigravity",
-          "X-Client-Version": ANTIGRAVITY_IDE_VERSION,
+          // No X-Client-Name/X-Client-Version: captured from the shipped Hub
+          // 2.32.1 (2026-11-15) — this endpoint is called with only user-agent,
+          // authorization, content-type and accept-encoding. The body is
+          // `{project}` as the Hub sends it.
         },
         body: JSON.stringify({
           ...(projectId ? { project: projectId } : {}),

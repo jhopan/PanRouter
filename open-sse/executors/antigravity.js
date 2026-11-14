@@ -19,7 +19,8 @@ function sanitizeFunctionName(name) {
 
 const MAX_RETRY_AFTER_MS = 10000;
 const ANTIGRAVITY_TRANSIENT_RETRY_MAX_MS = 15000;
-const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 64000;
+// The Hub sends maxOutputTokens 65536 on the agent path (captured 2026-11-15).
+const MAX_ANTIGRAVITY_OUTPUT_TOKENS = 65536;
 const ANTIGRAVITY_IDE_REQUEST_ID_RE = /^agent\/[^/]+\/\d+\/[^/]+\/\d+$/;
 
 const ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS = [
@@ -101,13 +102,38 @@ function buildIdeRequestId({ body, request, credentials, model, requestType }) {
   if (ANTIGRAVITY_IDE_REQUEST_ID_RE.test(body?.requestId || "")) {
     return body.requestId;
   }
+  return buildIdeIdentity({ body, request, credentials, model, requestType }).requestId;
+}
+
+/**
+ * Identity fields the Hub sends on the agent path.
+ *
+ * Captured from the shipped Hub 2.32.1 (2026-11-15):
+ *   requestId → `agent/<cascade_id>/<epoch_ms>/<trajectory_id>/<step>`
+ *   request.labels → cascade_id, root_cascade_id, trajectory_id, request_id
+ *     (`<trajectory_id>-<step>`), last_step_index, model_enum and the used_*
+ *     flags, all strings.
+ * `model_enum` is the Hub's own placeholder table (e.g. MODEL_PLACEHOLDER_M318),
+ * which we have no mapping for, so it is omitted rather than guessed.
+ */
+function buildIdeIdentity({ body, request, credentials, model, requestType }) {
+  const incoming = ANTIGRAVITY_IDE_REQUEST_ID_RE.test(body?.requestId || "") ? body.requestId : "";
+  if (incoming) {
+    const [, conversationId, , trajectoryId, step] = incoming.split("/");
+    return { conversationId, trajectoryId, step: Number(step) || 1, requestId: incoming };
+  }
 
   const sessionId = request?.sessionId || body?.request?.sessionId || credentials?._clientSessionId || credentials?.connectionId || credentials?.email || "anonymous";
   const conversationId = uuidFromSeed(`antigravity:conversation:${sessionId}`);
   const trajectoryId = uuidFromSeed(`antigravity:trajectory:${sessionId}:${model}:${requestType}`);
   const contentCount = Array.isArray(request?.contents) ? request.contents.length : 1;
   const step = Math.max(1, contentCount * 2 - 1);
-  return `agent/${conversationId}/${Date.now()}/${trajectoryId}/${step}`;
+  return {
+    conversationId,
+    trajectoryId,
+    step,
+    requestId: `agent/${conversationId}/${Date.now()}/${trajectoryId}/${step}`,
+  };
 }
 
 export class AntigravityExecutor extends BaseExecutor {
@@ -293,19 +319,32 @@ export class AntigravityExecutor extends BaseExecutor {
 
     this._lastSessionId = transformedRequest.sessionId; // cached for buildHeaders (base.execute order)
 
-    // Official Antigravity client omits `requestType` entirely on the agent
-    // (chat) path. Sending `requestType: "agent"` here (or leaking it through
-    // from an upstream envelope via the ...body spread below) makes Google
-    // bucket the request and return a detail-free 429 RESOURCE_EXHAUSTED even
-    // with quota available. `image_gen` and
-    // `search` buckets are unaffected and keep their own requestType.
-    delete body.requestType;
+    // Agent identity, captured from the shipped Hub 2.32.1 (2026-11-15): the
+    // agent turn carries `requestType: "agent"` plus a `labels` bag inside
+    // `request` (cascade/root_cascade/trajectory/request ids, step index and the
+    // used_* flags, all strings). Sending requestType WITHOUT those labels is
+    // what produced detail-free 429 RESOURCE_EXHAUSTED before, so both travel
+    // together. `model_enum` is the Hub's placeholder table, which we have no
+    // mapping for and therefore omit.
+    const identity = buildIdeIdentity({ body, request: transformedRequest, credentials, model, requestType: "agent" });
+    const stepIndex = String(Math.max(0, identity.step - 1));
+    transformedRequest.labels = {
+      cascade_id: identity.conversationId,
+      last_step_index: stepIndex,
+      request_id: `${identity.trajectoryId}-${stepIndex}`,
+      root_cascade_id: identity.conversationId,
+      trajectory_id: identity.trajectoryId,
+      used_claude: String(/^claude/i.test(model)),
+      used_claude_conservative: "false",
+      used_non_gemini_model: String(!/^gemini/i.test(model)),
+    };
 
     return {
       ...body,
       project: projectId,
       model: body.model || model,
       userAgent: "antigravity",
+      requestType: "agent",
       requestId: buildIdeRequestId({ body, request: transformedRequest, credentials, model, requestType: "agent" }),
       request: transformedRequest
     };

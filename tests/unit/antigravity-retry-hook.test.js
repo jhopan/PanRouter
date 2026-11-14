@@ -84,7 +84,7 @@ describe("antigravity computeRetryDelay hook (D3)", () => {
     expect(h).not.toHaveProperty("Accept");
   });
 
-  it("transforms chat requests with official IDE requestId shape and 64000 token cap", () => {
+  it("transforms chat requests with official IDE requestId shape and the Hub's 65536 token cap", () => {
     const out = ag.transformRequest("claude-opus-4-6-thinking", {
       request: {
         contents: [
@@ -97,6 +97,6 @@ describe("antigravity computeRetryDelay hook (D3)", () => {
     }, true, { projectId: "project-1", connectionId: "conn-1" });
 
     expect(out.requestId).toMatch(/^agent\/[0-9a-f-]{36}\/\d{13}\/[0-9a-f-]{36}\/\d+$/);
-    expect(out.request.generationConfig.maxOutputTokens).toBe(64000);
+    expect(out.request.generationConfig.maxOutputTokens).toBe(65536);
   });
 });
