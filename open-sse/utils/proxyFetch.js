@@ -9,6 +9,18 @@ import {
   isFreshSocketReplayEnabled,
 } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
+import { ensureClaudeCliVersion, applyClaudeCliVersion } from "./claudeCliVersion.js";
+
+const CLAUDE_UA_PROBE = /claude-cli\/\d/;
+function hasClaudeCliHeader(headers) {
+  if (!headers) return false;
+  const values = headers instanceof Headers
+    ? [...headers.values()]
+    : Array.isArray(headers)
+      ? headers.map((h) => h[1])
+      : Object.values(headers);
+  return values.some((v) => typeof v === "string" && CLAUDE_UA_PROBE.test(v));
+}
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
@@ -330,6 +342,14 @@ async function replayFreeTierRejectionDirect(url, options, proxied) {
 }
 
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
+  // Keep the spoofed Claude Code version current — new models require a minimum
+  // CLI version. Refresh in the background so an unreachable npm registry never
+  // adds latency; the request uses the version already known (fail-open floor).
+  if (hasClaudeCliHeader(options.headers)) {
+    void ensureClaudeCliVersion(originalFetch);
+    options = { ...options, headers: applyClaudeCliVersion(options.headers) };
+  }
+
   const targetUrl = typeof url === "string" ? url : url.toString();
 
   // Vercel relay: forward request via relay headers

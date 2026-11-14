@@ -10,6 +10,7 @@ import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
 import { extractApiKey } from "@/sse/services/auth.js";
 import { getApiKeyByKey } from "@/lib/db/index.js";
 import { filterModelsByKeyLimits } from "@/lib/apiKeyLimits.js";
@@ -383,6 +384,16 @@ export async function buildModelsList(kindFilter, options = {}) {
           || capabilitiesFromServiceKind(customKind || liveKind)
           || (kind === LLM_KIND ? getCapabilitiesForModel(providerId, modelId) : null);
         if (caps) model.capabilities = caps;
+        // Selectable reasoning levels (the set the dashboard picker shows) so
+        // clients can build their effort selector from the gateway instead of
+        // keeping a per-model table. Omitted when the model has no reasoning.
+        // Registry/capabilities-pinned — never a live provider fetch.
+        if (kind === LLM_KIND || allowAsLlm) {
+          const thinkingLevels = getThinkingLevels(providerId, modelId);
+          if (Array.isArray(thinkingLevels) && thinkingLevels.length > 0) {
+            model.thinking_levels = thinkingLevels;
+          }
+        }
         // Token limits under the snake_case names the OpenAI/OpenRouter
         // convention uses. `capabilities.contextWindow` is camelCase and nested,
         // so clients matching context_length find nothing, fall back to guessing

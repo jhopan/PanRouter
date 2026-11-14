@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Badge, Button, Card, CardSkeleton, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
 import { useNotificationStore } from "@/store/notificationStore";
+import { filterProxyPools, getVisibleProxyPoolSelection, updateProxyPoolSelection } from "@/shared/utils/proxyPoolSelection";
 
 function getStatusVariant(status) {
   if (status === "active") return "success";
@@ -15,6 +16,18 @@ function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Never";
   return date.toLocaleString();
+}
+
+function getPoolPlatform(pool) {
+  if (pool.type === "cloudflare") return "cloudflare";
+  if (pool.type === "vercel") return "vercel";
+  if (pool.type === "deno") return "deno";
+  const url = pool.proxyUrl || "";
+  if (url.includes("netlify.app") || url.includes("netlify.com")) return "netlify";
+  if (url.includes("workers.dev")) return "cloudflare";
+  if (url.includes("vercel.app")) return "vercel";
+  if (url.includes("deno.dev") || url.includes("deno.net")) return "deno";
+  return "custom";
 }
 
 function normalizeFormData(data = {}) {
@@ -93,12 +106,14 @@ export default function ProxyPoolsPage() {
   const [importing, setImporting] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [testingId, setTestingId] = useState(null);
-  const [selectedIds, setSelectedIds] = useState([]);
+  const [selectedPoolIds, setSelectedIds] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all");
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthProgress, setHealthProgress] = useState({ current: 0, total: 0 });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const relayMenuRef = useRef(null);
+  const selectionAnchorRef = useRef(null);
   const notify = useNotificationStore();
 
   useEffect(() => {
@@ -256,13 +271,33 @@ export default function ProxyPoolsPage() {
     }
   };
 
-  const allSelected = proxyPools.length > 0 && selectedIds.length === proxyPools.length;
-  const toggleSelect = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const toggleSelectAll = () => setSelectedIds(allSelected ? [] : proxyPools.map((p) => p.id));
-  const clearSelection = () => setSelectedIds([]);
+  // The platform chips and the status filter both narrow the list; bulk
+  // actions and selection must act on what is actually visible.
+  const visiblePools = useMemo(() => {
+    const byPlatform = platformFilter ? proxyPools.filter((p) => getPoolPlatform(p) === platformFilter) : proxyPools;
+    return filterProxyPools(byPlatform, statusFilter);
+  }, [proxyPools, platformFilter, statusFilter]);
+  const selectedIds = getVisibleProxyPoolSelection(visiblePools, selectedPoolIds);
+  const visiblePoolsRef = useRef([]);
+  useEffect(() => { visiblePoolsRef.current = visiblePools; }, [visiblePools]);
+
+  const allSelected = visiblePools.length > 0 && selectedIds.length === visiblePools.length;
+  const toggleSelect = (id, checked, shiftKey) => {
+    const anchorId = selectionAnchorRef.current;
+    setSelectedIds((prev) => updateProxyPoolSelection(visiblePools, prev, { id, checked, shiftKey, anchorId }));
+    selectionAnchorRef.current = id;
+  };
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? [] : visiblePools.map((pool) => pool.id));
+    selectionAnchorRef.current = null;
+  };
+  const clearSelection = () => {
+    setSelectedIds([]);
+    selectionAnchorRef.current = null;
+  };
 
   const bulkSetActive = async (isActive) => {
-    const targets = selectedIds.length > 0 ? selectedIds : proxyPools.map((p) => p.id);
+    const targets = selectedIds.length > 0 ? selectedIds : visiblePools.map((p) => p.id);
     if (targets.length === 0) return;
     setBulkBusy(true);
     try {
@@ -291,10 +326,13 @@ export default function ProxyPoolsPage() {
       message: `Delete ${selectedIds.length} proxy pool(s)?`,
       onConfirm: async () => {
         setConfirmState(null);
+        // A pending test can change a pool's status while confirmation is open.
+        const targets = getVisibleProxyPoolSelection(visiblePoolsRef.current, selectedIds);
+        if (targets.length === 0) return;
         setBulkBusy(true);
         try {
           let ok = 0; let blocked = 0; let failed = 0;
-          for (const id of selectedIds) {
+          for (const id of targets) {
             try {
               const res = await fetch(`/api/proxy-pools/${id}`, { method: "DELETE" });
               if (res.ok) ok += 1;
@@ -314,8 +352,8 @@ export default function ProxyPoolsPage() {
 
   const handleHealthCheck = async () => {
     const targets = selectedIds.length > 0
-      ? proxyPools.filter((p) => selectedIds.includes(p.id))
-      : proxyPools;
+      ? visiblePools.filter((p) => selectedIds.includes(p.id))
+      : visiblePools;
     if (targets.length === 0) return;
     setHealthChecking(true);
     setHealthProgress({ current: 0, total: targets.length });
@@ -670,25 +708,8 @@ export default function ProxyPoolsPage() {
     [proxyPools]
   );
 
-  function getPoolPlatform(pool) {
-    if (pool.type === "cloudflare") return "cloudflare";
-    if (pool.type === "vercel") return "vercel";
-    if (pool.type === "deno") return "deno";
-    const url = pool.proxyUrl || "";
-    if (url.includes("netlify.app") || url.includes("netlify.com")) return "netlify";
-    if (url.includes("workers.dev")) return "cloudflare";
-    if (url.includes("vercel.app")) return "vercel";
-    if (url.includes("deno.dev") || url.includes("deno.net")) return "deno";
-    return "custom";
-  }
-
-  const filteredPools = useMemo(() => {
-    if (!platformFilter) return proxyPools;
-    return proxyPools.filter((p) => getPoolPlatform(p) === platformFilter);
-  }, [proxyPools, platformFilter]);
-
   const handleTestAll = async () => {
-    const targets = filteredPools.filter((p) => p.id);
+    const targets = visiblePools.filter((p) => p.id);
     for (const pool of targets) {
       try {
         await fetch(`/api/proxy-pools/${pool.id}/test`, { method: "POST" });
@@ -794,15 +815,29 @@ export default function ProxyPoolsPage() {
 
       <Card>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          {proxyPools.length > 0 && (
+          <label className="flex items-center gap-2 text-xs text-text-muted">
+            Status
+            <select
+              value={statusFilter}
+              disabled={bulkBusy || healthChecking}
+              onChange={(event) => { setStatusFilter(event.target.value); clearSelection(); }}
+              className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-text-main"
+            >
+              <option value="all">All</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </label>
+          {visiblePools.length > 0 && (
             <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer">
               <input
                 type="checkbox"
                 checked={allSelected}
                 onChange={toggleSelectAll}
+                disabled={bulkBusy || healthChecking}
                 className="size-4 rounded border-black/20 dark:border-white/20"
               />
-              {allSelected ? "Unselect all" : "Select all"}
+              {allSelected ? "Unselect visible" : "Select all visible"}
             </label>
           )}
           <Badge variant="default">Total: {proxyPools.length}</Badge>
@@ -872,15 +907,20 @@ export default function ProxyPoolsPage() {
             </p>
             <Button icon="add" onClick={openCreateModal}>Add Proxy Pool</Button>
           </div>
+        ) : visiblePools.length === 0 ? (
+          <div className="text-center py-10">
+            <p className="text-text-main font-medium mb-1">No proxy pools match the current filters</p>
+            <p className="text-sm text-text-muted">Clear the platform chip or set Status back to All.</p>
+          </div>
         ) : (
           <div className="flex flex-col divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-            {filteredPools.map((pool) => (
+            {visiblePools.map((pool) => (
               <div key={pool.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(pool.id)}
-                    onChange={() => toggleSelect(pool.id)}
+                    onChange={(event) => toggleSelect(pool.id, event.target.checked, event.nativeEvent.shiftKey)}
                     className="mt-1 size-4 shrink-0 rounded border-black/20 dark:border-white/20"
                   />
                   <div className="min-w-0 flex-1">

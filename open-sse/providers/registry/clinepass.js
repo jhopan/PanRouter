@@ -36,6 +36,11 @@ export default {
         "clineHeaders",
       ],
     },
+    // Dashboard quota: five_hour / weekly / monthly percentUsed windows.
+    // Accepts ClinePass API keys and WorkOS OAuth (Bearer workos:<JWT>).
+    usage: {
+      url: "https://api.cline.bot/api/v1/users/me/plan/usage-limits",
+    },
   },
   models: [
     { id: "cline-pass/glm-5.2", name: "GLM-5.2 (ClinePass)" },
@@ -59,5 +64,10 @@ export default {
   thinkingConfig: {
     options: ["auto", "on", "off"],
     defaultMode: "auto",
+  },
+  features: {
+    usage: true,
+    // API-key connections use the same usage-limits endpoint (plain Bearer).
+    usageApikey: true,
   },
 };

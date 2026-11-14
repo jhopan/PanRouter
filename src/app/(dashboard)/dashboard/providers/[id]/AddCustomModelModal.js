@@ -2,14 +2,33 @@
 
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Button, Modal, Toggle } from "@/shared/components";
+import { Button, Modal, Select, Toggle } from "@/shared/components";
 import { CAPACITY_META } from "@/shared/constants/models";
 
 const defaultCaps = () => Object.fromEntries(Object.keys(CAPACITY_META).map((key) => [key, false]));
 
+// Model type is stored on the custom-model record (/api/models/custom POST
+// `type`), which is what the dispatcher and the per-kind model lists read.
+const MODEL_TYPES = [
+  { value: "llm", label: "Chat / LLM" },
+  { value: "image", label: "Image generation" },
+  { value: "tts", label: "Text to speech (TTS)" },
+  { value: "stt", label: "Speech to text (STT)" },
+  { value: "embedding", label: "Embeddings" },
+];
+
+const MODEL_TYPE_HINT = {
+  llm: "Chat models appear in this provider's Available Models.",
+  image: "Image models are called via /v1/images/generations.",
+  tts: "Speech models are called via /v1/audio/speech.",
+  stt: "Transcription models are called via /v1/audio/transcriptions.",
+  embedding: "Embedding models are called via /v1/embeddings.",
+};
+
 export default function AddCustomModelModal({ isOpen, providerAlias, providerDisplayAlias, onSave, onClose }) {
   const [modelId, setModelId] = useState("");
   const [caps, setCaps] = useState(defaultCaps);
+  const [modelType, setModelType] = useState("llm");
   const [testStatus, setTestStatus] = useState(null); // null | "testing" | "ok" | "error"
   const [testError, setTestError] = useState("");
   const [fullTesting, setFullTesting] = useState(false);
@@ -18,7 +37,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
 
   // Reset state when modal opens
   useEffect(() => {
-    if (isOpen) { setModelId(""); setCaps(defaultCaps()); setTestStatus(null); setTestError(""); setFullResult(null); }
+    if (isOpen) { setModelId(""); setCaps(defaultCaps()); setModelType("llm"); setTestStatus(null); setTestError(""); setFullResult(null); }
   }, [isOpen]);
 
   // Strip provider's own alias prefix (e.g. "cc/model" -> "model" for cc provider)
@@ -36,7 +55,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerAlias}/${cleanId}` }),
+        body: JSON.stringify({ model: `${providerAlias}/${cleanId}`, kind: modelType }),
       });
       const data = await res.json();
       setTestStatus(data.ok ? "ok" : "error");
@@ -81,7 +100,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     if (!cleanId || saving) return;
     setSaving(true);
     try {
-      await onSave(cleanId, caps);
+      await onSave(cleanId, modelType, modelType === "llm" ? caps : undefined);
     } finally {
       setSaving(false);
     }
@@ -91,9 +110,26 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     if (e.key === "Enter") handleTest();
   };
 
+  // Capabilities are chat-only probes, so switching types drops them.
+  const handleTypeChange = (e) => {
+    setModelType(e.target.value);
+    setCaps(defaultCaps());
+    setTestStatus(null);
+    setTestError("");
+    setFullResult(null);
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add Custom Model">
       <div className="flex flex-col gap-4">
+        <Select
+          label="Model type"
+          value={modelType}
+          options={MODEL_TYPES}
+          onChange={handleTypeChange}
+          disabled={saving || testStatus === "testing"}
+          hint={MODEL_TYPE_HINT[modelType]}
+        />
         <div>
           <label className="text-sm font-medium mb-1.5 block">Model ID</label>
           <div className="flex gap-2">
@@ -115,36 +151,40 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
             >
               {testStatus === "testing" ? "Testing..." : "Test"}
             </Button>
-            <Button
-              variant="secondary"
-              icon="troubleshoot"
-              loading={fullTesting}
-              onClick={handleTestFull}
-              disabled={!modelId.trim() || fullTesting}
-            >
-              {fullTesting ? "Detecting..." : "Test Full"}
-            </Button>
+            {modelType === "llm" && (
+              <Button
+                variant="secondary"
+                icon="troubleshoot"
+                loading={fullTesting}
+                onClick={handleTestFull}
+                disabled={!modelId.trim() || fullTesting}
+              >
+                {fullTesting ? "Detecting..." : "Test Full"}
+              </Button>
+            )}
           </div>
           <p className="text-xs text-text-muted mt-1">
             Sent to provider as: <code className="font-mono bg-sidebar px-1 rounded">{stripAlias(modelId.trim()) || "model-id"}</code>
           </p>
         </div>
 
-        <div>
-          <label className="text-sm font-medium mb-1.5 block">Capabilities</label>
-          <div className="flex flex-wrap gap-4">
-            {Object.entries(CAPACITY_META).map(([key, meta]) => (
-              <Toggle
-                key={key}
-                checked={!!caps[key]}
-                onChange={(v) => setCaps((prev) => ({ ...prev, [key]: v }))}
-                label={meta.label}
-                description={meta.desc}
-                size="sm"
-              />
-            ))}
+        {modelType === "llm" && (
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Capabilities</label>
+            <div className="flex flex-wrap gap-4">
+              {Object.entries(CAPACITY_META).map(([key, meta]) => (
+                <Toggle
+                  key={key}
+                  checked={!!caps[key]}
+                  onChange={(v) => setCaps((prev) => ({ ...prev, [key]: v }))}
+                  label={meta.label}
+                  description={meta.desc}
+                  size="sm"
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Test Full result */}
         {fullResult && (

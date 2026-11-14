@@ -147,6 +147,9 @@ import p144 from "./bedrock-xai.js";
 import p145 from "./tinyfish.js";
 import p146 from "./v1m.js";
 import p147 from "./qoder-cn.js";
+import p148 from "./synthetic.js";
+import p149 from "./sensenova.js";
+import p150 from "./sensenova-intl.js";
 
 export default [
   p0,
@@ -295,4 +298,7 @@ export default [
   p145,
   p146,
   p147,
+  p148,
+  p149,
+  p150,
 ];

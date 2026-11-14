@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { GEMINI_CONFIG } from "@/lib/oauth/constants/oauth";
-import { refreshGoogleToken, refreshCodexToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
+import { refreshGoogleToken, refreshCodexToken, refreshClaudeOAuthToken, updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveOllamaLocalHost } from "open-sse/config/providers.js";
 import { getModelsByProviderId } from "open-sse/config/providerModels.js";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
@@ -135,17 +135,68 @@ const buildOAuthResolver = ({ refreshFn, fetchFn, parseFn, errorLabel }) => asyn
   return { models: [], warning };
 };
 
-// Provider models endpoints configuration
-const PROVIDER_MODELS_CONFIG = {
-  claude: {
-    url: "https://api.anthropic.com/v1/models",
+// Claude's live catalog. OAuth (sk-ant-oat) connections need Bearer + the oauth
+// beta header while plain API keys keep x-api-key; a stale OAuth token is
+// refreshed once on 401/403. Live ids let new Claude models show up without
+// waiting for a release — any failure returns no models so the dashboard keeps
+// the registry-pinned catalog.
+const CLAUDE_MODELS_URL = "https://api.anthropic.com/v1/models?limit=1000";
+
+const parseClaudeModels = (data) => (data?.data || []).map((model) => ({
+  id: model.id,
+  name: model.display_name || model.id,
+}));
+
+const resolveClaudeModels = async (connection) => {
+  const oauth = Boolean(connection.accessToken);
+  let token = oauth ? connection.accessToken : connection.apiKey;
+  if (!token) return { error: "No valid token found", status: 401 };
+
+  const request = (value) => fetch(CLAUDE_MODELS_URL, {
     method: "GET",
     headers: {
       "Anthropic-Version": "2023-06-01",
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...(oauth
+        ? { "Anthropic-Beta": "oauth-2025-04-20", "Authorization": `Bearer ${value}` }
+        : { "x-api-key": value }),
     },
-    authHeader: "x-api-key",
-    parseResponse: (data) => data.data || []
+  });
+
+  try {
+    let response = await request(token);
+    if (!response.ok && oauth && (response.status === 401 || response.status === 403) && connection.refreshToken) {
+      const refreshed = await refreshClaudeOAuthToken(connection.refreshToken);
+      if (refreshed?.accessToken) {
+        await updateProviderCredentials(connection.id, {
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken || connection.refreshToken,
+          expiresIn: refreshed.expiresIn,
+        });
+        connection.accessToken = refreshed.accessToken;
+        if (refreshed.refreshToken) connection.refreshToken = refreshed.refreshToken;
+        token = refreshed.accessToken;
+        response = await request(token);
+      }
+    }
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log("Failed to fetch Claude models (falling back to static):", response.status, errorText);
+      return { models: [], warning: `Failed to fetch Claude models: ${response.status}` };
+    }
+    const models = parseClaudeModels(await response.json());
+    if (models.length > 0) return { models };
+    return { models: [], warning: "Claude returned no models; using the static catalog." };
+  } catch (error) {
+    console.log("Failed to fetch Claude models (falling back to static):", error.message);
+    return { models: [], warning: `Failed to fetch Claude models: ${error.message}` };
+  }
+};
+
+// Provider models endpoints configuration
+const PROVIDER_MODELS_CONFIG = {
+  claude: {
+    customResolver: resolveClaudeModels,
   },
   gemini: {
     url: "https://generativelanguage.googleapis.com/v1beta/models",
@@ -269,6 +320,7 @@ const PROVIDER_MODELS_CONFIG = {
   nanobanana: createOpenAIModelsConfig("https://api.nanobananaapi.ai/v1/models"),
   chutes: createOpenAIModelsConfig("https://llm.chutes.ai/v1/models"),
   nvidia: createOpenAIModelsConfig("https://integrate.api.nvidia.com/v1/models"),
+  synthetic: createOpenAIModelsConfig("https://api.synthetic.new/openai/v1/models"),
   assemblyai: createOpenAIModelsConfig("https://api.assemblyai.com/v1/models"),
   "vercel-ai-gateway": createOpenAIModelsConfig("https://ai-gateway.vercel.sh/v1/models"),
   kimchi: {
