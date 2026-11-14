@@ -1,3 +1,54 @@
+# v0.5.88.34 (2026-11-15)
+
+## Antigravity: envelope agent asli tertangkap (capture lanjutan)
+
+Capture relay: Hub dijalankan dengan `CLOUD_CODE_URL` menunjuk listener lokal
+yang **meneruskan** request ke Google asli (agar UI tetap berfungsi), lalu prompt
+dikirim lewat CDP ke renderer-nya (port debug privat). Header/body dicatat,
+`authorization` diredaksi.
+
+## Bukti baru
+
+`:streamGenerateContent?alt=sse`, giliran `requestType: "agent"`:
+
+| Field | Nilai asli |
+|---|---|
+| header | `user-agent`, `authorization`, `content-type`, `accept-encoding`, `transfer-encoding: chunked` — tanpa header lain |
+| `requestId` | `agent/<cascade_id>/<epoch_ms>/<trajectory_id>/<step>` |
+| `request.labels` | `cascade_id`, `root_cascade_id`, `trajectory_id`, `request_id` = `<trajectory_id>-<step>`, `last_step_index`, `model_enum`, `used_claude`, `used_claude_conservative`, `used_non_gemini_model` — semuanya string |
+| `request.generationConfig` | `maxOutputTokens: 65536`, `thinkingConfig: {includeThoughts, thinkingLevel}` |
+| `sessionId` | int64 negatif sebagai string |
+| `project` / `model` / `userAgent` | project akun, id model, `"antigravity"` |
+
+`retrieveUserQuotaSummary` (dari capture relay dengan project asli):
+header hanya `user-agent`, `authorization`, `content-type`, `accept-encoding`;
+body `{"project":"…"}`. `fetchAvailableModels` juga `{"project":"…"}` — capture
+sebelumnya terlihat `{}` karena saat itu belum ada project.
+
+## Perbaikan
+
+- **Giliran agent kini mengirim `requestType: "agent"` + bag `labels`** persis
+  Hub. Sebelumnya `requestType` sengaja dihapus karena upstream melihat 429
+  tanpa detail — tetapi di klien asli field itu selalu datang **bersama**
+  `labels`; mengirim salah satu tanpa yang lain adalah kombinasi yang tidak
+  pernah dikirim Hub.
+- **`maxOutputTokens` cap 64000 → 65536** mengikuti nilai Hub.
+- **`retrieveUserQuotaSummary` tidak lagi mengirim `X-Client-Name` /
+  `X-Client-Version`.** Kedua header itu tidak pernah ada di wire klien asli,
+  termasuk pada endpoint ini.
+- `model_enum` sengaja tidak dikirim: itu tabel placeholder internal Hub dan kita
+  tidak punya pemetaan model → enum; menebak nilainya lebih buruk daripada
+  tidak mengirim.
+
+## Test
+
+- `antigravity-agent-envelope` (4) men-pin requestType, format requestId,
+  isi labels, cap 65536, reuse requestId dari client, dan flag `used_*` untuk
+  model Claude.
+- `antigravity-weekly-quota` + `antigravity-quota-wire` men-pin header set hasil
+  capture (tanpa `X-Client-*`).
+- Battery Antigravity + translator + golden: 537 lulus, 0 gagal.
+
 # v0.5.88.33 (2026-11-15)
 
 ## Antigravity: kecocokan wire dengan Hub 2.32.1 (hasil capture ulang)

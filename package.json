@@ -1,6 +1,6 @@
 {
   "name": "panrouter-app",
-  "version": "0.5.88.33",
+  "version": "0.5.88.34",
   "description": "9Router web dashboard",
   "private": true,
   "scripts": {
