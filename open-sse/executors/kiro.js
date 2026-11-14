@@ -12,6 +12,24 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
 
 const KIRO_REPAIR_BUFFER_MAX_BYTES = 8 * 1024 * 1024;
+// Regions each Amazon service host actually serves. A region outside a
+// service's set is never spliced into that service's hostname:
+// `codewhisperer` only answers in us-east-1, so splicing eu-central-1 there
+// built `codewhisperer.eu-central-1.amazonaws.com` — an NXDOMAIN host that
+// burned the 502 retry ladder (~18s to first byte) while q.eu-central-1
+// served the very same request.
+const KIRO_SERVICE_REGIONS = {
+  q: new Set(["us-east-1", "eu-central-1"]),
+  runtime: new Set(["us-east-1", "eu-central-1"]),
+  codewhisperer: new Set(["us-east-1"]),
+};
+// Every region any service covers. A region read out of the profileArn is
+// honoured only when it appears here — the hostname carries the bearer token,
+// so an unchecked string from the credential must not be able to steer it to
+// an origin the connection never chose.
+const KIRO_KNOWN_REGIONS = new Set(
+  Object.values(KIRO_SERVICE_REGIONS).flatMap((set) => [...set]),
+);
 const KIRO_REPAIR_HEARTBEAT_MS = 10_000;
 const KIRO_SHORT_FINAL_MAX_CHARS = 800;
 const EVENTSTREAM_MAX_MESSAGE_BYTES = 24 * 1024 * 1024;
@@ -319,14 +337,24 @@ export class KiroExecutor extends BaseExecutor {
     const m = typeof profileArn === "string"
       ? profileArn.toLowerCase().match(/^arn:aws:codewhisperer:([a-z0-9-]+):/)
       : null;
-    const arnRegion = m?.[1];
+    // Honour an ARN region only when some service actually covers it. The
+    // match above accepts any [a-z0-9-] run, so without this check a credential
+    // could name a region the connection never chose — and that string ends up
+    // in the hostname that receives the bearer token.
+    const arnRegionRaw = m?.[1];
+    const arnRegion = arnRegionRaw && KIRO_KNOWN_REGIONS.has(arnRegionRaw) ? arnRegionRaw : null;
     const storedRegion = (credentials?.providerSpecificData?.region || "us-east-1").trim().toLowerCase();
-    const profileRegions = ["us-east-1", "eu-central-1"];
-    const region = arnRegion || (profileRegions.includes(storedRegion) ? storedRegion : "us-east-1");
-    const regionalize = (u) =>
-      region && region !== "us-east-1" && u.includes("amazonaws.com")
-        ? u.replace(/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/, `$1.${region}.amazonaws.com`)
-        : u;
+    const region = arnRegion || (KIRO_KNOWN_REGIONS.has(storedRegion) ? storedRegion : "us-east-1");
+    // Per service: only splice a region the service serves, otherwise keep the
+    // us-east-1 host. A host nothing answers for burns the retry ladder before
+    // the working sibling endpoint is even tried.
+    const regionalize = (u) => {
+      if (!u.includes("amazonaws.com")) return u;
+      const service = u.match(/\/\/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/)?.[1];
+      const covered = KIRO_SERVICE_REGIONS[service];
+      if (!covered || !covered.has(region)) return u;
+      return u.replace(/([a-z]+)\.[a-z0-9-]+\.amazonaws\.com/, `$1.${region}.amazonaws.com`);
+    };
 
     const amazon = baseUrls.filter((u) => u.includes("amazonaws.com")).map(regionalize);
     const others = baseUrls.filter((u) => !u.includes("amazonaws.com"));

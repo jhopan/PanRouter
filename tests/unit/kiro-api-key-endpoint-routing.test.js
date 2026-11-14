@@ -36,9 +36,10 @@ describe("Kiro auth-aware endpoint routing", () => {
     ]);
   });
 
-  it("regionalizes AWS endpoints only for known Q profile regions (eu-central-1)", () => {
+  it("regionalizes only the services that serve the connection region (eu-central-1)", () => {
     // eu-west-1 is a valid IdC region but NOT a Q Developer profile region, so
     // routing stays us-east-1 (only us-east-1 / eu-central-1 host profiles).
+    // codewhisperer only answers in us-east-1, so it must not be regionalized.
     expect(executor.getOrderedBaseUrls(credentials("idc", "eu-west-1"))).toEqual([
       Q,
       CODEWHISPERER,
@@ -46,7 +47,7 @@ describe("Kiro auth-aware endpoint routing", () => {
     ]);
     expect(executor.getOrderedBaseUrls(credentials("idc", "eu-central-1"))).toEqual([
       "https://q.eu-central-1.amazonaws.com/generateAssistantResponse",
-      "https://codewhisperer.eu-central-1.amazonaws.com/generateAssistantResponse",
+      "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
       RUNTIME,
     ]);
   });
@@ -62,7 +63,7 @@ describe("Kiro auth-aware endpoint routing", () => {
       })
     ).toEqual([
       "https://q.eu-central-1.amazonaws.com/generateAssistantResponse",
-      "https://codewhisperer.eu-central-1.amazonaws.com/generateAssistantResponse",
+      "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
       RUNTIME,
     ]);
   });
