@@ -128,3 +128,18 @@ describe("the direct path never uses the uncapped default pool", () => {
     expect(source).toMatch(/return fetchDirect\(url, options\);/);
   });
 });
+
+describe("no MITM DNS bypass in the request path", () => {
+  it("has no bypass list or raw-socket rewrite left", () => {
+    // The bypass sent every Kiro / Copilot / Cursor / Antigravity request through
+    // a manual raw-TLS socket, unconditionally — it never checked whether MITM
+    // DNS was enabled or the host was redirected. Where that socket failed each
+    // attempt burned its full connect timeout: 35s for one Kiro request, ~3s
+    // once removed. MITM is not used here, so it must not creep back in.
+    const source = readFileSync(PROXY_FETCH, "utf8");
+    expect(source).not.toMatch(/MITM_BYPASS_HOSTS/);
+    expect(source).not.toMatch(/shouldBypassMitmDns/);
+    expect(source).not.toMatch(/createBypassRequest/);
+    expect(source).not.toMatch(/resolveRealIP/);
+  });
+});
