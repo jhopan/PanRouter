@@ -1,3 +1,4 @@
+export const HEADROOM_TOOL_OUTPUT_MAX_DEPTH = 8; // bound native tool-output traversal
 // RTK port constants (mirror Rust defaults)
 export const RAW_CAP = 10 * 1024 * 1024;      // 10 MiB
 export const MIN_COMPRESS_SIZE = 500;          // bytes; skip tiny blobs

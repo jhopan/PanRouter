@@ -476,6 +476,22 @@ describe("compressMessages (enabled)", () => {
     expect(body.messages[0].content[0].content).toBe(big);
   });
 
+  it("skips status:\"error\" tool results and Responses outputs", () => {
+    const big = makeLongDiff();
+    const body = { messages: [{ role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_1", content: big, status: "error" }] }] };
+    const stats = compressMessages(body, true);
+    expect(stats.hits.length).toBe(0);
+    expect(body.messages[0].content[0].content).toBe(big);
+
+    const responses = { input: [
+      { type: "function_call_output", call_id: "call_1", status: "error", output: big },
+      { type: "function_call_output", call_id: "call_2", is_error: true, output: big },
+    ] };
+    expect(compressMessages(responses, true).hits.length).toBe(0);
+    expect(responses.input[0].output).toBe(big);
+    expect(responses.input[1].output).toBe(big);
+  });
+
   it("skips below MIN_COMPRESS_SIZE (<500 bytes)", () => {
     const small = "diff --git a/x b/x\n@@ -1 +1 @@\n+a";
     const body = { messages: [{ role: "tool", tool_call_id: "x", content: small }] };

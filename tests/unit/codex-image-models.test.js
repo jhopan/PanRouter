@@ -2,12 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getModelsByProviderId, getModelType, isValidModel } from "../../open-sse/config/providerModels.js";
 import { getModelInfoCore } from "../../open-sse/services/model.js";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
+import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 
-const models = ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"];
+const models = ["gpt-6-sol"];
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("Codex GPT-5.6 image models", () => {
+describe("Codex GPT-6 image models", () => {
+  it.each(models)("matches %s-image before the generic gpt-6 chat caps", (model) => {
+    expect(getCapabilitiesForModel("codex", `${model}-image`)).toMatchObject({ imageOutput: true, reasoning: false, vision: false });
+  });
   it.each(models)("exposes %s-image as an image model while retaining its chat entry", (model) => {
     const catalog = getModelsByProviderId("codex");
     expect(catalog.filter((entry) => entry.id === `${model}-image`)).toHaveLength(1);

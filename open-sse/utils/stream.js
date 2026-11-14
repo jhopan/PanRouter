@@ -2,7 +2,10 @@ import { translateResponse, initState } from "../translator/index.js";
 import { FORMATS } from "../translator/formats.js";
 import { trackPendingRequest, appendRequestLog } from "@/lib/usageDb.js";
 import { extractUsage, mergeUsage, hasValidUsage, estimateUsage, logUsage, addBufferToUsage, filterUsageForFormat, COLORS } from "./usageTracking.js";
-import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE } from "./streamHelpers.js";
+import { parseSSELine, hasValuableContent, fixInvalidId, formatSSE, ensureStreamToolCallIds } from "./streamHelpers.js";
+import { restoreToolNames } from "./opencodeFingerprint.js";
+import { liftReasoningAliases } from "../translator/concerns/reasoning.js";
+import { PROVIDERS } from "../config/providers.js";
 import { getOpenAIResponsesEventName, isOpenAIResponsesTerminalEvent, formatIncompleteOpenAIResponsesStreamFailure } from "./responsesStreamHelpers.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
 
@@ -59,9 +62,21 @@ export function createSSEStream(options = {}) {
   // Per-stream decoder with stream:true to correctly handle multi-byte chars split across chunks
   const decoder = new TextDecoder("utf-8", { fatal: false });
 
+  // Tool-call ids already sent to the client, keyed by the tool-call index.
+  // A late fragment that opens a NEW index without an id must not reach the
+  // client as-is: strict OpenAI-compatible SDKs abort the turn on a
+  // tool_call without a string id (#4992).
+  const seenToolCallIds = new Map();
+
   const state = mode === STREAM_MODE.TRANSLATE
     ? { ...initState(sourceFormat), provider, toolNameMap, customToolNames: new Set(customToolNames || []), model, sessionId: credentials?._clientSessionId || null }
     : null;
+
+  // Providers opting in via transport.quirks.reasoningAliasFields stream thinking
+  // as `reasoning` instead of reasoning_content; lift it in passthrough so
+  // reasoning-only chunks survive hasValuableContent and OpenAI-shaped clients
+  // (and the usage estimate) still see the thinking.
+  const liftAliases = mode === STREAM_MODE.PASSTHROUGH && !!PROVIDERS[provider]?.quirks?.reasoningAliasFields;
 
   let totalContentLength = 0;
   let accumulatedContent = "";
@@ -142,9 +157,27 @@ export function createSSEStream(options = {}) {
 
           if (trimmed.startsWith("data:") && trimmed.slice(5).trim() !== "[DONE]") {
             try {
-              const parsed = JSON.parse(trimmed.slice(5).trim());
+              let parsed = JSON.parse(trimmed.slice(5).trim());
 
               const idFixed = fixInvalidId(parsed);
+
+              // A fragment that opens a new tool-call index without an id breaks
+              // strict OpenAI-compatible clients. Mint/reuse one before the
+              // chunk reaches the client.
+              const toolCallIdFixed = ensureStreamToolCallIds(parsed, seenToolCallIds);
+
+              // The fingerprint pass renames a colliding caller tool to an alias
+              // (read -> read_client). On this path nothing restored it, so the
+              // client received a call to a tool it never declared and answered
+              // "Model tried to call unavailable tool 'read_client'" (#4986).
+              let toolNameRestored = false;
+              if (toolNameMap?.size) {
+                const restored = restoreToolNames(parsed, toolNameMap);
+                if (restored !== parsed) {
+                  parsed = restored;
+                  toolNameRestored = true;
+                }
+              }
 
               // Ensure OpenAI-required fields are present on streaming chunks (Letta compat)
               let fieldsInjected = false;
@@ -163,6 +196,20 @@ export function createSSEStream(options = {}) {
                   if (choice.content_filter_results !== undefined) {
                     delete choice.content_filter_results;
                     fieldsInjected = true;
+                  }
+                }
+              }
+
+              // Alias lanes: expose thinking as reasoning_content (additive) before
+              // the valuable-content check, so reasoning-only chunks survive.
+              if (liftAliases && parsed?.choices) {
+                for (const choice of parsed.choices) {
+                  if (choice?.delta) {
+                    const lifted = liftReasoningAliases(choice.delta);
+                    if (lifted !== choice.delta) {
+                      choice.delta = lifted;
+                      fieldsInjected = true;
+                    }
                   }
                 }
               }
@@ -216,7 +263,7 @@ export function createSSEStream(options = {}) {
                 parsed.usage = filterUsageForFormat(buffered, FORMATS.OPENAI);
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
-              } else if (idFixed || fieldsInjected) {
+              } else if (idFixed || fieldsInjected || toolCallIdFixed || toolNameRestored) {
                 output = `data: ${JSON.stringify(parsed)}\n`;
                 injectedUsage = true;
               }
@@ -514,11 +561,12 @@ export function createSSETransformStreamWithLogger(targetFormat, sourceFormat, p
   });
 }
 
-export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null) {
+export function createPassthroughStreamWithLogger(provider = null, reqLogger = null, model = null, connectionId = null, body = null, onStreamComplete = null, apiKey = null, toolNameMap = null) {
   return createSSEStream({
     mode: STREAM_MODE.PASSTHROUGH,
     provider,
     reqLogger,
+    toolNameMap,
     model,
     connectionId,
     body,

@@ -4,6 +4,7 @@ import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbe
 import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
+import { buildCommandCodeHeaders } from "open-sse/shared/commandCodeHeaders.js";
 import { ACCEPT_ENCODING } from "open-sse/utils/zstdCompat.js";
 import { resolveQoderCredentials } from "open-sse/services/qoderModels.js";
 import {
@@ -259,6 +260,21 @@ export async function POST(request) {
       }
 
       switch (provider) {
+        case "fal-ai": {
+          // Match saved-connection tests: check auth without queueing a paid image.
+          const res = await fetch("https://api.fal.ai/v1/models?limit=1", {
+            headers: { Authorization: `Key ${apiKey}` },
+            signal: AbortSignal.timeout(8000),
+          });
+          isValid = res.ok;
+          if (!isValid) {
+            error = res.status === 401 || res.status === 403
+              ? "Invalid API key"
+              : `Unable to verify API key (Fal returned ${res.status})`;
+          }
+          break;
+        }
+
         case "openai":
           const openaiRes = await fetch("https://api.openai.com/v1/models", {
             headers: { "Authorization": `Bearer ${apiKey}` },
@@ -388,6 +404,7 @@ export async function POST(request) {
         case "assemblyai":
         case "nanobanana":
         case "chutes":
+        case "runcrate":
         case "synthetic":
         case "xiaomi-mimo":
         case "xiaomi-tokenplan":
@@ -440,12 +457,7 @@ export async function POST(request) {
           }, false);
           const res = await fetch(cfg.baseUrl, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(cfg.headers || {}),
-              "x-session-id": crypto.randomUUID(),
-              "Authorization": `Bearer ${apiKey}`,
-            },
+            headers: buildCommandCodeHeaders({ apiKey, sessionId: payload.threadId }),
             body: JSON.stringify(payload),
           });
           isValid = res.status !== 401 && res.status !== 403;

@@ -28,6 +28,7 @@ export function compressMessages(body, enabled) {
 
       // Shape 4: OpenAI Responses — top-level { type:"function_call_output", output: string | [{type:"input_text", text}] }
       if (msg.type === "function_call_output") {
+        if (msg.is_error === true || msg.status === "error") continue; // preserve error traces
         if (typeof msg.output === "string") {
           msg.output = compressText(msg.output, stats, "openai-responses-string");
         } else if (Array.isArray(msg.output)) {
@@ -42,6 +43,7 @@ export function compressMessages(body, enabled) {
       }
 
       // Shape 1: OpenAI tool message — { role:"tool", content: "string" }
+      if (msg.role === "tool" && (msg.is_error === true || msg.status === "error")) continue;
       if (msg.role === "tool" && typeof msg.content === "string") {
         msg.content = compressText(msg.content, stats, "openai-tool");
         continue;
@@ -64,7 +66,7 @@ export function compressMessages(body, enabled) {
       for (let j = 0; j < msg.content.length; j++) {
         const block = msg.content[j];
         if (!block || block.type !== "tool_result") continue;
-        if (block.is_error === true) continue; // preserve error traces
+        if (block.is_error === true || block.status === "error") continue; // preserve error traces
 
         if (typeof block.content === "string") {
           // Shape 2: claude string form

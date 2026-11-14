@@ -113,24 +113,28 @@ Model: cx/gpt-5.2-codex
 
 ### Image Generation
 
-The Codex image catalog includes `cx/gpt-5.6-sol-image`,
-`cx/gpt-5.6-terra-image`, and `cx/gpt-5.6-luna-image`, alongside the existing
-GPT 5.5, 5.4, and 5.3 image aliases. Select them under **Image → OpenAI Codex**
-in the dashboard, or discover them with `GET /v1/models/image` after connecting
-a Codex account.
+The Codex image catalog includes `cx/gpt-6-sol-image` plus the GPT Image
+models (`cx/gpt-image-1.5`, `cx/gpt-image-2`, `cx/gpt-image-2.5`,
+`cx/gpt-image-2.5-flare`, `cx/gpt-image-2.5-sunburst`, `cx/gpt-image-2.6-flare`,
+`cx/gpt-image-2.6-sunburst`). Select them under **Image → OpenAI Codex** in the
+dashboard, or discover them with `GET /v1/models/image` after connecting a Codex
+account.
 
 ```bash
 curl http://localhost:20128/v1/images/generations \
   -H "Authorization: Bearer $NINE_ROUTER_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"cx/gpt-5.6-sol-image","prompt":"A blue square","size":"1024x1024"}'
+  -d '{"model":"cx/gpt-6-sol-image","prompt":"A blue square","size":"1024x1024"}'
 ```
 
-These are 9Router aliases: the image adapter removes `-image` and sends the
-underlying model an `image_generation` tool through the Codex Responses API.
-The same endpoint accepts an `image` reference for edits. Image generation
-requires an eligible ChatGPT Plus or higher account; availability of each
-underlying model and its image tool depends on the connected account.
+GPT Image models that stay inside native output scope (one auto-sized PNG, no
+extra compression) go to the Codex native Images API, including reference-image
+edits (`images/edits`). Requests that need explicit `n`/`size`/`output_format`
+controls, and the `*-image` aliases, use the Codex Responses API, where the
+adapter strips `-image` and hosts an `image_generation` tool on `gpt-6-sol`
+(falling back to `gpt-5.6-terra` when an account rejects that host). Image
+generation requires a paid ChatGPT plan; Free accounts are skipped for images
+but keep working for chat.
 
 ### Pro Tips
 

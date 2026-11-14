@@ -34,7 +34,20 @@ const STRIP_RULES = [
   // NVIDIA NIM treats `reasoning` and `reasoning_content` as aliases for one
   // field; sending both makes its deserializer report a duplicate field. Keep
   // the OpenAI canonical spelling on assistant history.
-  { provider: "nvidia", renameMessageFields: { reasoning: "reasoning_content" } },
+  // Also strip unsupported client metadata, Anthropic beta, thinking budget, and OpenAI extra params.
+  {
+    provider: "nvidia",
+    drop: [
+      "client_metadata",
+      "prompt_cache_key",
+      "service_tier",
+      "anthropic_beta",
+      "thinking_budget",
+      "user_id",
+      "custom_field",
+    ],
+    renameMessageFields: { reasoning: "reasoning_content" },
+  },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.

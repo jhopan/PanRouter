@@ -13,6 +13,10 @@ import { PROVIDERS, PROVIDER_MODELS, PROVIDER_MEDIA } from "../../open-sse/provi
 import { DefaultExecutor, getExecutor } from "../../open-sse/executors/index.js";
 import { getImageAdapter } from "../../open-sse/handlers/imageProviders/index.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
+import { liftReasoningAliases } from "../../open-sse/translator/concerns/reasoning.js";
+import { openAICompletionToClaudeMessage } from "../../open-sse/translator/concerns/claudeMessage.js";
+import { createSSEStream } from "../../open-sse/utils/stream.js";
+import { CLAUDE_BLOCK } from "../../open-sse/translator/schema/index.js";
 
 const CN = "sensenova";
 const INTL = "sensenova-intl";
@@ -150,5 +154,75 @@ describe("SenseNova capabilities", () => {
     }
     // The same id stays on the 1M row in the China catalog.
     expect(getCapabilitiesForModel(CN, "sensenova-6.8-flash-lite").contextWindow).toBe(1000000);
+  });
+});
+
+// SenseNova streams thinking as `reasoning` instead of reasoning_content, so both
+// sites opt into transport.quirks.reasoningAliasFields. The lift is additive and
+// scoped to the declaring provider (upstream 14b27dc7).
+describe("SenseNova reasoning alias", () => {
+  const reasoningOnlyChunk = JSON.stringify({
+    id: "chatcmpl-sn01",
+    object: "chat.completion.chunk",
+    created: 1700000000,
+    model: "sensenova-6.8-flash",
+    choices: [{ index: 0, delta: { reasoning: "step one" }, finish_reason: null }],
+  });
+
+  async function runPassthrough(provider, sse) {
+    const stream = createSSEStream({ mode: "passthrough", provider });
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    const decoder = new TextDecoder();
+    const readPromise = (async () => {
+      let out = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        out += decoder.decode(value, { stream: true });
+      }
+      return out;
+    })();
+    await writer.write(new TextEncoder().encode(sse));
+    await writer.close();
+    return readPromise;
+  }
+
+  it("declares the quirk on both sites", () => {
+    for (const id of [CN, INTL]) {
+      expect(PROVIDERS[id].quirks.reasoningAliasFields, id).toBe(true);
+    }
+  });
+
+  it("lifts `reasoning` into reasoning_content without dropping the alias", () => {
+    expect(liftReasoningAliases({ reasoning: "think" })).toEqual({
+      reasoning: "think",
+      reasoning_content: "think",
+    });
+    // Existing reasoning_content wins and the delta is returned untouched.
+    const delta = { reasoning_content: "canonical", reasoning: "later" };
+    expect(liftReasoningAliases(delta)).toBe(delta);
+    // Nothing to lift.
+    expect(liftReasoningAliases({ content: "hi" })).toEqual({ content: "hi" });
+  });
+
+  it("keeps reasoning-only passthrough chunks for a quirk provider", async () => {
+    const out = await runPassthrough(CN, `data: ${reasoningOnlyChunk}\n\n`);
+    expect(out).toContain(`"reasoning_content":"step one"`);
+    expect(out).toContain(`"reasoning":"step one"`);
+  });
+
+  it("leaves non-quirk providers alone (reasoning-only chunk still dropped)", async () => {
+    const out = await runPassthrough("deepseek", `data: ${reasoningOnlyChunk}\n\n`);
+    expect(out).not.toContain("step one");
+  });
+
+  it("carries `message.reasoning` into a Claude thinking block (non-stream)", () => {
+    const claude = openAICompletionToClaudeMessage({
+      id: "chatcmpl-sn02",
+      choices: [{ index: 0, message: { role: "assistant", content: "answer", reasoning: "step one" } }],
+    });
+    expect(claude.content[0]).toEqual({ type: CLAUDE_BLOCK.THINKING, thinking: "step one" });
+    expect(claude.content[1]).toEqual({ type: CLAUDE_BLOCK.TEXT, text: "answer" });
   });
 });

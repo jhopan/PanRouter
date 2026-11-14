@@ -150,6 +150,8 @@ import p147 from "./qoder-cn.js";
 import p148 from "./synthetic.js";
 import p149 from "./sensenova.js";
 import p150 from "./sensenova-intl.js";
+import p151 from "./runcrate.js";
+import p152 from "./nace.js";
 
 export default [
   p0,
@@ -301,4 +303,6 @@ export default [
   p148,
   p149,
   p150,
+  p151,
+  p152,
 ];

@@ -28,6 +28,9 @@ export default {
     baseUrl: "https://token.sensenova.ai/v1/chat/completions",
     validateUrl: "https://token.sensenova.ai/v1/models",
     auth: { combined: true, header: "Authorization", scheme: "bearer" },
+    // Thinking streams as `reasoning` (delta + message), not reasoning_content.
+    // stream.js lifts it in passthrough so reasoning-only chunks survive.
+    quirks: { reasoningAliasFields: true },
   },
   models: [
     { id: "sensenova-6.8-flash", name: "SenseNova 6.8 Flash" },

@@ -230,8 +230,11 @@
     "format": "commandcode",
     "forceStream": true,
     "headers": {
-      "x-command-code-version": "0.25.7",
-      "x-cli-environment": "cli"
+      "User-Agent": "cli",
+      "x-command-code-version": "1.88.5",
+      "x-cli-environment": "production",
+      "x-cli-surface": "cli",
+      "x-taste-learning": "false"
     }
   },
   "cursor": {
@@ -716,6 +719,10 @@
   "nvidia": {
     "baseUrl": "https://integrate.api.nvidia.com/v1/chat/completions",
     "validateUrl": "https://integrate.api.nvidia.com/v1/models",
+    "timeoutMs": 90000,
+    "quirks": {
+      "dropClientMetadata": true
+    },
     "format": "openai"
   },
   "ollama-local": {
@@ -1401,11 +1408,27 @@
       "header": "Authorization",
       "scheme": "bearer"
     },
+    "quirks": {
+      "reasoningAliasFields": true
+    },
     "format": "openai"
   },
   "sensenova-intl": {
     "baseUrl": "https://token.sensenova.ai/v1/chat/completions",
     "validateUrl": "https://token.sensenova.ai/v1/models",
+    "auth": {
+      "combined": true,
+      "header": "Authorization",
+      "scheme": "bearer"
+    },
+    "quirks": {
+      "reasoningAliasFields": true
+    },
+    "format": "openai"
+  },
+  "runcrate": {
+    "baseUrl": "https://api.runcrate.ai/v1/chat/completions",
+    "validateUrl": "https://www.runcrate.ai/api/v1/billing/balance",
     "auth": {
       "combined": true,
       "header": "Authorization",

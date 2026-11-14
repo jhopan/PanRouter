@@ -1,6 +1,8 @@
 // Web Fetch handler — dispatches to firecrawl, jina-reader, tavily, exa, ollama
 // Returns normalized shape across all providers
 
+import { HTTP_STATUS } from "../../config/runtimeConfig.js";
+
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_FORMAT = "markdown";
 
@@ -99,6 +101,15 @@ export async function handleFetchCore({ url, format, maxCharacters, provider, pr
   }
 
   const fmt = format || DEFAULT_FORMAT;
+  const formats = providerConfig?.formats;
+  if (Array.isArray(formats) && formats.length && !formats.includes(fmt)) {
+    // Account fallback also classifies error text; do not echo untrusted input.
+    return {
+      success: false,
+      status: HTTP_STATUS.BAD_REQUEST,
+      error: `Unsupported format for ${provider}. Supported: ${formats.join(", ")}`,
+    };
+  }
   const timeoutMs = providerConfig?.timeoutMs || DEFAULT_TIMEOUT_MS;
   const apiKey = credentials?.apiKey || credentials?.key || credentials?.token || "";
   const costPerQuery = providerConfig?.costPerQuery ?? null;
@@ -173,6 +184,7 @@ async function runJina({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQuer
     method: "POST",
     headers: {
       "content-type": "application/json",
+      "x-respond-with": fmt,
       ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
     },
     body: JSON.stringify({ url })
@@ -204,7 +216,7 @@ async function runTavily({ url, fmt, timeoutMs, apiKey, maxCharacters, costPerQu
       "content-type": "application/json",
       ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {})
     },
-    body: JSON.stringify({ urls: [url], extract_depth: "basic" })
+    body: JSON.stringify({ urls: [url], extract_depth: "basic", format: fmt })
   }, timeoutMs);
 
   if (!r.ok) {

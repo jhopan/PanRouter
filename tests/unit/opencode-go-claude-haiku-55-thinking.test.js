@@ -19,15 +19,27 @@ describe("OpenCode Go Claude Haiku 5.5", () => {
     }));
   });
 
-  it("uses adaptive thinking only on OpenCode Go", () => {
+  it("uses adaptive thinking on every 5.x lane", () => {
     expect(getCapabilitiesForModel("opencode-go", "claude-haiku-5-5")).toMatchObject({
       thinkingFormat: "claude-adaptive",
       contextWindow: 1000000,
       maxOutput: 128000,
     });
-    expect(getCapabilitiesForModel("claude", "claude-haiku-5-5").thinkingFormat).toBe("claude-budget");
+    // The canonical 5.5 entry is adaptive everywhere else too; 4.5 keeps the
+    // extended-thinking shape the *claude*haiku* pattern describes.
+    expect(getCapabilitiesForModel("claude", "claude-haiku-5-5").thinkingFormat).toBe("claude-adaptive");
 
     const out = applyThinking("claude", "claude-haiku-5-5", body(), "opencode-go");
+    expect(out.thinking?.type).toBe("adaptive");
+    expect(out.thinking).not.toHaveProperty("budget_tokens");
+    expect(out.output_config?.effort).toBeTruthy();
+  });
+
+  it("the 5.x line keeps the adaptive shape on the claude provider", () => {
+    // Haiku 5.5 is adaptive-only on the Claude API too (the 4.x ids are the ones
+    // that still take the extended-thinking budget shape).
+    const out = applyThinking("claude", "claude-haiku-5-5", body(), "claude");
+
     expect(out.thinking?.type).toBe("adaptive");
     expect(out.thinking).not.toHaveProperty("budget_tokens");
     expect(out.output_config?.effort).toBeTruthy();

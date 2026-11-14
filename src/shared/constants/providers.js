@@ -5,8 +5,8 @@ import { RISK_NOTICE } from "@/shared/constants/providersDisplay";
 const MEDIA_ENTRY_KEYS = [
   "serviceKinds", "ttsConfig", "sttConfig", "embeddingConfig",
   "imageConfig", "imageToTextConfig", "videoConfig", "musicConfig",
-  "searchViaChat", "searchConfig", "fetchConfig", "credentialFallback",
-  "modelsFetcher", "mediaPriority", "hiddenKinds",
+  "searchViaChat", "searchConfig", "fetchConfig", "systemoneConfig",
+  "credentialFallback", "modelsFetcher", "mediaPriority", "hiddenKinds",
 ];
 
 // Build provider UI object from registry entry

@@ -127,6 +127,10 @@ function openAIThinkingDisplay(body) {
 
 const NATIVE_ONLY_FORMATS = new Set(["gemini-level", "gemini-budget", "claude-budget", "claude-adaptive", "kiro"]);
 
+// Self-hosted gateways (vLLM/SGLang) validate thinking.budget_tokens; first-party
+// DeepSeek ignores it. Only dynamic compat nodes opt into the passthrough.
+const isOpenAICompatibleNode = (provider) => String(provider || "").startsWith("openai-compatible-");
+
 function resolveFormat(targetFormat, model, provider) {
   if (targetFormat === "commandcode") return "commandcode";
   // A multi-endpoint provider can declare, per transports[] entry, the thinking shape
@@ -259,7 +263,7 @@ function stripAll(body) {
 }
 
 // Apply unified thinking config to body in the resolved provider-native format.
-function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
+function applyFormat(fmt, body, cfg, caps, supportedLevels, display, budgetPassthrough = false) {
   const none = cfg.mode === "none";
   const canDisable = caps.thinkingCanDisable !== false;
   // Model cannot disable thinking → clamp "none" to minimal effort instead.
@@ -347,7 +351,11 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
     }
     case "deepseek": {
       if (none && canDisable) { body.thinking = { type: "disabled" }; break; }
-      body.thinking = { type: "enabled" };
+      // Keep an explicit budget captured before translation/stripAll; strict
+      // DeepSeek-compatible hosts validate it when thinking is enabled.
+      body.thinking = budgetPassthrough && cfg.mode === "budget" && Number.isFinite(cfg.budget) && cfg.budget > 0
+        ? { type: "enabled", budget_tokens: cfg.budget }
+        : { type: "enabled" };
       // DeepSeek: low/medium→high, xhigh/max→max. Some backends (mimo v2.5-pro/v2.6
       // on opencode-go, probed live) 400 on "max" — clamp to high when the declared
       // levels exclude it.
@@ -409,8 +417,14 @@ function applyFormat(fmt, body, cfg, caps, supportedLevels, display) {
         delete body.params.reasoning_effort;
         break;
       }
-      const level = toLevel(eff);
-      if (level) body.params.reasoning_effort = level;
+      const rawLevel = toLevel(eff);
+      const level = rawLevel === "auto" ? "high"
+        : rawLevel === "minimal" ? "low"
+        : rawLevel;
+      const validLevels = ["off", "low", "medium", "high", "xhigh", "max"];
+      if (level && validLevels.includes(level)) {
+        body.params.reasoning_effort = level;
+      }
       break;
     }
     default:
@@ -443,6 +457,6 @@ export function applyThinking(targetFormat, model, body, provider = null, intent
   // An OpenAI-shaped client's ask arrives via the captured intent instead.
   const display = typeof body.thinking?.display === "string" ? body.thinking.display : intent?.display;
   stripAll(body);
-  applyFormat(fmt, body, cfg, caps, supportedLevels, display);
+  applyFormat(fmt, body, cfg, caps, supportedLevels, display, isOpenAICompatibleNode(provider));
   return body;
 }

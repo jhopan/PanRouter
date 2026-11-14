@@ -28,6 +28,10 @@ export default {
     // Explicit (registry default would be unwired): the registry-driven API-key
     // probe in /api/providers/[id]/test keys off transport.auth + validateUrl.
     auth: { combined: true, header: "Authorization", scheme: "bearer" },
+    // SenseNova streams thinking as `reasoning`, not reasoning_content. stream.js
+    // lifts it in passthrough for OpenAI-shaped clients; no-op when upstream
+    // already sends reasoning_content.
+    quirks: { reasoningAliasFields: true },
   },
   models: [
     { id: "sensenova-6.8-flash", name: "SenseNova 6.8 Flash" },

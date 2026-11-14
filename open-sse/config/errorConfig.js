@@ -127,6 +127,9 @@ export const ERROR_RULES = [
   { provider: "minimax-code", text: "insufficient balance", cooldownMs: 24 * 60 * 60 * 1000 },
   { provider: "minimax-code-global", text: "insufficient balance", cooldownMs: 24 * 60 * 60 * 1000 },
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
+  // NVIDIA NIM returns 400 with "degraded" when specific model cluster is unhealthy.
+  // Lock only the degraded model (modelScoped: true) without locking the API key.
+  { provider: "nvidia", text: "degraded", cooldownMs: 15 * 60 * 1000, modelScoped: true },
   // ── CodeBuddy Intl gateway blocks (upstream 9router PR #5024) ───────────
   // 11140 is an outright BAN ("Your account has been restricted due to unusual
   // activity" / "Submit feedback to appeal this restriction"). It arrives with
@@ -154,6 +157,8 @@ export const ERROR_RULES = [
   { text: "rate limit",               backoff: true },
   { text: "too many requests",        backoff: true },
   { text: "quota exceeded",           backoff: true },
+  { text: "insufficient credit",      backoff: true },
+  { text: "credit balance is too low", backoff: true },
   { text: "capacity",                 backoff: true },
   { text: "overloaded",               backoff: true },
 

@@ -503,6 +503,37 @@ Dashboard → Combos → Clone "premium-coding"
 
 **Use case**: Create variations for different scenarios.
 
+### Combo Strategies
+
+Each combo runs one strategy, chosen in the combo card's strategy dropdown:
+
+| Strategy | Behaviour |
+|---|---|
+| `fallback` | Try the listed models in order, next one on failure |
+| `round-robin` | Rotate the starting model across requests (`comboStickyRoundRobinLimit` calls per model) |
+| `smart` | Ask a System One decision model which combo member fits the request, then keep it sticky |
+| `fusion` | Query every panel model in parallel, a judge synthesizes one answer |
+
+Smart Router (`smart`) evaluates the last user turn with a decision model (default
+`ocz/jev-1.13-free`; override per combo with `routerModel` in
+`settings.comboStrategies[<combo>]`) and reorders members by the reported choice and
+probabilities. The chosen model is remembered per session (`comboName:sessionId`) so the
+prompt cache stays warm; three policies control how aggressively it may switch:
+
+- `smart` (default) — keep the sticky model, switch only when the new decision's
+  confidence reaches `confidenceThreshold` (0.8 by default)
+- `strict` — lock the first decision for the session, no further router calls
+- `per-turn` / `sessionSticky: false` — re-evaluate every request
+
+If the router has no credentials, times out (8s) or returns no decision, the combo fails
+open to its normal model order, and a sticky model that fails or returns an empty answer
+is cleared so the next request re-evaluates.
+
+**Empty-answer fail-through**: a 2xx *stream* that ends without ever releasing answer
+text or a tool call falls through to the next combo member. The only exceptions are a
+`content_filter` finish (a legitimate empty answer every member would reproduce) and the
+last candidate (returned as-is instead of a manufactured 5xx).
+
 ---
 
 ## Troubleshooting

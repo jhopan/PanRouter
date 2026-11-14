@@ -23,8 +23,13 @@ export default {
     format: "commandcode",
     forceStream: true,
     headers: {
-      "x-command-code-version": "0.25.7",
-      "x-cli-environment": "cli",
+      // Static identity headers of command-code@1.88.5 buildCommandAuthHeaders().
+      // x-project-slug and x-session-id are dynamic — see shared/commandCodeHeaders.js.
+      "User-Agent": "cli",
+      "x-command-code-version": "1.88.5",
+      "x-cli-environment": "production",
+      "x-cli-surface": "cli",
+      "x-taste-learning": "false",
     },
   },
   models: [

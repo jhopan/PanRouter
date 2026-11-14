@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleImageGenerationCore } from "../../open-sse/handlers/imageGenerationCore.js";
+import { CODEX_CLI_VERSION } from "../../open-sse/config/appConstants.js";
 
 const originalFetch = global.fetch;
 
@@ -351,7 +352,7 @@ describe("handleImageGenerationCore", () => {
         headers: expect.objectContaining({
           authorization: "Bearer codex-token",
           "chatgpt-account-id": "account-123",
-          version: "0.154.0",
+          version: CODEX_CLI_VERSION,
         }),
       })
     );
@@ -396,16 +397,82 @@ describe("handleImageGenerationCore", () => {
 
     expect(result.success).toBe(true);
     const fetchCall = global.fetch.mock.calls[0];
+    expect(fetchCall[0]).toBe("https://chatgpt.com/backend-api/codex/responses");
     const requestBody = JSON.parse(fetchCall[1].body);
-    expect(requestBody.model).toBe("gpt-5.5");
+    expect(requestBody.model).toBe("gpt-6-sol");
     expect(requestBody.tools).toEqual([
       { type: "image_generation", output_format: "png", size: "1024x1024", action: "generate", model: "gpt-image-2.5" },
     ]);
     expect(requestBody.tool_choice).toEqual({ type: "image_generation" });
-    expect(requestBody.reasoning).toEqual({ effort: "medium", summary: "auto" });
+    // The ChatGPT Codex backend rejects every explicit complexity level.
+    expect(requestBody.reasoning).toBeNull();
 
     const responseBody = await result.response.json();
     expect(responseBody.data[0].b64_json).toBe("base64codeximage");
+  });
+
+  it("surfaces Codex image tool failures from response.failed", async () => {
+    global.fetch.mockResolvedValueOnce(
+      new Response(
+        [
+          "event: response.image_generation_call.generating",
+          'data: {"item":{"type":"image_generation_call","status":"in_progress"}}',
+          "",
+          "event: response.failed",
+          'data: {"response":{"status":"failed","error":{"message":"Complexity \'medium\' is not supported for this image model."}}}',
+          "",
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      )
+    );
+
+    const result = await handleImageGenerationCore({
+      body: { prompt: "A red apple", size: "1024x1024" },
+      modelInfo: { provider: "codex", model: "gpt-image-2.5" },
+      credentials: { accessToken: "codex-token", providerSpecificData: {} },
+      streamToClient: true,
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    const responseText = await result.response.text();
+    expect(responseText).toContain("Complexity 'medium' is not supported for this image model.");
+    expect(responseText).not.toContain("Account may not be entitled");
+  });
+
+  it.each(["gpt-image-2.6-flare", "gpt-image-2.6-sunburst"])("routes Codex %s without the unsupported complexity override", async (model) => {
+    global.fetch.mockResolvedValueOnce(new Response([
+      "event: response.output_item.done",
+      'data: {"item":{"type":"image_generation_call","result":"base64codeximage"}}',
+      "",
+      "",
+    ].join("\n"), { status: 200, headers: { "Content-Type": "text/event-stream" } }));
+
+    const result = await handleImageGenerationCore({
+      body: {
+        prompt: "A futuristic city",
+        size: "1024x1024",
+        quality: "high",
+        complexity: "medium",
+        output_format: "png",
+      },
+      modelInfo: { provider: "codex", model },
+      credentials: { accessToken: "codex-token", providerSpecificData: { chatgptAccountId: "account-123" } },
+      log: null,
+    });
+
+    expect(result.success).toBe(true);
+    const requestBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(requestBody.model).toBe("gpt-6-sol");
+    expect(requestBody.tools).toEqual([{
+      type: "image_generation",
+      output_format: "png",
+      action: "generate",
+      model,
+      size: "1024x1024",
+      quality: "high",
+    }]);
   });
 
   it("generates image with Cloudflare Workers AI JSON response", async () => {

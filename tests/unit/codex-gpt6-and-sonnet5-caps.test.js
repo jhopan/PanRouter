@@ -1,11 +1,28 @@
 import { describe, expect, it } from "vitest";
+import { getModelsByProviderId } from "../../open-sse/config/providerModels.js";
 import { getCapabilitiesForModel } from "../../open-sse/providers/capabilities.js";
 import { getPricingForModel } from "../../open-sse/providers/pricing.js";
 
-// Ported from upstream 92c7bdd5 (GPT-6 Sol/Luna caps + official pricing) and
-// ccd0677d (Sonnet 5.x must resolve to adaptive thinking).
+// Ported from upstream 92c7bdd5 (GPT-6 Sol/Luna caps + official pricing),
+// ccd0677d (Sonnet 5.x must resolve to adaptive thinking) and acb3c080
+// (GPT-6.1 Terra catalog entry).
 
 describe("Codex GPT-6 capabilities and pricing", () => {
+  it("lists gpt-6.1-terra as a Lite model with its 500k Codex window", () => {
+    const entry = getModelsByProviderId("codex").find((item) => item.id === "gpt-6.1-terra");
+    expect(entry?.responsesLite).toBe(true);
+    expect(entry?.thinkingLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(getCapabilitiesForModel("codex", "gpt-6.1-terra")).toMatchObject({
+      vision: true,
+      reasoning: true,
+      search: true,
+      thinkingFormat: "openai",
+      contextWindow: 500000,
+      maxOutput: 128000,
+    });
+    expect(getPricingForModel("codex", "gpt-6.1-terra")).toMatchObject({ input: 1, cached: 0.05, cache_creation: 1.25, output: 5 });
+  });
+
   it("resolves Sol and Luna with the shared 272k window", () => {
     for (const model of ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra"]) {
       expect(getCapabilitiesForModel("codex", model)).toMatchObject({
