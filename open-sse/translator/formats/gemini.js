@@ -30,7 +30,10 @@ export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [
   // Dependency keywords (not supported)
   "dependencies", "dependentSchemas", "dependentRequired",
   // Other unsupported keywords
-  "title", "optional", "deprecated", "if", "then", "else", "contentMediaType", "contentEncoding",
+  // `~optional` is not JSON Schema at all, but MCP/agent tool schemas emit it,
+  // and Antigravity answers the whole request with HTTP 400 INVALID_ARGUMENT
+  // "Unknown name \"~optional\": Cannot find field." — so it has to go too.
+  "title", "optional", "~optional", "deprecated", "if", "then", "else", "contentMediaType", "contentEncoding",
   // UI/Styling properties (from Cursor tools - NOT JSON Schema standard)
   "cornerRadius", "fillColor", "fontFamily", "fontSize", "fontWeight",
   "gap", "padding", "strokeColor", "strokeThickness", "textColor"
