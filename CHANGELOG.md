@@ -1,3 +1,104 @@
+# v0.5.88.30 (2026-11-15)
+
+## Port upstream 9router gelombang kedua (masih `1855aa44`)
+
+Tidak ada commit upstream baru; ini sisa butir yang belum diport dari master
+2026-11-12.
+
+## Provider
+
+- **Runcrate** (`rc`) — apikey, chat OpenAI-compatible, validasi key lewat
+  `billing/balance`, 6 model (`DeepSeek-V4.1-Flash`, `GLM-5.3[-Flash]`,
+  `Qwen3.8-Flash`, `gpt-oss-120b`). Port `b9c27225`.
+- **Nace Drex** (`drex`) — lane System One (`drex-max`, `drex-v2.0`). Port
+  `f7f6f5ed`. Sekalian memperbaiki `MEDIA_KEYS`/`MEDIA_ENTRY_KEYS` yang
+  membuang `systemoneConfig`, sehingga lane System One lain ikut hidup.
+- **Ollama Local**: adapter TTS Phonon (15 model, 38 voice, wav/pcm,
+  fallback model/voice, tanpa kredensial) dan adapter embedding
+  (`/v1/embeddings`, 97 model dengan `dimensions`, host yang dinormalisasi).
+  Port `31a9d262` + `10cd6c08`.
+- **Codex image**: generasi native `images/generations`, edit native
+  `images/edits` untuk referensi gambar, gate `canUseCredentials` (akun Free
+  di-skip tanpa mengunci akun), fallback `gpt-5.6-terra`, `GPT Image 2.6`
+  (`flare`/`sunburst`), `gpt-6.1-terra` (katalog/caps/pricing), error SSE
+  `response.failed` disurfaced. Port `783c9325`, `fbac1220`, `b08f12d5`,
+  `85c91c4e`, `5bb041ed`, `896ef10c`, `acb3c080`.
+- **Voices TTS publik** dari service bersama (`src/lib/ttsVoices.js`), bukan
+  self-fetch dashboard. Port `a4069daf`.
+
+## Combo
+
+- **Smart Router (System One)** sebagai strategi combo, dengan stickiness per
+  `${comboName}:${sessionId}` (TTL 2 jam, divalidasi ke member aktif, dibuang
+  saat model gagal/kosong), resolver `src/sse/services/systemoneRouter.js`
+  (timeout 8 detik, fail-open `null`). Default router `ocz/jev-1.13-free`
+  karena `oc` di repo ini lane free tanpa `systemoneConfig`. Port `f3f86fdd`.
+- **Fall-through stream kosong**: hanya jika nol frame yang bisa dikonsumsi
+  client, finish reason bukan `content_filter` (`refusal`/`SAFETY`/dst tetap
+  dianggap jawaban sah), dan bukan kandidat terakhir; peek dibatasi 45 detik
+  dan fail-open. Port `ca7b5401`.
+- **Kredit habis** (`insufficient credit`, `credit balance is too low`) pindah
+  ke model berikutnya, bukan mengakhiri combo. Port `b82f5c4a`.
+
+## Translator / thinking
+
+- **Tool-call id** diisi untuk stream passthrough dan nama tool yang di-rename
+  dikembalikan. Port `95c9d03e`.
+- **`image_url` di dalam pesan tool** dikonversi ke image Claude. Port
+  `95009651`.
+- **Budget thinking DeepSeek eksplisit** dipertahankan di node
+  OpenAI-compatible (hanya saat mode `budget`). Port `626a0684`.
+- **Thinking pada turn `tool`**: intent tidak lagi dihapus. Port `cff5328b`.
+
+## Token saver
+
+- Headroom: proyeksi tool-output native **Gemini** dan **Responses**,
+  **CommandCode** (`params.messages`), dan **Claude native** (PDF, dokumen,
+  signed thinking, id tool tetap utuh). Semua fail-open, hasil `is_error`
+  dilewati. Port `a440ef43`, `792f4719`, `86adae35`.
+- **Custom system prompt** RTK dari dashboard (toggle + textarea, persisten di
+  settings, independen dari caveman/ponytail). Port `8a842043`.
+
+## Perbaikan kecil
+
+- **STT**: multipart pakai `undici` FormData supaya `fetch` benar-benar
+  men-serialisasi file. Port `ec165e1c`.
+- **FAL**: validasi key lewat katalog model, bukan "validation not supported".
+  Port `0cf07ccf`.
+- **Web Search picker**: SearXNG (free tier tanpa auth) muncul. Port
+  `3a936d13`.
+- **NVIDIA NIM**: timeout, quirk parameter, aturan drop/degraded,
+  `modelScoped`. Port `2275bc0d`.
+- **Jina/Tavily**: format output yang diminta dihormati (`x-respond-with`,
+  `format`). Port `93bec5d8`.
+- **CLI tools → Add All Active Models**: ikut model no-auth, alias, dan custom.
+  Port `69d51c0c`.
+- **CommandCode**: header identitas CLI 1.88.5 dan bridge `params`
+  (threadId/workingDir/envelope, resolusi nama tool, reasoning/effort, cap
+  64k). Port `b1effa03` + `b114fa9f` — passthrough/live-catalog dan auto-import
+  tetap tidak diambil (katalog publik kita registry-pinned, sesuai aturan).
+
+## Sengaja BELUM diport
+
+- `8db1f4ae` — predikat tipe protobuf Gemini/Antigravity di
+  `cleanJSONSchemaForAntigravity` (strict provider, lihat `AGENTS.md`).
+- `0760c302` — normalisasi cookie muse-web: fitur web-cookie/browser-pool
+  tidak ada di repo ini, jadi tidak ada call site.
+- `ce060c79`, `a76c2afc` — TLS client wreq-js OpenCode: arsitektur berbeda
+  (kita pakai `proxyAwareFetch`).
+- `85d73bd6` — auth mode lease MiniMax Code via named-pipe broker desktop.
+- `597ee684` — Qoder tampilkan seluruh katalog: melanggar aturan kita
+  (hanya `qwen3.8-flash` / `qfmodel`).
+- `32a064e2` (pin Node di Dockerfile), `5883110b` (Monaco 0.57), `d7bb71ce`
+  (port noble-hashes DeepSeek PoW), `9506a59c`/`e3139a43`/`f0938ea7` (runtime
+  CLI launcher) — bukan jalur yang kita pakai.
+
+## Test
+
+- 694 test hijau di 46 file yang tersentuh gelombang ini.
+- Baseline: `verify-providers` 107 provider byte-for-byte sama,
+  `verify-alias` dan `verify-oauth-urls` sama, `golden-url-header` 176 test.
+
 # v0.5.88.29 (2026-11-15)
 
 ## Port upstream 9router (master sampai `1855aa44`, 2026-11-12)
