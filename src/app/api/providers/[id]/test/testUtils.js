@@ -301,7 +301,7 @@ async function refreshOAuthToken(connection) {
       }
       const response = await fetch(KIRO_CONFIG.socialRefreshUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "User-Agent": "kiro-cli/1.0.0" },
+        headers: { "Content-Type": "application/json", "User-Agent": "kiro-cli/3.3.0" },
         body: JSON.stringify({ refreshToken }),
       });
       if (!response.ok) return null;

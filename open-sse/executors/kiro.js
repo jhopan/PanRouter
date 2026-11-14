@@ -10,6 +10,7 @@ import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
+import { kiroUserAgents } from "../shared/kiroIdentity.js";
 
 const KIRO_REPAIR_BUFFER_MAX_BYTES = 8 * 1024 * 1024;
 // Regions each Amazon service host actually serves. A region outside a
@@ -256,6 +257,15 @@ export class KiroExecutor extends BaseExecutor {
       "Amz-Sdk-Request": "attempt=1; max=3",
       "Amz-Sdk-Invocation-Id": uuidv4()
     };
+    // The Amazon Q / CodeWhisperer surface reads the Kiro version out of the user
+    // agent and refuses the whole request when it is stale:
+    //   400 "This version of Kiro is no longer supported."
+    // The registry value is a static fallback; the per-account identity carries
+    // the real IDE version plus the machineId this credential is known by, so
+    // chat and model discovery present the same fingerprint.
+    const { userAgent, amzUserAgent } = kiroUserAgents(credentials);
+    headers["User-Agent"] = userAgent;
+    headers["X-Amz-User-Agent"] = amzUserAgent;
     if (url.includes("://codewhisperer.")) {
       headers["X-Amz-Target"] = KIRO_CODEWHISPERER_TARGET;
     } else {

@@ -1,3 +1,12 @@
+import { kiroUserAgents } from "../../shared/kiroIdentity.js";
+
+// Static fallback only — the executor overrides both headers per credential with
+// the real IDE version and that account's machineId. Kept in the same shape the
+// gateway validates: `KiroIDE-<version>-<machineId>`. A `kiro-ide/<version>`
+// string is refused outright with 400 "This version of Kiro is no longer
+// supported", the space-separated `KiroIDE <version> <id>` form likewise.
+const KIRO_FALLBACK_UA = kiroUserAgents(null);
+
 export default {
   id: "kiro",
   priority: 10,
@@ -39,8 +48,8 @@ export default {
     headers: {
       "Content-Type": "application/json",
       Accept: "application/vnd.amazon.eventstream",
-      "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
-      "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
+      "User-Agent": KIRO_FALLBACK_UA.userAgent,
+      "X-Amz-User-Agent": KIRO_FALLBACK_UA.amzUserAgent,
     },
     tokenUrl: "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
     authUrl: "https://prod.us-east-1.auth.desktop.kiro.dev",

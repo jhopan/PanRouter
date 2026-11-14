@@ -1,4 +1,8 @@
 import { KIRO_CONFIG, assertValidAwsRegion } from "../constants/oauth.js";
+// Same client identity the executor uses: the Amazon Q gateway validates the
+// Kiro version inside the user agent, so a stale string fails model discovery
+// with 400 "This version of Kiro is no longer supported."
+import { kiroUserAgents } from "open-sse/shared/kiroIdentity.js";
 
 /**
  * Kiro OAuth Service
@@ -300,16 +304,17 @@ export class KiroService {
     assertValidAwsRegion(region);
     const params = new URLSearchParams({ origin: "AI_EDITOR" });
     const endpoint = `https://q.${region}.amazonaws.com/ListAvailableModels?${params}`;
-    const response = await fetch(endpoint, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "TokenType": "API_KEY",
-        "Accept": "application/json",
-        "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
-        "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
-      },
-    });
+    const modelUa = kiroUserAgents({ accessToken: apiKey });
+        const response = await fetch(endpoint, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "TokenType": "API_KEY",
+            "Accept": "application/json",
+            "User-Agent": modelUa.userAgent,
+            "X-Amz-User-Agent": modelUa.amzUserAgent,
+          },
+        });
 
     if (!response.ok) {
       const error = await response.text();
