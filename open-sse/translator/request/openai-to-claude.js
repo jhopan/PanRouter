@@ -12,6 +12,17 @@ import { getCapabilitiesForModel } from "../../providers/capabilities.js";
 // Previously "proxy_" was used but this is a detectable fingerprint difference.
 const CLAUDE_OAUTH_TOOL_PREFIX = "";
 
+// Zed's Anthropic wire types (and other strict serde parsers) require `is_error`
+// as a non-optional bool on EVERY tool_result. Anthropic's public API treats it
+// as optional (default false), so always emitting the field is safe for all
+// Claude targets.
+function resolveToolResultIsError(source) {
+  if (!source || typeof source !== "object") return false;
+  if (source.is_error === true) return true;
+  if (source.status === "error") return true;
+  return false;
+}
+
 // Convert OpenAI request to Claude format
 export function openaiToClaudeRequest(model, body, stream) {
   // Tool name mapping for Claude OAuth (capitalizedName → originalName)
@@ -205,7 +216,8 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
     blocks.push({
       type: CLAUDE_BLOCK.TOOL_RESULT,
       tool_use_id: msg.tool_call_id,
-      content: msg.content
+      content: msg.content,
+      is_error: resolveToolResultIsError(msg),
     });
   } else if (msg.role === ROLE.USER) {
     if (typeof msg.content === "string") {
@@ -221,7 +233,7 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
             type: CLAUDE_BLOCK.TOOL_RESULT,
             tool_use_id: part.tool_use_id,
             content: part.content,
-            ...(part.is_error && { is_error: part.is_error })
+            is_error: resolveToolResultIsError(part),
           });
         } else if (part.type === OPENAI_BLOCK.IMAGE_URL) {
           const url = part.image_url.url;
