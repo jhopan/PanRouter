@@ -20,6 +20,16 @@ for (const f of ADDED_FIELDS) {
   for (const id of Object.keys(baseline)) delete baseline[id][f];
 }
 
+// Host-derived user-agent tokens are not part of the config contract.
+// `os/<platform>#<release>` and `md/<runtime>#<version>` are read from the
+// machine running the script (the Kiro identity derives them from node:os and
+// process.versions), so a laptop and CI legitimately differ. Normalise them
+// before comparing; the stable parts of the identity — the
+// `KiroIDE-<version>-<machineId>` suffix, `aws-sdk-js/<ver>`, `api/...`, and the
+// provider's fixed header names — are still compared byte-for-byte.
+const HOST_UA_TOKEN = /\b(os|md)\/[A-Za-z0-9_]+#[^\s"]+/g;
+const normalizeHostTokens = (s) => (typeof s === "string" ? s.replace(HOST_UA_TOKEN, "$1/<host>") : s);
+
 const diffs = [];
 const allIds = new Set([...Object.keys(baseline), ...Object.keys(current)]);
 for (const id of allIds) {
@@ -27,13 +37,13 @@ for (const id of allIds) {
   const b = current[id];
   if (a === undefined) { diffs.push(`+ provider added: ${id}`); continue; }
   if (b === undefined) { diffs.push(`- provider removed: ${id}`); continue; }
-  const sa = JSON.stringify(a);
-  const sb = JSON.stringify(b);
+  const sa = normalizeHostTokens(JSON.stringify(a));
+  const sb = normalizeHostTokens(JSON.stringify(b));
   if (sa === sb) continue;
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   for (const k of keys) {
-    const va = JSON.stringify(a[k]);
-    const vb = JSON.stringify(b[k]);
+    const va = normalizeHostTokens(JSON.stringify(a[k]));
+    const vb = normalizeHostTokens(JSON.stringify(b[k]));
     if (va !== vb) diffs.push(`~ ${id}.${k}: ${va} -> ${vb}`);
   }
 }

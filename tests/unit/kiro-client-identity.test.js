@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import os from "node:os";
 import {
   KIRO_IDE_VERSION,
   kiroMachineId,
@@ -44,6 +45,21 @@ describe("Kiro client identity passes the version gate", () => {
     expect(amzUserAgent).toContain(`KiroIDE-${KIRO_IDE_VERSION}-`);
     expect(userAgent).not.toContain("kiro-ide/");
     expect(userAgent).not.toMatch(/KiroIDE \d/);
+  });
+
+  it("describes the host it runs on: raw os.platform() token, real node version", () => {
+    // Extracted from extensions/kiro.kiro-agent/dist/extension.js, the bundled
+    // AWS SDK builds [ `os/${os.platform()}`, os.release() ] and
+    // [ "md/nodejs", process.versions.node ]. So the wire token is
+    // win32 | linux | darwin — never "windows" — and the pair describes the
+    // machine actually running the code. The old constants sent
+    // `os/windows#10.0.26200 ... md/nodejs#22.21.1` from every host, which made
+    // a Linux VPS claim a Windows 10 desktop.
+    const { userAgent } = kiroUserAgents(creds);
+    expect(userAgent).toContain(`os/${os.platform()}#`);
+    expect(userAgent).toContain(`md/nodejs#${process.versions.node}`);
+    expect(userAgent).not.toContain("os/windows#");
+    expect(userAgent).not.toContain("md/nodejs#22.21.1");
   });
 
   it("carries a 64-char machineId that is stable per account", () => {
