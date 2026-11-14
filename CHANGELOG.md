@@ -1,3 +1,63 @@
+# v0.5.88.33 (2026-11-15)
+
+## Antigravity: kecocokan wire dengan Hub 2.32.1 (hasil capture ulang)
+
+Capture dilakukan tanpa TLS interception: Hub yang terpasang
+(`Programs/antigravity/Antigravity.exe`, versi app 2.32.1, Electron 44.9.1)
+dijalankan dengan `CLOUD_CODE_URL=http://127.0.0.1:8788` — language server-nya
+mengikuti override itu (log biner sendiri: "Overriding CloudCodeServerURL via
+CLOUD_CODE_URL environment variable") — lalu request yang keluar dicatat dengan
+nilai `authorization`/token diredaksi. Klien bahasa yang dipakai:
+`resources/bin/language_server.exe` (Go).
+
+Yang terlihat di wire pada startup:
+
+| Panggilan | Header | Body |
+|---|---|---|
+| `POST /v1internal:loadCodeAssist` | ud, auth, accept-encoding, content-type | `{"metadata":{"ideType":"ANTIGRAVITY"}}` |
+| `POST /v1internal:onboardUser` | idem | `{"tierId":"free-tier","metadata":{"ideType":"ANTIGRAVITY"}}` |
+| `POST /v1internal:listExperiments` | idem | `{"metadata":{"updateChannel":"stable"}}` |
+| `POST /v1internal:fetchAvailableModels` | idem | `{}` |
+| `POST /v1internal:fetchUserInfo` | idem | `{}` |
+| `GET /v1internal/buildWithGooglePlugins?page_size=1000` | ud, auth, accept-encoding | — |
+| `GET /v1internal/` (probe, 19×) | ud, auth, accept-encoding | — |
+
+Tidak ada `X-Goog-*`, `Client-Metadata`, `X-Client-Name`, atau header lain.
+
+## Perbaikan
+
+- **`loadCodeAssist`/`onboardUser` metadata** kini persis Hub:
+  `{"metadata":{"ideType":"ANTIGRAVITY"}}` — string enum proto, bukan angka
+  `9`, dan tanpa `platform`/`pluginType` (itu field klien Gemini CLI). Berlaku
+  di jalur project (`projectId.js`) **dan** jalur kuota
+  (`usage/google.js: getAntigravitySubscriptionInfo`), yang juga membuang
+  `mode: 1` karena Hub tidak mengirimnya.
+- **`fetchAvailableModels`** tidak lagi mengirim `X-Client-Name` /
+  `X-Client-Version`; Hub hanya mengirim UA + Authorization + Content-Type.
+
+## Sengaja dipertahankan (delta yang tercatat, bukan regresi)
+
+- **`retrieveUserQuotaSummary`** masih mengirim `project` di body dan
+  `X-Client-Name`/`X-Client-Version` di header — endpoint ini dibuka dari UI
+  Hub, jadi tidak tercakup capture startup. Perilaku lama PanRouter
+  dipertahankan sampai ada capture khusus endpoint itu.
+- **`fetchAvailableModels` body** tetap `{project}` (Hub mengirim `{}`); body
+  kita sudah bekerja dengan pembacaan per-model, dan menghapus `project` hanya
+  boleh dilakukan setelah uji live.
+- **Endpoint Hub yang tidak kita panggil**: `fetchUserInfo`,
+  `listExperiments`, `buildWithGooglePlugins`, probe `/v1internal/` — fitur UI
+  Hub, bukan bagian jalur chat.
+- **Fingerprint TCP/TLS/HTTP2** tetap berbeda: Hub adalah klien Go (ALPN h2,
+  urutan cipher Go), kita memakai `fetch`/undici Node. Ini tidak bisa ditiru
+  tanpa shim Go/Rust, dan tidak pernah diklaim mirip.
+
+## Test
+
+- `antigravity-load-code-assist-metadata` (3) dan `antigravity-quota-wire` (3)
+  men-pin body dan set header hasil capture.
+- Battery Antigravity + translator Gemini: 350 lulus, 0 gagal, 6 skip.
+  Baseline provider/alias byte-for-byte, lint bersih.
+
 # v0.5.88.32 (2026-11-15)
 
 ## Port strict-provider (Antigravity, CodeBuddy intl)
