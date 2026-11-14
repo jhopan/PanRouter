@@ -84,6 +84,30 @@ export function clearSessionStore() {
     continuationStore.clear();
 }
 
+/**
+ * Drop every cached session whose id is `sessionId` (e.g. an upstream
+ * rejection proved the id spent or flagged) so the next resolution mints a
+ * fresh one. Matches by value, not key: a concurrent request may already have
+ * stored a replacement, which must survive.
+ *
+ * @param {string} sessionId - The session id to forget
+ * @returns {boolean} true when at least one cached entry was removed
+ */
+export function forgetSessionId(sessionId) {
+    const target = normalizeSessionId(sessionId);
+    if (!target) return false;
+    let removed = false;
+    for (const store of [runtimeSessionStore, assistantSessionStore]) {
+        for (const [key, entry] of store) {
+            if (entry?.sessionId === target) {
+                store.delete(key);
+                removed = true;
+            }
+        }
+    }
+    return removed;
+}
+
 // Conversation-stable session store: Key = hash(scope+assistant text), Value = { sessionId, lastUsed }
 const assistantSessionStore = new Map();
 const ASSISTANT_MIN_LEN = 50;

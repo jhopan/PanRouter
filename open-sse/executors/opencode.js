@@ -1,10 +1,10 @@
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
+import { MEMORY_CONFIG, HTTP_STATUS } from "../config/runtimeConfig.js";
 import { getThinkingLevels } from "../providers/thinkingLevels.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
-import { resolveSessionId } from "../utils/sessionManager.js";
+import { resolveSessionId, forgetSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
@@ -25,6 +25,15 @@ const SESSION_HEADER = "x-opencode-session";
 const SESSION_FIELD = "_opencodeSession";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+// The free lane sheds load with 429 "The inference service is overloaded.
+// Please try again later." even for a well-formed request. Every request this
+// executor sends runs on that lane (buildHeaders pins `Bearer public`), so the
+// only gate is the error shape: one retry, no loop, and every other 429
+// (FreeUsageLimitError) is still delivered untouched.
+const OPENCODE_OVERLOAD_RE = /overloaded/i;
+const OPENCODE_OVERLOAD_RETRY_MS = 800;
+export const OPENCODE_OVERLOAD_ERROR_CODE = "opencode_free_lane_overloaded";
 
 function hasValidOpencodeVersion(ua) {
   const m = String(ua || "").match(/^opencode\/[a-z0-9-]+\/(\d+)\.\d+\.\d+\/[a-z0-9-]+$/i);
@@ -151,6 +160,80 @@ export function stableSessionId(credentials) {
   }
   stableOpencodeSessions.set(key, { sessionId, lastUsed: Date.now() });
   return sessionId;
+}
+
+// The canonical sessions above are never refreshed on failure, so a session
+// upstream has spent or flagged would be reused by every later request. Drop
+// the rejected id from every store that could hand it back (this module's
+// canonical map plus the shared per-connection/conversation caches the
+// translate step reads) so the next resolution mints a fresh one.
+// Match by value, not identity key: a concurrent request may already have
+// minted a replacement, which must survive.
+export function forgetOpencodeSession(sessionId) {
+  if (!sessionId) return false;
+  let removed = false;
+  for (const [key, entry] of stableOpencodeSessions) {
+    if (entry.sessionId === sessionId) {
+      stableOpencodeSessions.delete(key);
+      removed = true;
+    }
+  }
+  if (forgetSessionId(sessionId)) removed = true;
+  return removed;
+}
+
+/**
+ * True for the transient free-lane overload 429 only. The body is a stream, so
+ * classify through a clone: the retryable response is discarded, but a
+ * non-overload 429 must still reach the caller intact.
+ */
+async function isFreeLaneOverload(response) {
+  if (response?.status !== HTTP_STATUS.RATE_LIMITED) return false;
+  try {
+    return OPENCODE_OVERLOAD_RE.test(await response.clone().text());
+  } catch {
+    return false;
+  }
+}
+
+function abortError() {
+  return new DOMException("The operation was aborted.", "AbortError");
+}
+
+// Wait before the single overload retry, resolving early when the client goes
+// away so a disconnect never keeps the free lane busy.
+function overloadBackoff(signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener?.("abort", onAbort);
+      resolve();
+    }, OPENCODE_OVERLOAD_RETRY_MS);
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+  });
+}
+
+function overloadError(response) {
+  const error = new Error(
+    `OpenCode free lane overloaded (HTTP ${response?.status || HTTP_STATUS.RATE_LIMITED}); retried once with a fresh session.`,
+  );
+  error.name = "OpenCodeOverloadError";
+  error.code = OPENCODE_OVERLOAD_ERROR_CODE;
+  error.status = response?.status || HTTP_STATUS.RATE_LIMITED;
+  error.retryable = true;
+  return error;
+}
+
+function releaseBody(response) {
+  // The discarded 429 was only read through a clone; release the original
+  // instead of leaving its stream half-open.
+  try {
+    response?.body?.cancel?.().catch?.(() => {});
+  } catch { /* already consumed or locked */ }
 }
 
 function bodyHasSessionHints(body) {
@@ -374,7 +457,36 @@ export class OpenCodeExecutor extends BaseExecutor {
   }
 
   async execute(args) {
-    return super.execute({ ...args, credentials: this.prepareRequestCredentials(args) });
+    const sourceCredentials = args.credentials || {};
+    const prepared = this.prepareRequestCredentials({ ...args, credentials: sourceCredentials });
+    const first = await super.execute({ ...args, credentials: prepared });
+    if (!(await isFreeLaneOverload(first?.response))) return first;
+
+    // A disconnected client must not stall on another attempt.
+    if (args.signal?.aborted) return first;
+
+    // Overload 429 is load shedding, not a spent session, but the canonical
+    // session is what upstream accounted the rejected attempt to: drop it and
+    // let the retry mint a fresh one. A client-supplied native session is not
+    // ours to replace, so it is reused as-is.
+    const rejectedSession = prepared[SESSION_FIELD];
+    if (forgetOpencodeSession(rejectedSession)) {
+      args.log?.debug?.("SESSION", "OpenCode overload 429: dropped cached session, retrying with a fresh one");
+    }
+    releaseBody(first.response);
+    args.log?.debug?.("RETRY", "OpenCode free lane overloaded, retrying once with a fresh session");
+    await overloadBackoff(args.signal);
+
+    const retried = await super.execute({
+      ...args,
+      credentials: this.prepareRequestCredentials({ ...args, credentials: sourceCredentials }),
+    });
+    if (!(await isFreeLaneOverload(retried?.response))) return retried;
+
+    // Both attempts were load-shed: hand back a machine-readable 429 instead of
+    // a third attempt (no unbounded retries on the free lane).
+    releaseBody(retried.response);
+    throw overloadError(retried.response);
   }
 
   // Free tier moved from /zen/v1 to /inference/v1 (OpenCode v2); /zen/v1 now
