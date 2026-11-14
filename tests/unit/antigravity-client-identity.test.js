@@ -21,9 +21,11 @@ describe("Antigravity client identity", () => {
 
   it("tracks a real Hub build, not a stale one", () => {
     expect(ANTIGRAVITY_IDE_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
-    // 2.22.0 was the previous Hub build upstream moved off; 2.19.1 was ours.
+    // The UA version is the *Hub* app's version, not the IDE's: the old 2.19.1
+    // matched the Hub installed on 2026-10-01, and upstream's 2.24.0 sits on the
+    // same line. 2.32.1 is the Hub build current as of 2026-11-14.
     const [maj, min] = ANTIGRAVITY_IDE_VERSION.split(".").map(Number);
-    expect(maj > 2 || (maj === 2 && min >= 24)).toBe(true);
+    expect(maj > 2 || (maj === 2 && min >= 32)).toBe(true);
   });
 
   it("keeps the darwin/arm64 platform profile deliberately", () => {

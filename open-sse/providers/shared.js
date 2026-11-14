@@ -89,15 +89,23 @@ export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1/messages";
 export const OPENAI_COMPAT_BASE = "https://api.openai.com/v1";
 export const ANTHROPIC_COMPAT_BASE = "https://api.anthropic.com/v1";
 
-// Official Antigravity Hub Desktop 2.24.0 fingerprint captured from macOS arm64.
+// Official Antigravity Hub client fingerprint.
 // Keep this static even when PanRouter runs on Linux: the provider profile is
-// intentionally matching the Hub client, not the server host.
+// intentionally matching the client, not the server host.
 //
-// The gateway parses the version out of this user agent. `antigravity/ide/...`
-// — and any version older than the current Hub build — is answered with
-// 404 on newer model tiers (Gemini 4 Argon among them), so the shape and the
-// version both have to track the shipping client.
-export const ANTIGRAVITY_IDE_VERSION = "2.24.0";
+// WHICH NUMBER THIS IS — there are three, and only one belongs here:
+//   * Hub app "Antigravity" (Agentic Desktop Application)  → 2.32.1  ← THIS ONE
+//   * Antigravity IDE release                              → 2.7.0   (update manifest)
+//   * Antigravity IDE productVersion                       → 1.107.0 (VS Code base)
+// The UA's version tracks the Hub: the previous value (2.19.1) matched the Hub
+// build installed on 2026-10-01, and upstream's 2.24.0 sits on the same line
+// (2.19.1 → 2.22.0 → 2.24.0 → 2.32.1), not on the IDE's 2.7.0 line.
+// Read it from <install>/resources/app.asar → package.json.version.
+//
+// The gateway parses this user agent. The old `antigravity/ide/...` shape and an
+// ageing version are what newer model tiers were gated on, so both the channel
+// word and the version have to track the shipping client.
+export const ANTIGRAVITY_IDE_VERSION = "2.32.1";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/hub/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
 
