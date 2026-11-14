@@ -437,6 +437,19 @@ export function hoistToolResultImages(body) {
   return touched ? { ...body, messages } : body;
 }
 
+// Newer Claude models reject a body that ends on an assistant turn ("does not
+// support assistant message prefill"). Cleanup passes delete messages left empty,
+// so a trailing user turn that was empty (or held only dropped blocks) silently
+// turns the previous assistant turn into the last one. Restore a user turn only
+// when the client did not itself end on assistant (real prefill is its choice).
+const TRAILING_USER_PLACEHOLDER = "Continue.";
+
+export function ensureTrailingUserTurn(messages, originalLastRole) {
+  if (!Array.isArray(messages) || originalLastRole === ROLE.ASSISTANT) return messages;
+  if (messages[messages.length - 1]?.role !== ROLE.ASSISTANT) return messages;
+  return [...messages, { role: ROLE.USER, content: [{ type: CLAUDE_BLOCK.TEXT, text: TRAILING_USER_PLACEHOLDER }] }];
+}
+
 export function prepareClaudeRequest(body, provider = null, apiKey = null, connectionId = null, rawHeaders = null, sessionId = null) {
   // quirk: MiniMax's Claude-compatible endpoint rejects Anthropic's output_config (400 invalid params)
   if (PROVIDERS[provider]?.quirks?.dropOutputConfig) {
@@ -480,6 +493,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // 2. Messages: process in optimized passes
   if (body.messages && Array.isArray(body.messages)) {
     const len = body.messages.length;
+    // Role the client actually ended on, before any drop below removes it.
+    const originalLastRole = body.messages[len - 1]?.role;
     let filtered = [];
 
     // Pass 1: remove cache_control + filter empty messages
@@ -500,6 +515,8 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
         filtered.push(msg);
       }
     }
+
+    filtered = ensureTrailingUserTurn(filtered, originalLastRole);
 
     // Pass 1.5: Fix tool_use/tool_result ordering
     // Each tool_use must have tool_result in the NEXT message (not same message with other content)
