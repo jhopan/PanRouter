@@ -146,7 +146,14 @@ export const MODEL_CAPABILITIES = {
   // OpenCode free-tier catalog (probed live 2026-10-19). Entries mirror the
   // model family's published limits; upstream publishes no per-model table.
   "deepseek-v4.1-flash-free":  { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
-  "glm-5.3-flash-free":        { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 32000 },
+  // OpenCode serves the same weights under this free id from its OWN inference
+  // service, which validates the body strictly: the zai `thinking` object the
+  // *glm-5.3* pattern emits is answered
+  //   400 [unknown_parameter] invalid request body: json: unknown field "thinking"
+  // while reasoning_effort is accepted. Mirrors the PROVIDER_CAPABILITIES
+  // override for the paid glm-5.3-flash id; the zai shape stays correct for
+  // z.ai's own lines (glm / glm-cn).
+  "glm-5.3-flash-free":        { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 128000 },
   "mimo-v2.6-flash-free":      { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 131072 },
   "nemotron-3.5-lightning-free": { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
   "nemotron-3.5-super-vl-free":  { vision: true, reasoning: true, thinkingFormat: "openai", contextWindow: 1000000, maxOutput: 65536 },
@@ -373,6 +380,11 @@ export const PATTERN_CAPABILITIES = [
   // ── Grok (vision + Live Search) ──────────────────────────────────
   { pattern: "*grok*image*",    caps: { imageOutput: true } },
   { pattern: "*grok-code*",     caps: { reasoning: true, thinkingFormat: "openai", contextWindow: 256000 } },
+  // Grok 4.7: 500k context, same envelope as 4.6. Without its own row it fell
+  // through to the `*grok-4*` catch-all (256k), and stripHistoryForContext()
+  // trims history at 80% of that. The CLI proxy accepts a 476k-token prompt and
+  // rejects a 614k one with "613738 tokens > 500000 tokens".
+  { pattern: "*grok-4.7*",      caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000, maxOutput: 500000 } },
   // Grok 4.6: 500k context, no text output limit (docs.x.ai/developers/grok-4-6)
   { pattern: "*grok-4.6*",      caps: { vision: true, reasoning: true, search: true, thinkingFormat: "openai", contextWindow: 500000, maxOutput: 500000 } },
   // Grok 4.5 (Grok CLI / Grok Build): 500k context per cli-chat-proxy /v1/models
