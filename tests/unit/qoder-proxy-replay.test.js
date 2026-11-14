@@ -81,7 +81,12 @@ describe("Qoder signed inference transport", () => {
     expect(result.response.ok).toBe(true);
     await result.response.text();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(!!fetchMock.mock.calls[0][1].dispatcher).toBe(useProxy);
+    // Both paths now hand fetch a dispatcher. The direct path used to pass none,
+    // which left it on undici's default agent: keepAliveMaxTimeout 600s, so a
+    // socket an edge had silently dropped stayed in the pool and every retry
+    // drew that same dead connection until the connect timeout expired. The
+    // difference between the two paths is which agent, not whether one exists.
+    expect(fetchMock.mock.calls[0][1].dispatcher).toBeDefined();
   });
 
   it("preserves caller cancellation without replaying the request", async () => {

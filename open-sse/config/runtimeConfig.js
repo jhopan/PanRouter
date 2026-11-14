@@ -58,6 +58,75 @@ export const STREAM_FIRST_CHUNK_TIMEOUT_MS = envMs("STREAM_FIRST_CHUNK_TIMEOUT_M
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);
 
+// Keep-alive socket TTL. Upstream edges (Cloudflare, AWS Global Accelerator, the
+// hosts behind NVIDIA NIM) drop idle sockets without sending a TCP RST. undici's
+// defaults are far too generous for that: keepAliveMaxTimeout is 600s, and an
+// upstream `Keep-Alive: timeout=...` header can raise the idle timeout all the
+// way up to it. A dropped socket therefore stays in the pool, every retry draws
+// the same dead connection, and the request hangs until FETCH_CONNECT_TIMEOUT_MS
+// — multiplied by the whole retry ladder.
+//
+// Cap both values low so a socket that the edge has silently discarded leaves the
+// pool within seconds instead of minutes.
+export const DEFAULT_KEEPALIVE_TIMEOUT_MS = 4 * 1000;
+// 1ms is undici's "do not reuse anything" setting: every request opens a fresh
+// TCP/TLS connection. Only used by the one-shot retry after a proven dead socket.
+export const FRESH_RETRY_KEEPALIVE_TIMEOUT_MS = 1;
+
+export function resolveKeepAliveTimeouts() {
+  const timeout = envMs("FETCH_KEEPALIVE_TIMEOUT_MS", DEFAULT_KEEPALIVE_TIMEOUT_MS);
+  // Both sides of the pair, clamped to the same value: clamping only
+  // keepAliveTimeout would let an upstream Keep-Alive header push the socket's
+  // life back up to keepAliveMaxTimeout.
+  return { keepAliveTimeout: timeout, keepAliveMaxTimeout: timeout };
+}
+
+// Transport-level replay of a request whose pooled socket died. OFF by default:
+// the root cause is the keep-alive TTL above, which alone shrinks the hang
+// window from ~249s to seconds. A replay also has to coexist with providers that
+// run their own signed-POST replay protection (Qoder's requestId changes per
+// attempt), and stacking two replay layers re-sends a request that the outer one
+// deliberately refuses to resend. Opt in with FETCH_FRESH_RETRY=1 once a
+// deployment has been checked against the providers it actually uses.
+export function isFreshSocketReplayEnabled() {
+  const raw = String(process.env.FETCH_FRESH_RETRY ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "on" || raw === "true" || raw === "yes";
+}
+
+// A dead pooled socket surfaces as one of these. DNS, connect-refused and TLS
+// failures are listed separately so a genuinely unreachable host is never
+// mistaken for a stale socket and replayed.
+export const STALE_SOCKET_ERROR_CODES = new Set([
+  "UND_ERR_SOCKET",
+  "ECONNRESET",
+  "EPIPE",
+  "UND_ERR_HEADERS_TIMEOUT",
+]);
+
+export const NON_STALE_SOCKET_ERROR_CODES = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_INVALID_ARG",
+  "UND_ERR_ABORTED",
+  "CERT_HAS_EXPIRED",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+// Deliberately excludes a bare "fetch failed": with no error code there is no
+// proof the socket died, and the upstream may already be holding the request.
+// Replaying it there would send — and bill — the same completion twice.
+export const STALE_SOCKET_ERROR_SUBSTRINGS = [
+  "other side closed",
+  "socket hang up",
+];
+
 // Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
 export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS = envMs("GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS", 45 * 1000);
 

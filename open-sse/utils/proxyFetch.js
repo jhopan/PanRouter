@@ -1,9 +1,39 @@
 import { Readable } from "stream";
-import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
+import {
+  MEMORY_CONFIG,
+  FRESH_RETRY_KEEPALIVE_TIMEOUT_MS,
+  STALE_SOCKET_ERROR_CODES,
+  NON_STALE_SOCKET_ERROR_CODES,
+  STALE_SOCKET_ERROR_SUBSTRINGS,
+  resolveKeepAliveTimeouts,
+  isFreshSocketReplayEnabled,
+} from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
 
 const originalFetch = globalThis.fetch;
 const proxyDispatchers = new Map();
+const directDispatchers = new Map();
+
+/** Test hook: drop cached dispatchers so TTL changes are observable. */
+export function resetDirectDispatchersForTests() {
+  directDispatchers.clear();
+  proxyDispatchers.clear();
+}
+
+/**
+ * Did this error prove the pooled socket was dead before any response header
+ * arrived? Only then is replaying the request safe — see the "fetch failed"
+ * exclusion in STALE_SOCKET_ERROR_SUBSTRINGS.
+ */
+export function isStaleSocketError(error) {
+  if (!error) return false;
+  if (error.name === "AbortError" || error.name === "TimeoutError") return false;
+  const code = error?.cause?.code || error?.code || "";
+  if (NON_STALE_SOCKET_ERROR_CODES.has(code)) return false;
+  if (STALE_SOCKET_ERROR_CODES.has(code)) return true;
+  const message = `${error?.message || ""} ${error?.cause?.message || ""}`.toLowerCase();
+  return STALE_SOCKET_ERROR_SUBSTRINGS.some((needle) => message.includes(needle));
+}
 
 // ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
 // Disabled: not in use. Kept commented for future re-enable.
@@ -213,6 +243,59 @@ function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
   return normalizeProxyUrl(proxyUrlRaw);
 }
 
+function evictOldest(cacheMap) {
+  if (cacheMap.size >= MEMORY_CONFIG.proxyDispatchersMaxSize) {
+    cacheMap.delete(cacheMap.keys().next().value);
+  }
+}
+
+async function buildAgent(key, keepAliveTimeout, keepAliveMaxTimeout) {
+  const cached = directDispatchers.get(key);
+  if (cached) return cached;
+  const { Agent } = await import("undici");
+  evictOldest(directDispatchers);
+  const agent = new Agent({ keepAliveTimeout, keepAliveMaxTimeout });
+  directDispatchers.set(key, agent);
+  return agent;
+}
+
+/**
+ * Direct-path agent with a capped keep-alive TTL. Without it the request uses
+ * undici's default pool, where keepAliveMaxTimeout is 600s: an edge that drops
+ * an idle socket without a RST leaves it in the pool, and every retry draws that
+ * same dead connection until the connect timeout expires.
+ */
+export function getDirectDispatcher() {
+  const { keepAliveTimeout, keepAliveMaxTimeout } = resolveKeepAliveTimeouts();
+  return buildAgent(`direct::${keepAliveTimeout}::${keepAliveMaxTimeout}`, keepAliveTimeout, keepAliveMaxTimeout);
+}
+
+/** No-reuse agent (`keepAliveTimeout: 1ms`) — one fresh TCP/TLS connection. */
+export function getFreshRetryDispatcher() {
+  return buildAgent("fresh", FRESH_RETRY_KEEPALIVE_TIMEOUT_MS, FRESH_RETRY_KEEPALIVE_TIMEOUT_MS);
+}
+
+/**
+ * Direct-path fetch through the capped-keep-alive agent, with a single replay on
+ * a no-reuse agent when the pooled socket is proven dead.
+ *
+ * The replay only fires when the error itself proves the socket died and no
+ * response header arrived yet. A bare "fetch failed" is deliberately excluded:
+ * with no error code the upstream may already hold the request, and replaying it
+ * would send — and bill — the same completion twice.
+ */
+async function fetchDirect(url, options) {
+  const dispatcher = await getDirectDispatcher();
+  try {
+    return await originalFetch(url, { ...options, dispatcher });
+  } catch (error) {
+    const aborted = options?.signal?.aborted === true;
+    if (aborted || !isFreshSocketReplayEnabled() || !isStaleSocketError(error)) throw error;
+    dbg("[ProxyFetch] dead pooled socket, replaying once on a fresh connection", error?.message);
+    return await originalFetch(url, { ...options, dispatcher: await getFreshRetryDispatcher() });
+  }
+}
+
 /**
  * Create proxy dispatcher lazily (undici-compatible)
  */
@@ -403,13 +486,13 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
         throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
       }
       console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
-      return originalFetch(url, options);
+      return fetchDirect(url, options);
     }
   }
 
   // got-scraping disabled — use native fetch directly
   // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
-  return originalFetch(url, options);
+  return fetchDirect(url, options);
 }
 
 /**
