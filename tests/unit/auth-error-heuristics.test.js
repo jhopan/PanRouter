@@ -60,6 +60,15 @@ describe("isProviderRefusalBody", () => {
     expect(isProviderRefusalBody(JSON.stringify({ code: 11140, msg: "request illegal" }))).toBe(true);
   });
 
+  it("recognises the Antigravity account-level locks", () => {
+    expect(isProviderRefusalBody(JSON.stringify({
+      error: { status: "PERMISSION_DENIED", message: "TOS_VIOLATION: This service has been disabled in this account for violation of Terms of Service" },
+    }))).toBe(true);
+    expect(isProviderRefusalBody(JSON.stringify({
+      error: { status: "PERMISSION_DENIED", message: "VALIDATION_REQUIRED: Validation is required for this account" },
+    }))).toBe(true);
+  });
+
   it("does not flag an ordinary error", () => {
     expect(isProviderRefusalBody(JSON.stringify({ error: { message: "invalid api key" } }))).toBe(false);
   });
@@ -73,6 +82,11 @@ describe("shouldRefreshOnForbidden", () => {
   it("does not refresh for CodeBuddy 11128 / 11140", () => {
     expect(shouldRefreshOnForbidden(403, JSON.stringify({ code: 11128, msg: "request illegal" }))).toBe(false);
     expect(shouldRefreshOnForbidden(403, JSON.stringify({ code: 11140, msg: "request illegal" }))).toBe(false);
+  });
+
+  it("does not refresh for the Antigravity TOS / validation 403", () => {
+    expect(shouldRefreshOnForbidden(403, "PERMISSION_DENIED TOS_VIOLATION: This service has been disabled in this account for violation of Terms of Service")).toBe(false);
+    expect(shouldRefreshOnForbidden(403, "PERMISSION_DENIED VALIDATION_REQUIRED: Validation is required for this account")).toBe(false);
   });
 
   it("still refreshes for a plain 403", () => {

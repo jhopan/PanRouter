@@ -191,6 +191,12 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     if (!isFreeTier && data.models) {
       // Filter only recommended/important models (must match PROVIDER_MODELS ag ids)
       const importantModels = [
+        // Gemini 4 Argon: own quota bucket on Pro plans. Without these rows the
+        // family split below has nothing to reconcile and Argon usage stays
+        // invisible (upstream 8a833631).
+        'gemini-4-argon-high',
+        'gemini-4-argon-medium',
+        'gemini-4-argon-low',
         'gemini-3.8-flash-high',
         'gemini-3.8-flash-medium',
         'gemini-3.8-flash-low',
@@ -256,8 +262,27 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
       // On Google's Free Starter tier, retrieveUserQuotaSummary buggily reports
       // remainingFraction: 1 even after the starter quota is depleted and all models 429.
       const entries = Object.entries(quotas);
-      const geminiModels = entries.filter(([k]) => k.startsWith("gemini-") && !k.includes("image"));
+      // Gemini 4 Argon has its own quota bucket on Pro plans (upstream
+      // 8a833631). It must be split out BEFORE the Gemini bucket: an exhausted
+      // Argon row would otherwise zero the whole Gemini family reading, and the
+      // Argon family reset would be lost inside the Gemini reconciliation.
+      const argonModels = entries.filter(([k]) => k.startsWith("gemini-") && k.includes("argon"));
+      const geminiModels = entries.filter(([k]) => k.startsWith("gemini-") && !k.includes("image") && !k.includes("argon"));
       const claudeModels = entries.filter(([k]) => k.startsWith("claude-"));
+
+      if (weeklyQuotas.gemini_argon_weekly && argonModels.length > 0) {
+        const allArgonExhausted = argonModels.every(([, q]) => (q.remainingPercentage ?? 0) === 0);
+        if (allArgonExhausted && weeklyQuotas.gemini_argon_weekly.remainingPercentage > 0) {
+          const maxResetAt = argonModels.reduce((max, [, q]) =>
+            !max || (q.resetAt && new Date(q.resetAt) > new Date(max)) ? q.resetAt : max, null
+          );
+          weeklyQuotas.gemini_argon_weekly.used = weeklyQuotas.gemini_argon_weekly.total;
+          weeklyQuotas.gemini_argon_weekly.remainingPercentage = 0;
+          if (maxResetAt) {
+            weeklyQuotas.gemini_argon_weekly.resetAt = maxResetAt;
+          }
+        }
+      }
 
       if (weeklyQuotas.gemini_weekly && geminiModels.length > 0) {
         const allGeminiExhausted = geminiModels.every(([, q]) => (q.remainingPercentage ?? 0) === 0);

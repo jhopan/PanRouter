@@ -239,6 +239,23 @@ export function antigravityFamilyKey(model) {
   return null;
 }
 
+/**
+ * Gemini 4 Argon weekly bucket, additive (upstream 8a833631).
+ *
+ * Google reports Argon on its own bucket while it shares the free-tier Gemini
+ * pool, so this is a PREFERENCE, not a replacement: callers read the Argon
+ * bucket first when the account reports one and fall back to PanRouter's family
+ * bucket (`antigravityFamilyKey`) otherwise. The reverse never applies — an
+ * exhausted Argon bucket must not be rescued by healthy plain-Gemini quota.
+ *
+ * @returns {object|null} the Argon bucket, or null when the model is not Argon
+ *   or the account reports no Argon bucket at all.
+ */
+export function antigravityArgonBucket(quotas, model) {
+  if (!quotas || !model || !/argon/i.test(model)) return null;
+  return quotas["gemini_argon_weekly"] || null;
+}
+
 // ── Pre-skip re-verification ───────────────────────────────────────────────
 // The auth pre-filter skips an account whose cached weekly bucket reads 0%.
 // That skip happens BEFORE any request goes out — so the chat error path, the
@@ -280,9 +297,12 @@ export function selectAntigravitySkipsToRevalidate(connections, model, now = Dat
     if (!c?.id) continue;
     const bucket = quotaCache.get(c.id)?.[familyKey];
     if (!bucket) continue;
+    // Argon (upstream 8a833631): its own weekly bucket decides when reported;
+    // PanRouter's family bucket stays the fallback.
+    const deciding = antigravityArgonBucket(quotaCache.get(c.id), model) || bucket;
     // Only a bucket that would actually block this request is worth a call.
-    if (!(Number(bucket.remainingPercentage) <= 0)) continue;
-    if (!bucket.resetAt || new Date(bucket.resetAt).getTime() <= now) continue;
+    if (!(Number(deciding.remainingPercentage) <= 0)) continue;
+    if (!deciding.resetAt || new Date(deciding.resetAt).getTime() <= now) continue;
     // The quota API needs the account's own token.
     if (!c.accessToken) continue;
     if (now - (lastRevalidateAt.get(c.id) || 0) < REVALIDATE_COOLDOWN_MS) continue;
@@ -334,6 +354,9 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
   const quotas = (await refreshAntigravityQuota(connectionId, accessToken, providerSpecificData)) || {};
   const familyKey = antigravityFamilyKey(model);
   const quota = (familyKey && quotas[familyKey]) || quotas[model];
+  // Argon (upstream 8a833631): its own weekly bucket wins when reported.
+  const argonQuota = antigravityArgonBucket(quotas, model);
+  const effectiveQuota = argonQuota || quota;
 
   // Strike breaker: count every 429 whose quota reading is either optimistic
   // (remaining > 0) or unavailable (quota API 403/error). 3 within the window
@@ -342,7 +365,7 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
   // well (see #3561 — "skip exhausted account/model quota before upstream
   // retry" was motivated by 409/429 pairs), and poisoning by transient 409s
   // requires 3 of them inside 60 seconds on the same pair.
-  if (!quota || quota.remainingPercentage > 0) {
+  if (!effectiveQuota || effectiveQuota.remainingPercentage > 0) {
     const key = `${connectionId}|${model}`;
     const now = Date.now();
     const strike = strikeCounts.get(key);
@@ -354,13 +377,13 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
     if (count >= STRIKE_THRESHOLD) {
       strikeCounts.delete(key);
       const blockedUntil = now + STRIKE_BLOCK_MS;
-      const reading = quota ? `${Math.round(quota.remainingPercentage)}%` : "unknown";
+      const reading = effectiveQuota ? `${Math.round(effectiveQuota.remainingPercentage)}%` : "unknown";
       log.warn("AG_QUOTA", `${connectionId.slice(0, 8)} | STRIKE_${status} ${model} — ${count}x 429 (quota ${reading}); CACHE_BLOCK 15m`);
       // Synthesize a 0% entry in the shared cache so the auth pre-filter skips
       // this pair on subsequent requests too, not just the current retry loop
       // (the chat handler does not persist modelLock_* for this path).
       const cached = quotaCache.get(connectionId) || {};
-            cached[familyKey || model] = { remainingPercentage: 0, resetAt: new Date(blockedUntil).toISOString() };
+            cached[argonQuota ? "gemini_argon_weekly" : (familyKey || model)] = { remainingPercentage: 0, resetAt: new Date(blockedUntil).toISOString() };
       quotaCache.set(connectionId, cached);
       strikeBlocks.set(key, blockedUntil);
       return blockedUntil;
@@ -370,12 +393,12 @@ export async function handleAntigravityQuotaError(connectionId, status, model, a
 
   // Healthy-but-exhausted reading: clear strikes and use the exact resetAt.
   strikeCounts.delete(`${connectionId}|${model}`);
-  if (!quota.resetAt) return null;
+  if (!effectiveQuota.resetAt) return null;
 
-  const resetMs = new Date(quota.resetAt).getTime();
+  const resetMs = new Date(effectiveQuota.resetAt).getTime();
   if (resetMs <= Date.now()) return null;
 
-  log.warn("AG_QUOTA", `${connectionId.slice(0, 8)} | UPSTREAM_${status} ${model} — quota exhausted; CACHE_BLOCK until ${quota.resetAt}`);
+  log.warn("AG_QUOTA", `${connectionId.slice(0, 8)} | UPSTREAM_${status} ${model} — quota exhausted; CACHE_BLOCK until ${effectiveQuota.resetAt}`);
   // Persist so the block survives server restarts / PanRouter updates.
   persistExhausted(connectionId, quotaCache.get(connectionId) || {});
   return resetMs;

@@ -5,7 +5,7 @@ import { MAX_RATE_LIMIT_COOLDOWN_MS, BANNED_ACCOUNT_COOLDOWN_MS } from "open-sse
 import { isQuotaExhaustedError, resolveQuotaResetAt } from "open-sse/services/quotaWindow.js";
 import { quotaWindowFor } from "open-sse/config/quotaWindows.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
-import { getAntigravityQuotaCache, antigravityFamilyKey, revalidateAntigravityExhausted } from "./antigravityQuota.js";
+import { getAntigravityQuotaCache, antigravityFamilyKey, antigravityArgonBucket, revalidateAntigravityExhausted } from "./antigravityQuota.js";
 import { shouldSkipAntigravityAccount, getAntigravityIneligibility } from "open-sse/services/antigravityCapCache.js";
 import { shouldSkipKiroAccount, markKiroCapped, recordKiroUsage } from "open-sse/services/kiroCapCache.js";
 import { isBannedConnection, banFields, clearBanFields } from "open-sse/services/bannedAccounts.js";
@@ -215,6 +215,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
               return false;
             }
           }
+          // Argon (upstream 8a833631): its own weekly bucket decides when the
+          // account reports one; the family bucket above stays the fallback, so
+          // an exhausted Argon tier is never rescued by healthy plain-Gemini.
+          const argonBucket = antigravityArgonBucket(cache, model);
+          if (argonBucket && argonBucket.remainingPercentage <= 0 && argonBucket.resetAt && new Date(argonBucket.resetAt).getTime() > now) {
+            log.debug("AG_QUOTA", `${account} | BUCKET_BLOCK ${model} (gemini_argon_weekly) — skip upstream until ${argonBucket.resetAt}`);
+            return false;
+          }
         }
       }
       return true;
@@ -242,6 +250,10 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           // for models outside the known families.
           const familyKey = antigravityFamilyKey(model);
           const resetAt = (familyKey && cache[familyKey]?.resetAt) || cache[model]?.resetAt;
+          // Argon (upstream 8a833631): its own reset participates when reported;
+          // earliest future reset still wins across connections.
+          const argonResetAt = antigravityArgonBucket(cache, model)?.resetAt;
+          if (argonResetAt && new Date(argonResetAt).getTime() > Date.now()) expiries.push(argonResetAt);
           if (resetAt && new Date(resetAt).getTime() > Date.now()) expiries.push(resetAt);
         });
       }

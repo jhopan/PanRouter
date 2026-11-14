@@ -307,13 +307,26 @@ function flattenAnyOfOneOf(obj) {
   }
 }
 
-// Flatten type arrays
+// Flatten type arrays. With several non-null candidates, keep the one the node's
+// own structure argues for — otherwise a union like ["boolean","object"] resolves
+// to "boolean" and the type predicates below then have to drop real properties.
+// Inference stays conservative: no "object" without properties/additionalProperties.
 function flattenTypeArrays(obj) {
   if (!obj || typeof obj !== "object") return;
 
   if (obj.type && Array.isArray(obj.type)) {
     const nonNullTypes = obj.type.filter(t => t !== "null");
-    obj.type = nonNullTypes.length > 0 ? nonNullTypes[0] : "string";
+    if (nonNullTypes.length <= 1) {
+      obj.type = nonNullTypes.length > 0 ? nonNullTypes[0] : "string";
+    } else if ((obj.properties || obj.additionalProperties) && nonNullTypes.includes("object")) {
+      obj.type = "object";
+    } else if (obj.items?.type && nonNullTypes.includes("array")) {
+      obj.type = "array";
+    } else if (nonNullTypes.includes("string")) {
+      obj.type = "string";
+    } else {
+      obj.type = nonNullTypes[0];
+    }
   }
 
   for (const value of Object.values(obj)) {
@@ -369,6 +382,64 @@ function ensureArrayItems(obj) {
     obj.items = { type: "string" };
   }
   for (const v of Object.values(obj)) if (v && typeof v === "object") ensureArrayItems(v);
+}
+
+// The Gemini Schema proto gates three fields on the node's own type:
+//   items               → predicate $type == Type.ARRAY
+//   properties, required → predicate $type == Type.OBJECT
+// plus `required` may only name keys the object actually declares. Gemini answers
+// "Invalid value at ..." for a single violation, so every node has to satisfy
+// its predicate — a schema that merely *looked* like an object is not enough.
+function enforceTypePredicates(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+
+  // Children first, so a child's own type/items are settled before the parent
+  // judges them. `properties` is a name → schema map, not a schema node: walking
+  // it as a node would delete a parameter literally named "items".
+  for (const [key, value] of Object.entries(obj)) {
+    if (!value || typeof value !== "object") continue;
+    if (key === "properties" && !Array.isArray(value)) {
+      for (const sub of Object.values(value)) enforceTypePredicates(sub);
+    } else if (Array.isArray(value)) {
+      for (const sub of value) enforceTypePredicates(sub);
+    } else {
+      enforceTypePredicates(value);
+    }
+  }
+
+  if (obj.type === "array") {
+    delete obj.properties;
+    delete obj.required;
+    if (!obj.items || typeof obj.items !== "object" || Array.isArray(obj.items) || Object.keys(obj.items).length === 0) {
+      obj.items = { type: "string" };
+    } else if (!obj.items.type) {
+      // Conservative inference from structure only; never invent a type the
+      // schema gives no evidence for.
+      obj.items.type = obj.items.properties ? "object" : obj.items.items ? "array" : "string";
+    }
+  } else {
+    delete obj.items;
+  }
+
+  const declared = obj.type === "object" && obj.properties && typeof obj.properties === "object" && !Array.isArray(obj.properties)
+    ? obj.properties
+    : null;
+
+  if (!declared) {
+    delete obj.properties;
+    delete obj.required;
+    return;
+  }
+
+  if (!Array.isArray(obj.required)) {
+    delete obj.required;
+    return;
+  }
+  const kept = obj.required.filter(name =>
+    typeof name === "string" && Object.prototype.hasOwnProperty.call(declared, name)
+  );
+  if (kept.length > 0) obj.required = kept;
+  else delete obj.required;
 }
 
 // Clean JSON Schema for Antigravity API compatibility - removes unsupported keywords recursively
@@ -458,6 +529,10 @@ export function cleanJSONSchemaForAntigravity(schema) {
   }
 
   addPlaceholders(cleaned);
+
+  // Phase 6: Enforce the Gemini proto type predicates (items only on array,
+  // properties/required only on object, required only naming declared keys)
+  enforceTypePredicates(cleaned);
 
   return cleaned;
 }

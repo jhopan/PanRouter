@@ -74,6 +74,7 @@ export function dailyQuotaCooldownMs(provider = null, now = Date.now()) {
 
 // Cooldown durations (ms)
 const COOLDOWN = {
+  day: 24 * 60 * 60 * 1000,
   long: 2 * 60 * 1000,
   short: 5 * 1000,
 };
@@ -126,6 +127,25 @@ export const ERROR_RULES = [
   // entry as soon as the plan refills.
   { provider: "minimax-code", text: "insufficient balance", cooldownMs: 24 * 60 * 60 * 1000 },
   { provider: "minimax-code-global", text: "insufficient balance", cooldownMs: 24 * 60 * 60 * 1000 },
+  // ── Antigravity account-level locks (upstream 9router PR #5688) ──────────
+  // Google Cloud Code answers 403 with `PERMISSION_DENIED TOS_VIOLATION: This
+  // service has been disabled in this account for violation of Terms of
+  // Service` when the account is suspended, and with VALIDATION_REQUIRED when
+  // it must pass a browser re-verification. Neither is a burst limit: the
+  // generic 403 rule parks for 2 minutes, so a suspended account was retried
+  // forever on a 2-minute loop. Park such an account for a day instead.
+  //
+  // VALIDATION_REQUIRED is ALSO handled on the quota/eligibility path
+  // (open-sse/services/antigravityCapCache.js — cached verdict, auth.js
+  // skip-before-request, dashboard badge, KV persistence). That path parks the
+  // account before the request leaves; this rule only covers the chat 403 that
+  // still reaches the error handler. Neither replaces the other.
+  //
+  // Provider-scoped on purpose: the same wording from another provider is not
+  // an account lock. The `ag` alias needs no rule of its own —
+  // checkFallbackError resolves aliases to `antigravity` before matching.
+  { provider: "antigravity", text: "tos_violation", cooldownMs: COOLDOWN.day },
+  { provider: "antigravity", text: "validation_required", cooldownMs: COOLDOWN.day },
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
   // NVIDIA NIM returns 400 with "degraded" when specific model cluster is unhealthy.
   // Lock only the degraded model (modelScoped: true) without locking the API key.

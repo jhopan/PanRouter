@@ -2,6 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { DefaultExecutor } from "./default.js";
 import { userIdFromCredentials } from "../shared/codebuddyUserId.js";
+import {
+  NEUTRAL_SYSTEM_PROMPT,
+  AGENT_IDENTITY_PATTERN,
+  flattenSystemContent,
+} from "../shared/codebuddySystemPrompt.js";
 
 /**
  * CodeBuddyIntlExecutor — talks to https://www.codebuddy.ai/v2/chat/completions
@@ -286,8 +291,33 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
 
     // CodeBuddy rejects plain OpenAI shape (11101 invalid request): needs a
     // leading system prompt + user content as typed blocks, not a bare string.
+    //
+    // Injecting our own system prompt over the client's loses every
+    // user/project instruction on every request, so the client's system and
+    // developer messages are folded into the single leading prompt instead.
+    // Only messages carrying a third-party CLI agent identity are replaced —
+    // those are what the WAF reads as unauthorized tooling (see
+    // shared/codebuddySystemPrompt.js for the pattern and its scope).
     const source = Array.isArray(transformed.messages) ? transformed.messages : [];
-    transformed.messages = [{ role: "system", content: "You are CodeBuddy Code." }];
+    const clientSystemPrompts = source
+      .filter((m) => m && ["system", "developer"].includes(m.role))
+      .map((m) => {
+        const text = flattenSystemContent(m.content);
+        return text && AGENT_IDENTITY_PATTERN.test(text) ? NEUTRAL_SYSTEM_PROMPT : text;
+      })
+      .filter(Boolean);
+
+    // The gateway requires the first message to be the system prompt, so the
+    // folded prompt is the default only when the client sent none.
+    transformed.messages = [
+      {
+        role: "system",
+        content:
+          clientSystemPrompts.length > 0
+            ? clientSystemPrompts.join("\n\n")
+            : "You are CodeBuddy Code.",
+      },
+    ];
     for (const message of source) {
       if (!message || typeof message !== "object" || ["system", "developer"].includes(message.role)) continue;
       if (message.role === "user" && typeof message.content === "string") {

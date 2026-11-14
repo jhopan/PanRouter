@@ -52,8 +52,16 @@ const BODY_WITHOUT_TIMESTAMP = JSON.stringify({
 
 describe("AntigravityExecutor parseError (quota reset extraction)", () => {
   it("parses exact quotaResetTimeStamp from 429 body", async () => {
-    const parsed = await executor.parseError(res(429), BODY_WITH_TIMESTAMP);
-    expect(parsed.resetsAtMs).toBe(Date.parse("2026-10-08T02:11:56Z"));
+    // Pin the clock: the parser only trusts a reset that is still in the
+    // future, so a fixed calendar date would rot out of the fixture.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-05T00:00:00Z"));
+    try {
+      const parsed = await executor.parseError(res(429), BODY_WITH_TIMESTAMP);
+      expect(parsed.resetsAtMs).toBe(Date.parse("2026-10-08T02:11:56Z"));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("parses quotaResetDelay when only delay is present (met data)", async () => {

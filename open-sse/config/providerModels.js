@@ -78,14 +78,46 @@ export function getModelMeta(aliasOrId, modelId) {
   return findModel(PROVIDER_MODELS[aliasOrId], modelId, aliasOrId) || null;
 }
 
-export function getModelUpstreamId(aliasOrId, modelId) {
+// Collapse a requested level onto a tier name the registry may declare.
+// xhigh/max are wire aliases for high; minimal is the wire alias for low.
+function normalizeTier(raw) {
+  if (typeof raw !== "string") return "";
+  const level = raw.toLowerCase().trim();
+  if (!level) return "";
+  if (level === "xhigh" || level === "max") return "high";
+  if (level === "minimal") return "low";
+  return level;
+}
+
+// Thinking level the client asked for, read from the unified request shapes:
+// OpenAI reasoning_effort, Claude output_config.effort, Claude/Gemini thinking budget.
+function tierFromBody(clientBody) {
+  if (!clientBody || typeof clientBody !== "object") return "";
+  const effort = clientBody.reasoning_effort || clientBody.output_config?.effort;
+  if (typeof effort === "string" && effort) return normalizeTier(effort);
+  const thinking = clientBody.thinking;
+  if (thinking && typeof thinking === "object") {
+    const budget = Number(thinking.budget_tokens);
+    if (Number.isFinite(budget) && budget > 0) {
+      return budget > 16384 ? "high" : budget <= 4096 ? "low" : "medium";
+    }
+  }
+  return "";
+}
+
+export function getModelUpstreamId(aliasOrId, modelId, clientBody = null) {
   // Split off thinking suffix "(level)" so lookup hits the base id; re-append it to
   // the result so downstream applyThinking still sees the suffix (body.model is stripped separately).
   const sufMatch = typeof modelId === "string" ? modelId.match(/\([^()]+\)\s*$/) : null;
   const suffix = sufMatch ? sufMatch[0] : "";
   const baseId = suffix ? modelId.slice(0, sufMatch.index).trim() : modelId;
   const models = PROVIDER_MODELS[aliasOrId];
-  const found = findModel(models, baseId, aliasOrId);
+
+  // Explicit "(level)" suffix wins over the client body. The tiered variant is used
+  // ONLY when the registry declares it — an id this provider does not publish is
+  // never synthesised, so resolution falls back to the base id unchanged.
+  const tier = normalizeTier(suffix ? suffix.slice(1, -1) : "") || tierFromBody(clientBody);
+  const found = (tier ? findModel(models, `${baseId}-${tier}`, aliasOrId) : undefined) || findModel(models, baseId, aliasOrId);
   const resolvedId = found?.upstreamModelId || found?.id;
   if (resolvedId) {
     const presetMatch = resolvedId.match(/\([^()]+\)\s*$/);

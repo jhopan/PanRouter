@@ -79,6 +79,14 @@ export function isProviderRefusalBody(bodyText) {
     || /unusual activity/.test(flat)
     || /restricted due to/.test(flat)
     || /request illegal/.test(flat)
+    // Antigravity (Google Cloud Code) account-level locks: TOS_VIOLATION means
+    // the account is suspended, VALIDATION_REQUIRED means it needs a browser
+    // re-verification. The token is valid in both cases — a refresh cannot lift
+    // either state, and the retried request only burns 3 refresh attempts (6s of
+    // backoff) plus a duplicate chat call. The error handler parks the account
+    // (24h rule in config/errorConfig.js); no second request is needed.
+    || /tos_violation/.test(flat)
+    || /validation_required/.test(flat)
   );
 }
 

@@ -33,6 +33,11 @@ export const QUOTA_WINDOWS = {
     // Kiro reports a date via `nextDateReset` in its usage API.
     kiro: { scope: QUOTA_SCOPES.MONTHLY, usageKey: null },
     // Weekly buckets from retrieveUserQuotaSummary (resetTime per bucket).
+    // Gemini 4 Argon has its own `gemini_argon_weekly` bucket, but this resolver
+    // is provider-scoped (no model: resolveQuotaResetAt only receives the
+    // provider + connection), so the family key stays `gemini_weekly`:
+    // switching to `usageKey: null` (earliest reset across ALL rows) would
+    // unlock a genuinely exhausted family as soon as any other family resets.
     antigravity: { scope: QUOTA_SCOPES.WEEKLY, usageKey: "gemini_weekly" },
     // MiniMax Code M Plan: the plan reports an INTERVAL window (hours) and a
     // WEEKLY window, each with its own remaining percentage and end time.

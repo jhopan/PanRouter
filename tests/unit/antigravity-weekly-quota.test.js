@@ -43,11 +43,26 @@ const CLAUDE_GPT_GROUP = {
   ],
 };
 
-const FULL_RESPONSE = { groups: [GEMINI_GROUP, CLAUDE_GPT_GROUP] };
+const GEMINI_ARGON_GROUP = {
+  displayName: "Gemini 4 Argon",
+  buckets: [
+    {
+      bucketId: "gemini-argon-wtu-weekly",
+      displayName: "Gemini 4 Argon Weekly Limit",
+      remainingFraction: 0.43,
+      resetTime: "2026-09-10T08:17:00Z",
+    },
+  ],
+};
+
+// Argon's display name also contains "Gemini": the group list keeps Argon AFTER
+// the Gemini group on purpose, so the ordering test below fails if the matcher
+// order ever stops being argon-first.
+const FULL_RESPONSE = { groups: [GEMINI_GROUP, CLAUDE_GPT_GROUP, GEMINI_ARGON_GROUP] };
 
 const NESTED_RESPONSE = {
   quotaSummary: {
-    groups: [GEMINI_GROUP, CLAUDE_GPT_GROUP],
+    groups: [GEMINI_GROUP, CLAUDE_GPT_GROUP, GEMINI_ARGON_GROUP],
   },
 };
 
@@ -77,12 +92,51 @@ describe("parseWeeklyQuotaSummary", () => {
     expect(result.claude_gpt_weekly.resetAt).toBe("2026-09-14T00:00:00.000Z");
   });
 
+  it("extracts Gemini 4 Argon weekly quota into its own bucket", () => {
+    const result = parseWeeklyQuotaSummary(FULL_RESPONSE);
+    expect(result.gemini_argon_weekly).toMatchObject({
+      used: 570,
+      total: 1000,
+      remainingPercentage: 43,
+      displayName: "Gemini 4 Argon (Weekly)",
+      unlimited: false,
+    });
+    expect(result.gemini_argon_weekly.resetAt).toBe("2026-09-10T08:17:00.000Z");
+  });
+
+  it("keeps Argon out of the shared Gemini bucket regardless of group order", () => {
+    const argonFirst = { groups: [GEMINI_ARGON_GROUP, GEMINI_GROUP] };
+    for (const response of [FULL_RESPONSE, argonFirst]) {
+      const result = parseWeeklyQuotaSummary(response);
+      expect(result.gemini_weekly.remainingPercentage).toBe(75);
+      expect(result.gemini_weekly.resetAt).toBe("2026-09-15T00:00:00.000Z");
+      expect(result.gemini_argon_weekly.remainingPercentage).toBe(43);
+    }
+  });
+
+  it("ignores the Argon 5h session bucket (weekly-only parser)", () => {
+    const data = {
+      groups: [{
+        displayName: "Gemini 4 Argon",
+        buckets: [{
+          bucketId: "gemini-argon-5h",
+          displayName: "Gemini 4 Argon 5h Limit",
+          remainingFraction: 0.9,
+          resetTime: "2026-09-10T12:00:00Z",
+        }],
+      }],
+    };
+    expect(parseWeeklyQuotaSummary(data)).toEqual({});
+  });
+
   it("handles alternate nested quotaSummary.groups shape", () => {
     const result = parseWeeklyQuotaSummary(NESTED_RESPONSE);
     expect(result.gemini_weekly).toBeDefined();
     expect(result.claude_gpt_weekly).toBeDefined();
+    expect(result.gemini_argon_weekly).toBeDefined();
     expect(result.gemini_weekly.remainingPercentage).toBe(75);
     expect(result.claude_gpt_weekly.remainingPercentage).toBe(50);
+    expect(result.gemini_argon_weekly.remainingPercentage).toBe(43);
   });
 
   it("skips non-weekly buckets", () => {
@@ -184,6 +238,8 @@ describe("fetchAntigravityWeeklyQuota", () => {
     const result = await fetchAntigravityWeeklyQuota("token", "project-1");
     expect(result.gemini_weekly).toBeDefined();
     expect(result.claude_gpt_weekly).toBeDefined();
+    expect(result.gemini_argon_weekly).toBeDefined();
+    expect(result.gemini_argon_weekly.remainingPercentage).toBe(43);
   });
 
   it("returns {} on HTTP 401", async () => {
@@ -262,20 +318,20 @@ describe("fetchAntigravityWeeklyQuota", () => {
 
     await fetchAntigravityWeeklyQuota("token", "project-1");
 
-    expect(proxyAwareFetch).toHaveBeenCalledWith(
-      "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          "Authorization": "Bearer token",
-          "User-Agent": "antigravity/ide/2.11.0 darwin/arm64",
-          "Content-Type": "application/json",
-          "X-Client-Name": "antigravity",
-        }),
-        body: JSON.stringify({ project: "project-1" }),
-      }),
-      expect.any(Object),
-    );
+    // Pin the single source of truth (the verified Hub client identity), not a
+    // literal that rots every time the client version is re-captured.
+    const { ANTIGRAVITY_IDE_USER_AGENT, ANTIGRAVITY_IDE_VERSION } = await import("open-sse/providers/shared.js");
+    const [url, opts] = proxyAwareFetch.mock.calls[0];
+    expect(url).toBe("https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary");
+    expect(opts.method).toBe("POST");
+    expect(opts.headers).toMatchObject({
+      "Authorization": "Bearer token",
+      "User-Agent": ANTIGRAVITY_IDE_USER_AGENT,
+      "Content-Type": "application/json",
+      "X-Client-Name": "antigravity",
+      "X-Client-Version": ANTIGRAVITY_IDE_VERSION,
+    });
+    expect(opts.body).toBe(JSON.stringify({ project: "project-1" }));
   });
 });
 
@@ -459,6 +515,97 @@ describe("weekly quota isolation from existing quota", () => {
       total: 1000,
       remainingPercentage: 0,
       resetAt: "2026-09-13T12:00:00.000Z",
+    });
+  });
+
+  // Mock both RPCs for a paid account: per-model rows + the weekly summary.
+  function mockPaidAccount({ models, groups }) {
+    proxyAwareFetch.mockImplementation(async (url) => {
+      if (url.includes(":loadCodeAssist")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ cloudaicompanionProject: "p1", currentTier: { name: "Pro" }, paidTier: { id: "g1-pro-tier", name: "Google AI Pro" } }),
+        };
+      }
+      if (url.includes(":fetchAvailableModels")) {
+        return { ok: true, status: 200, json: async () => ({ models }) };
+      }
+      if (url.includes(":retrieveUserQuotaSummary")) {
+        return { ok: true, status: 200, json: async () => ({ groups }) };
+      }
+      return { ok: false, status: 404 };
+    });
+  }
+
+  const EXHAUSTED_BUCKET = (resetTime) => [{
+    bucketId: "weekly",
+    displayName: "Weekly Limit Remaining",
+    remainingFraction: 1,
+    resetTime,
+  }];
+
+  it("parks the Argon bucket on the max Argon reset without touching Gemini", async () => {
+    mockPaidAccount({
+      models: {
+        // Every Argon tier is spent; each carries its own reset.
+        "gemini-4-argon-high": { displayName: "Gemini 4 Argon (High)", quotaInfo: { resetTime: "2026-09-20T00:00:00Z" } },
+        "gemini-4-argon-low": { displayName: "Gemini 4 Argon (Low)", quotaInfo: { resetTime: "2026-09-22T00:00:00Z" } },
+        "gemini-3.8-flash-high": {
+          displayName: "Gemini 3.8 Flash (High)",
+          quotaInfo: { remainingFraction: 1, resetTime: "2026-09-15T00:00:00Z" },
+        },
+      },
+      groups: [
+        { displayName: "Gemini Models", buckets: EXHAUSTED_BUCKET("2026-09-15T00:00:00Z") },
+        { displayName: "Gemini 4 Argon", buckets: EXHAUSTED_BUCKET("2026-09-19T00:00:00Z") },
+      ],
+    });
+
+    const { getAntigravityUsage } = await import("../../open-sse/services/usage/google.js");
+    const result = await getAntigravityUsage("token", {});
+
+    expect(result.quotas["gemini-4-argon-high"].remainingPercentage).toBe(0);
+    expect(result.quotas.gemini_argon_weekly).toMatchObject({
+      used: 1000,
+      total: 1000,
+      remainingPercentage: 0,
+      // max Argon reset, not the stale summary resetTime
+      resetAt: "2026-09-22T00:00:00.000Z",
+    });
+    // Argon exhaustion must not zero the Gemini family bucket.
+    expect(result.quotas.gemini_weekly).toMatchObject({
+      remainingPercentage: 100,
+      resetAt: "2026-09-15T00:00:00.000Z",
+    });
+  });
+
+  it("does not let a healthy Argon tier keep the exhausted Gemini bucket available", async () => {
+    mockPaidAccount({
+      models: {
+        "gemini-4-argon-high": {
+          displayName: "Gemini 4 Argon (High)",
+          quotaInfo: { remainingFraction: 1, resetTime: "2026-09-19T00:00:00Z" },
+        },
+        "gemini-3.8-flash-high": { displayName: "Gemini 3.8 Flash (High)", quotaInfo: { resetTime: "2026-09-13T12:00:00Z" } },
+      },
+      groups: [
+        { displayName: "Gemini Models", buckets: EXHAUSTED_BUCKET("2026-09-15T00:00:00Z") },
+        { displayName: "Gemini 4 Argon", buckets: EXHAUSTED_BUCKET("2026-09-19T00:00:00Z") },
+      ],
+    });
+
+    const { getAntigravityUsage } = await import("../../open-sse/services/usage/google.js");
+    const result = await getAntigravityUsage("token", {});
+
+    // Argon is excluded from the Gemini family set, so the exhausted Gemini
+    // model alone is enough to reconcile the Gemini bucket.
+    expect(result.quotas.gemini_weekly).toMatchObject({
+      remainingPercentage: 0,
+      resetAt: "2026-09-13T12:00:00.000Z",
+    });
+    expect(result.quotas.gemini_argon_weekly).toMatchObject({
+      remainingPercentage: 100,
     });
   });
 });

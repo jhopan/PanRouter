@@ -26,7 +26,14 @@ export function _clearWeeklyCache() {
 }
 
 // — Group-name to stable key mapping ——————————————————————
+// Only weekly buckets are modelled: PanRouter routes Antigravity by weekly
+// family bucket (Plus/free share one limit per family), so upstream's 5h
+// session keys — including `gemini_argon_session` — have no consumer here.
+// Order matters: the more specific family must precede the broader /gemini/i
+// matcher, or a Gemini 4 Argon group is classified as the shared Gemini bucket
+// and its exhaustion contaminates the Gemini (Flash / Pro) reading.
 const GROUP_MATCHERS = [
+  { pattern: /argon/i, key: "gemini_argon_weekly", displayName: "Gemini 4 Argon (Weekly)" },
   { pattern: /gemini/i, key: "gemini_weekly", displayName: "Gemini (Weekly)" },
   { pattern: /claude|gpt/i, key: "claude_gpt_weekly", displayName: "Claude & GPT (Weekly)" },
 ];
@@ -36,7 +43,7 @@ const GROUP_MATCHERS = [
  * Pure function — safe to unit-test without network.
  *
  * @param {Object|null} data  Raw JSON response
- * @returns {Object}  e.g. { gemini_weekly: { used, total, ... }, claude_gpt_weekly: { ... } }
+ * @returns {Object}  e.g. { gemini_weekly: { used, total, ... }, gemini_argon_weekly: { ... }, claude_gpt_weekly: { ... } }
  */
 export function parseWeeklyQuotaSummary(data) {
   if (!data || typeof data !== "object") return {};
