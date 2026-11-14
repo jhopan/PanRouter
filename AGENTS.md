@@ -42,6 +42,21 @@ Precedence when they disagree: **freebucks-proxy (jhopan fork) > OmniRoute**. Th
 - **Internal identifiers stay `9router` on purpose** — install paths (`~/.9router`), DB names, salt shapes, package internals. Those are disk/wire compatibility, not branding: existing installs and databases depend on them. Do NOT "fix" them to `panrouter`.
 - **What is ours alone** (upstream has none of it): the FreeBuff executor + session pool, the AgentRouter translate layer, per-key prepaid token pools (`apiKeyLimits.js`), per-provider quota windows, router-side parked-quota rows, GitHub-Releases distribution, and the added `tests/unit/` coverage.
 
+### Strict providers — port with a warning first (Antigravity, CodeBuddy, Kiro)
+
+These three authenticate by **client fingerprint**, not just a token: Antigravity sends a Hub client version + User-Agent (`2.32.1`), CodeBuddy Intl sends `IDE/2.160.0 CodeBuddy/2.160.0` plus exact model IDs from `codebuddy --help`, and Kiro sends an IDE/CLI version in the UA and only uses region-scoped service hosts it actually serves. A wrong value does **not** fail loudly — it shows up as `403`, `country_not_allowed`, an "invalid model", a 400 schema rejection, or a plain quota-looking 429.
+
+So, before porting any upstream/OmniRoute change that touches one of these providers:
+
+1. **Warn first, in plain words, before editing.** State the change, the exact constant/header/model-id it pins, and what happens to us if the pinned value is wrong.
+2. **Explain provenance**: is upstream's value read off a real client (`--version`, captured wirefacts, live catalog) or guessed? Say which.
+3. **Keep our verified constant when upstream's is unverified.** Live wire tests + `wirefacts/` snapshots beat an unverified upstream literal; a port that only "makes a test green" by swapping a fingerprint is a regression, not a fix.
+4. **Then port, and say what was verified after** (targeted test + live request), because these providers cannot be validated from unit tests alone.
+
+Touched surfaces: `open-sse/config/kiroConstants.js`, `open-sse/executors/{antigravity,kiro,codebuddy*,default}.js`, `open-sse/providers/shared.js`, `open-sse/providers/registry/{antigravity,kiro,codebuddy-intl,codebuddy-cn}.js`, `src/lib/oauth/providers/*`, `src/lib/oauth/constants/oauth.js`.
+
+The same warning applies when upstream changes only a *version string*: bumping an Antigravity Hub version, a CodeBuddy `IDE/<ver>` component, or a Kiro CLI version is a wire change even though it looks like a constant edit.
+
 Read first:
 - `docs/ARCHITECTURE.md` — full system: request lifecycle, combo/account fallback, OAuth + token refresh, cloud sync, data model, env matrix.
 - `open-sse/AGENTS.md` — **required before editing anything under `open-sse/`** (translator/executor/provider conventions).
