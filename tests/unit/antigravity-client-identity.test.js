@@ -28,10 +28,23 @@ describe("Antigravity client identity", () => {
     expect(maj > 2 || (maj === 2 && min >= 32)).toBe(true);
   });
 
-  it("keeps the darwin/arm64 platform profile deliberately", () => {
-    // Static on purpose: the provider mimics the macOS Hub client regardless of
-    // the host the router runs on. Upstream documents the same choice.
-    expect(ANTIGRAVITY_IDE_USER_AGENT).toMatch(/darwin\/arm64$/);
+  it("carries the captured client descriptor, not a fabricated darwin/arm64 tail", () => {
+    // Captured live from language_server.exe:
+    //   antigravity/hub/2.32.1 (aidev_client; os_type=windows; arch=amd64; cl=1021296516)
+    expect(ANTIGRAVITY_IDE_USER_AGENT).toMatch(
+      /\(aidev_client; os_type=(windows|linux|macos); arch=(amd64|arm64); cl=\d+\)$/,
+    );
+    expect(ANTIGRAVITY_IDE_USER_AGENT).not.toContain("darwin/arm64");
+  });
+
+  it("describes the host it actually runs on", () => {
+    // The real client always names its own machine; a Linux VPS must not claim
+    // windows (and the old constant claimed macOS from everywhere).
+    const expectedOs = process.platform === "win32" ? "windows"
+      : process.platform === "darwin" ? "macos" : "linux";
+    expect(ANTIGRAVITY_IDE_USER_AGENT).toContain(`os_type=${expectedOs}`);
+    const expectedArch = process.arch === "arm64" ? "arm64" : "amd64";
+    expect(ANTIGRAVITY_IDE_USER_AGENT).toContain(`arch=${expectedArch}`);
   });
 
   it("carries the same version in the UA and the client-version header", () => {

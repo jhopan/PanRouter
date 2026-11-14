@@ -89,25 +89,44 @@ export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1/messages";
 export const OPENAI_COMPAT_BASE = "https://api.openai.com/v1";
 export const ANTHROPIC_COMPAT_BASE = "https://api.anthropic.com/v1";
 
-// Official Antigravity Hub client fingerprint.
-// Keep this static even when PanRouter runs on Linux: the provider profile is
-// intentionally matching the client, not the server host.
+// Official Antigravity Hub client identity — CAPTURED, not guessed.
 //
-// WHICH NUMBER THIS IS — there are three, and only one belongs here:
-//   * Hub app "Antigravity" (Agentic Desktop Application)  → 2.32.1  ← THIS ONE
-//   * Antigravity IDE release                              → 2.7.0   (update manifest)
-//   * Antigravity IDE productVersion                       → 1.107.0 (VS Code base)
-// The UA's version tracks the Hub: the previous value (2.19.1) matched the Hub
-// build installed on 2026-10-01, and upstream's 2.24.0 sits on the same line
-// (2.19.1 → 2.22.0 → 2.24.0 → 2.32.1), not on the IDE's 2.7.0 line.
-// Read it from <install>/resources/app.asar → package.json.version.
+// Captured 2026-11-14 by running the shipped client
+//   Programs/antigravity/resources/bin/language_server.exe
+// with the exact argument set the Hub launcher passes (dist/lsDefaults.js):
+//   --standalone --override_ide_name antigravity --subclient_type hub
+//   --override_ide_version 2.32.1 --override_user_agent_name antigravity
+// and pointing --cloud_code_endpoint at a local listener. The wire value was:
 //
-// The gateway parses this user agent. The old `antigravity/ide/...` shape and an
-// ageing version are what newer model tiers were gated on, so both the channel
-// word and the version have to track the shipping client.
+//   antigravity/hub/2.32.1 (aidev_client; os_type=windows; arch=amd64; cl=1021296516)
+//
+// That settles three things that were previously guesswork:
+//   * "hub" is the --subclient_type, not a product name.
+//   * The version is app.getVersion() of the Hub app (2.32.1 here), NOT the IDE
+//     release (2.7.0) and not the IDE's VS Code base (1.107.0).
+//   * The tail is a parenthesised client descriptor, not `darwin/arm64` — the
+//     old macOS-style suffix was fabricated and never sent by a real client.
+//
+// os_type/arch are derived from the host on purpose: the real client always
+// describes the machine it runs on, so a Linux VPS must not claim windows.
 export const ANTIGRAVITY_IDE_VERSION = "2.32.1";
+// `cl=` build label shipped with 2.32.1; captured from the same binary.
+export const ANTIGRAVITY_CLIENT_LABEL = "1021296516";
 export const ANTIGRAVITY_IDE_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
-export const ANTIGRAVITY_IDE_USER_AGENT = `antigravity/hub/${ANTIGRAVITY_IDE_VERSION} darwin/arm64`;
+
+function antigravityOsType() {
+  if (process.platform === "win32") return "windows";
+  if (process.platform === "darwin") return "macos";
+  return "linux";
+}
+
+function antigravityArch() {
+  return process.arch === "arm64" ? "arm64" : "amd64";
+}
+
+export const ANTIGRAVITY_IDE_USER_AGENT =
+  `antigravity/hub/${ANTIGRAVITY_IDE_VERSION} ` +
+  `(aidev_client; os_type=${antigravityOsType()}; arch=${antigravityArch()}; cl=${ANTIGRAVITY_CLIENT_LABEL})`;
 
 // Antigravity OAuth client credentials (public CLI client — duplicated in usage.js + src/lib/oauth)
 export const ANTIGRAVITY_OAUTH_CLIENT = {
