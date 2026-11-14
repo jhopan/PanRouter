@@ -35,11 +35,13 @@ import {
   QODER_CONTEXT_TIER_ENV,
   QODER_IDE_VERSION,
   QODER_MODEL_MAP,
+  getQoderStaticModelConfig,
   qoderInferenceBase,
 } from "../shared/qoder/constants.js";
 import { getQoderModelConfig, resolveQoderModels, isQoderPat, resolveQoderCredentials } from "../services/qoderModels.js";
 import { OPENAI_BLOCK, CLAUDE_BLOCK } from "../translator/schema/blocks.js";
 import { encodeDataUri } from "../translator/concerns/image.js";
+import { computeQoderQueueDelayMs, parseQoderQueueInfo } from "../shared/qoder/queue.js";
 import { createQoderSseCoalescer } from "../shared/qoder/sse.js";
 import { rewriteQoderMessageAttachments } from "../shared/qoder/attachments.js";
 import { resolveQoderContextTier, applyQoderContextTier } from "../shared/qoder/contextTier.js";
@@ -223,14 +225,21 @@ async function buildQoderRequestBody({ model, body, credentials, log, proxyOptio
     if (retried) {
       modelConfig = { ...retried, key: qoderKey };
     } else {
-      // Last resort: the static map knows this key but the account's catalog
-      // does not (a model the CLI shows before the API exposes it, or a cached
-      // catalog that predates the release). Build a minimal config so the
-      // request still goes out instead of failing with "not yet known".
-      // The upstream either accepts it or answers with its own error, which is
-      // far more useful than a local refusal.
+      // Static block for models the per-account catalog omits (Sonus `smodel` /
+      // Cantus `cmodel`): the chat endpoint accepts them even when
+      // /model/list never mentions them, so refusing here would make an
+      // available model look broken.
+      const staticCfg = getQoderStaticModelConfig(qoderKey);
+      // Otherwise a minimal config from the static map — the account's catalog
+      // knows this key but the live catalog does not (a model the CLI shows
+      // before the API exposes it, or a cached catalog that predates the
+      // release). The upstream either accepts it or answers with its own error,
+      // which is far more useful than a local refusal.
       const mapped = QODER_MODEL_MAP[qoderKey];
-      if (mapped) {
+      if (staticCfg) {
+        log?.info?.("QODER", `using static model_config for "${qoderKey}" (absent from the account catalog)`);
+        modelConfig = staticCfg;
+      } else if (mapped) {
         log?.warn?.("QODER", `model_config for "${qoderKey}" missing from catalog — falling back to static map`);
         modelConfig = { key: mapped, max_input_tokens: 200_000, max_output_tokens: 65_536 };
       } else {
@@ -647,34 +656,16 @@ export class QoderExecutor extends BaseExecutor {
     const text = String(bodyText || "");
     if (!text) return super.parseError(response, bodyText);
 
-    let inner = null;
-    try {
-      let msg = JSON.parse(text);
-      // Walk down nested {code, message} envelopes until the queue payload.
-      for (let depth = 0; depth < 5 && msg; depth += 1) {
-        if (typeof msg === "string") {
-          try { msg = JSON.parse(msg); } catch { break; }
-          continue;
-        }
-        if (typeof msg !== "object") break;
-        // The envelope itself may carry the queue flags, but the queue payload
-        // (with modelKey/retryAfterSeconds) can sit one level deeper under
-        // `message`. Prefer the deepest object that actually has those fields.
-        if (msg.isQueued === true || String(msg.code) === "10605" || String(msg.subCode) === "RESOURCE_LIMIT") {
-          inner = msg;
-        }
-        const next = msg?.error?.message ?? msg?.message ?? msg?.error;
-        if (next === undefined) break;
-        msg = next;
-      }
-    } catch { /* not JSON — fall through */ }
-
-    if (inner) {
-      const secs = Number(inner.retryAfterSeconds ?? inner.waitTime);
-      const waitMs = Number.isFinite(secs) && secs > 0 ? secs * 1000 : 30 * 1000;
+    // Queue throttle: robust nested walk over the double/triple JSON-encoded
+    // payload (see shared/qoder/queue.js). parseQoderQueueInfo returns null for
+    // anything that is not a queue signal, so a billing block or an ordinary
+    // upstream error falls through to the generic parser.
+    const info = parseQoderQueueInfo(text);
+    if (info) {
+      const waitMs = computeQoderQueueDelayMs(info);
       // The upstream payload often omits modelKey; fall back to the model this
       // request was actually for so the log never says `model "?"`.
-      const name = inner.modelKey || context?.model || "this model";
+      const name = info.modelKey || context?.model || "this model";
       return {
         status: 429,
         message: `Qoder: model "${name}" is queued (admission queue) — retry in ${Math.round(waitMs / 1000)}s`,

@@ -285,6 +285,12 @@ export const PROVIDER_CAPABILITIES = {
     "kmodel_latest":  { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },      // Kimi-K3
     "kmodel":         { vision: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 256000, maxOutput: 65536 },  // Kimi-K2.7-Code
     "mmodel":         { reasoning: true, thinkingFormat: "minimax", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 512000 }, // MiniMax-M3
+    // Frontier reasoning pair (Sonus / Cantus). Absent from many per-account
+    // catalogs, so the executor routes them through a static model_config (see
+    // shared/qoder/constants.js). Their real family is unknown, so the window
+    // is the value Qoder reports for them (180K) rather than a family guess.
+    "smodel":         { vision: true, reasoning: true, thinkingCanDisable: false, contextWindow: 180000, maxOutput: 65536 },
+    "cmodel":         { vision: true, reasoning: true, thinkingCanDisable: false, contextWindow: 180000, maxOutput: 65536 },
     "qmodel_latest":  { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },  // Qwen3.7-Max
     "qmodel":         { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },  // Qwen3.7-Plus
     "qfmodel":        { vision: true, reasoning: true, thinkingFormat: "qwen", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 65536 },  // Qwen3.8-Flash
@@ -296,6 +302,11 @@ export const PROVIDER_CAPABILITIES = {
     "laguna-xs-2.1": { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 32000 },
   },
 };
+
+// Qoder CN serves the identical model catalog from the CN gateway, so it shares
+// the intl Qoder capability table verbatim. Assigned after the literal because
+// the table is not initialized yet inside it.
+PROVIDER_CAPABILITIES["qoder-cn"] = PROVIDER_CAPABILITIES["qoder"];
 
 /**
  * Pattern fallback — glob (* = wildcard), matched case-insensitively and

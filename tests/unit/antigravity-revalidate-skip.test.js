@@ -48,9 +48,12 @@ const { getProviderCredentials } = await import("@/sse/services/auth.js");
 // account out of rotation for 27h while the weekly bucket was really at 99.5%.
 const MODEL = "gemini-3.8-flash-high";        // → gemini_weekly family
 const FAMILY = "gemini_weekly";
-const NOW = Date.parse("2026-11-07T02:02:56.000Z");
-const FUTURE = "2026-11-08T05:12:35.000Z";    // the stale cached reset
-const PAST = "2026-11-06T00:00:00.000Z";
+// Relative to the wall clock on purpose: a hardcoded date silently becomes a
+// past date, and a past resetAt means "expired, nothing to verify" — the tests
+// then pass for the wrong reason, or fail, depending on the day they run.
+const NOW = Date.now();
+const FUTURE = new Date(NOW + 6 * 60 * 60 * 1000).toISOString();   // 6h from now
+const PAST = new Date(NOW - 24 * 60 * 60 * 1000).toISOString();    // yesterday
 
 function conn(id, extra = {}) {
   return { id, accessToken: `tok-${id}`, providerSpecificData: {}, ...extra };

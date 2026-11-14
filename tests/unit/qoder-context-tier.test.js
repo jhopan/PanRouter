@@ -181,6 +181,9 @@ describe("routableQoderModels", () => {
       ]),
     };
     expect(routableQoderModels(catalog)).toEqual([
+      // Static fallback keys first — the live catalog omits the frontier pair.
+      { id: "smodel", name: "Sonus", hidden: false },
+      { id: "cmodel", name: "Cantus", hidden: false },
       { id: "qmodel_38max", name: "Qwen3.8-Max", hidden: false },
       { id: "qfmodel", name: "Qwen Fast", hidden: true },
       { id: "dmodel", name: "dmodel", hidden: true },
