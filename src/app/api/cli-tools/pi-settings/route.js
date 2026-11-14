@@ -145,6 +145,10 @@ export async function POST(request) {
       modelList = [{ id: modelId, name: modelId, contextWindow: 128000, maxTokens: 16384 }];
     }
 
+    // Declared before use: this route threw ReferenceError on every POST because
+    // the spread below referenced a name that was never bound.
+    const existingProvider = existing.providers["PanRouter"] || {};
+
     existing.providers["PanRouter"] = {
       ...existingProvider,
       baseUrl: normalizedBaseUrl,

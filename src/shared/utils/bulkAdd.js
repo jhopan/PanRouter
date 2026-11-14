@@ -39,6 +39,13 @@ function parseLine(line, opts = {}) {
     };
   }
 
+  // `LLM|id|secret` is one opaque token (a provider id and a secret inside the
+  // key itself), not `name|key`. Splitting it would store "LLM" as the name and
+  // "id|secret" as the key, which no upstream accepts.
+  if (!isCloudflareAi && /^LLM\|/i.test(line.trim())) {
+    return { baseName: "LLM", apiKey: line.trim() };
+  }
+
   if (parts.length >= 2) {
     // name|apiKey  (apiKey may itself contain pipes)
     const baseName = parts[0].trim();
