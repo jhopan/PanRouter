@@ -214,7 +214,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
   if (clientTool === "claude" && Array.isArray(translatedBody.tools)) {
-    const { tools: deduped, stripped } = dedupeTools(translatedBody.tools);
+    // messages is passed so history references to a stripped tool go with it:
+    // a dangling `tool_reference` makes strict Claude-compatible upstreams
+    // reject the whole request.
+    const { tools: deduped, stripped } = dedupeTools(translatedBody.tools, {
+      messages: translatedBody.messages,
+    });
     if (stripped.length > 0) {
       translatedBody.tools = deduped;
       log?.debug?.("TOOLDEDUP", `stripped ${stripped.length}: ${stripped.slice(0, 3).join(", ")}${stripped.length > 3 ? "..." : ""}`);
