@@ -197,6 +197,7 @@ export const PROVIDER_CAPABILITIES = {
   // `thinking` object (400: unknown field "thinking") and wants reasoning_effort.
   // Overrides the global entry, whose z.ai shape is correct for z.ai itself.
   "opencode-go": {
+    "kimi-k3.1-pro": { vision: true, videoInput: true, reasoning: true, thinkingFormat: "kimi", thinkingCanDisable: false, contextWindow: 1048576, maxOutput: 131072 },
     "glm-5.3-flash": { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
     // This keyed Messages lane accepts adaptive thinking, not Claude budget thinking.
     "claude-haiku-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
