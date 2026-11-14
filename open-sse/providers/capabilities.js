@@ -213,6 +213,20 @@ export const PROVIDER_CAPABILITIES = {
   // Copilot etc.) compact instead of hard-failing mid-session.
   "opencode": {
     "deepseek-v4.1-flash-free": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 330000, maxOutput: 128000 },
+    // OpenCode Free (oc) — the free lane's MiMo route is OpenRouter-backed and takes
+    // the plain OpenAI reasoning_effort enum verbatim (live probe on
+    // oc/mimo-v2.6-flash-free: none|minimal|low|medium|high|xhigh|max all 200, any
+    // other value 400 "Invalid option"; "none" really drops thinking — empty
+    // reasoning_content and reasoning_tokens 0). The global *mimo*v2.6* pattern
+    // describes Xiaomi's own API (DeepSeek-shaped `thinking` object, always on),
+    // which this lane ignores: `thinking.type:disabled` still streamed reasoning.
+    // Limits repeat the family pattern deliberately: the synced catalog carries no
+    // `opencode` limit delta for this id, so 1M/131k is what the lane already
+    // published before this override — but the override short-circuits the catalog
+    // overlay, so models.dev's free-lane listing (200000/32000) has to be applied
+    // here if a probe ever pins the lane's real window (a 200k `max_tokens` is
+    // accepted, so the 32k figure is not enforced at request validation).
+    "mimo-v2.6-flash-free": { vision: true, audioInput: true, videoInput: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1048576, maxOutput: 131072 },
   },
   // glm-5.3-flash on OpenCode Go is served by a backend that rejects the z.ai
   // `thinking` object (400: unknown field "thinking") and wants reasoning_effort.

@@ -27,6 +27,11 @@ export default {
     // catalog, but the quirk stays wired so a passthrough id keeps working.
     quirks: {
       forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
+      // The free lane's MiMo route (OpenRouter-backed) streams thinking as
+      // `reasoning` + `reasoning_details[]`, not reasoning_content. stream.js lifts
+      // the alias into reasoning_content for OpenAI-shaped clients; every other
+      // model on the lane already emits reasoning_content, so the lift is a no-op.
+      reasoningAliasFields: true,
     },
   },
   // Live catalog probed 2026-10-19 from GET /zen/v1/models. Every id here is a

@@ -258,6 +258,11 @@ export function getFreshRetryDispatcher() {
  * would send — and bill — the same completion twice.
  */
 async function fetchDirect(url, options) {
+  // Protocol adapters may need Node's HTTP/1 transport on the direct path
+  // (Codex STT pins certificate verification). Proxy/no-proxy resolution and
+  // strict-proxy enforcement stay in proxyAwareFetch, which only reaches here
+  // when no proxy applies.
+  if (options.directFetch) return await options.directFetch(url, options);
   const dispatcher = await getDirectDispatcher();
   try {
     return await originalFetch(url, { ...options, dispatcher });

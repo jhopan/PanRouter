@@ -59,4 +59,8 @@ export default {
     { id: "google/gemini-4-carbon", name: "Gemini 4 Carbon" },
     { id: "claude-fable-5-2", name: "Claude Fable 5.2" },
   ],
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
 };

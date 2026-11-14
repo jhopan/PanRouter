@@ -4,6 +4,7 @@ import { createErrorResult } from "../../utils/error.js";
 import { HTTP_STATUS } from "../../config/runtimeConfig.js";
 import { FORMATS } from "../../translator/formats.js";
 import { openAICompletionToClaudeMessage } from "../../translator/concerns/claudeMessage.js";
+import { extractReasoningText } from "../../translator/concerns/reasoning.js";
 import { PROVIDERS } from "../../config/providers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { ROLE, RESPONSES_ITEM } from "../../translator/schema/index.js";
@@ -141,7 +142,11 @@ export function parseSSEToOpenAIResponse(rawSSE, fallbackModel) {
     const choice = chunk?.choices?.[0];
     const delta = choice?.delta || {};
     if (typeof delta.content === "string" && delta.content.length > 0) contentParts.push(delta.content);
-    if (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) reasoningParts.push(delta.reasoning_content);
+    // Vendor aliases (`reasoning`, `reasoning_details[]`) count as reasoning too:
+    // without this an alias lane's thinking is silently dropped before the
+    // empty-content rescue below could keep it.
+    const reasoningText = extractReasoningText(delta);
+    if (reasoningText.length > 0) reasoningParts.push(reasoningText);
     if (choice?.finish_reason) finishReason = choice.finish_reason;
     if (chunk?.usage && typeof chunk.usage === "object") usage = chunk.usage;
 

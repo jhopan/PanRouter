@@ -30,14 +30,17 @@ describe("tokenharbor free-allowance quota", () => {
 });
 
 describe("tokenharborResetMs parser", () => {
-  const REAL = "You've used this period's free allowance. Your next rolling 7-day period starts on 2 Oct 2026 at 06:22 UTC. Use the paid model 'deepseek-v4-flash' to keep going, or subscribe";
+  // Built at run time: the fixture must stay in the future or the parser is
+  // correctly expected to reject a past reset and the test rots on the calendar.
+  const RESET = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const RESET_TEXT = `${RESET.getUTCDate()} ${MONTHS[RESET.getUTCMonth()]} ${RESET.getUTCFullYear()} at ${String(RESET.getUTCHours()).padStart(2, "0")}:${String(RESET.getUTCMinutes()).padStart(2, "0")} UTC`;
+  const REAL = `You've used this period's free allowance. Your next rolling 7-day period starts on ${RESET_TEXT}. Use the paid model 'deepseek-v4-flash' to keep going, or subscribe`;
 
   it("parses the exact reset timestamp out of the 429 body", () => {
     const ms = tokenharborResetMs(429, "[429]: " + JSON.stringify({ error: { message: REAL } }), "tokenharbor");
     expect(ms).toBeGreaterThan(Date.now());
-    const d = new Date(ms);
-    // 2 Oct 2026 06:22 UTC — as long as the suite runs before that date
-    expect(d.toISOString().startsWith("2026-10-02T06:22")).toBe(true);
+    expect(ms).toBe(Date.UTC(RESET.getUTCFullYear(), RESET.getUTCMonth(), RESET.getUTCDate(), RESET.getUTCHours(), RESET.getUTCMinutes(), 0));
   });
 
   it("ignores non-tokenharbor, non-429, and message-less bodies", () => {

@@ -300,6 +300,12 @@ export function calculatePercentage(used, total) {
  * @returns {number} Remaining percentage (0-100)
  */
 export function getRemainingPercentage(quota) {
+  if (quota?.percentage !== undefined) {
+    // Providers may report the used share; the UI renders the remaining one.
+    const value = quota.percentageIsUsed === true ? 100 - quota.percentage : quota.percentage;
+    return Math.max(0, Math.round(value));
+  }
+
   if (quota?.remaining !== undefined) {
     return Math.max(0, Math.round(quota.remaining));
   }
@@ -666,6 +672,25 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               resetAt: quota.resetAt || null,
               remainingPercentage: quota.remainingPercentage,
+            });
+          });
+        }
+        break;
+
+      case "commandcode":
+        // Credits + 5h/weekly windows. The service reports a used share plus an
+        // explicit colour share, and an empty window carries its own label.
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            normalizedQuotas.push({
+              name: quota.name || name,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              percentage: quota.percentage,
+              colorPercentage: quota.colorPercentage,
+              percentageIsUsed: quota.percentageIsUsed === true,
+              resetAt: quota.resetAt || null,
+              emptyMessage: quota.emptyMessage || null,
             });
           });
         }

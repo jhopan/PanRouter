@@ -76,6 +76,15 @@ export const QUOTA_WINDOWS = {
     // 06:22 UTC") — quotaWindow.js parses it; the weekly calendar here is only
     // the fallback when the message shape changes.
     tokenharbor: { scope: QUOTA_SCOPES.WEEKLY, usageKey: null },
+    // Weekly credit pool; `subscription.renewsAt` carries the exact reset.
+    synthetic: { scope: QUOTA_SCOPES.WEEKLY, usageKey: "Requests" },
+    // five_hour / weekly / monthly rows, each with its own resetAt — the
+    // earliest future reset is the one that unblocks the account.
+    clinepass: { scope: QUOTA_SCOPES.SESSION, usageKey: null },
+    // Subscription credits per plan cycle (`individual-go-v1` = monthly).
+    commandcode: { scope: QUOTA_SCOPES.MONTHLY, usageKey: null },
+    // Cursor plan usage is billed per monthly cycle.
+    cursor: { scope: QUOTA_SCOPES.MONTHLY, usageKey: null },
     // ── Calendar-only providers ────────────────────────────────────────────
     cline: { scope: QUOTA_SCOPES.DAILY, resetUtcHour: 0 },
     // Agnes AI: free-tier daily quota resets at 00:00 UTC.
