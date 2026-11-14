@@ -67,4 +67,34 @@ describe("stripUnsupportedParams", () => {
     expect(glm.response_format).toBe(response_format);
     expect(otherProvider.response_format).toBe(response_format);
   });
+
+  // Current OpenAI models (gpt-5.x / gpt-6.x) reject `max_tokens`:
+  //   400 "Unsupported parameter: 'max_tokens' is not supported with this model.
+  //        Use 'max_completion_tokens' instead."
+  // Clients still send max_tokens, so it has to be renamed, not dropped.
+  describe("renames max_tokens for the openai provider", () => {
+    it("moves the value to max_completion_tokens", () => {
+      const body = { messages: [], max_tokens: 4096 };
+      stripUnsupportedParams("openai", "gpt-5.6-luna", body);
+
+      expect(body.max_tokens).toBeUndefined();
+      expect(body.max_completion_tokens).toBe(4096);
+    });
+
+    it("does not clobber an explicit max_completion_tokens", () => {
+      const body = { messages: [], max_tokens: 100, max_completion_tokens: 900 };
+      stripUnsupportedParams("openai", "gpt-5.6-luna", body);
+
+      expect(body.max_completion_tokens).toBe(900);
+      expect(body.max_tokens).toBeUndefined();
+    });
+
+    it("leaves other providers alone", () => {
+      const body = { messages: [], max_tokens: 512 };
+      stripUnsupportedParams("anthropic", "claude-sonnet-4-6", body);
+
+      expect(body.max_tokens).toBe(512);
+      expect(body.max_completion_tokens).toBeUndefined();
+    });
+  });
 });

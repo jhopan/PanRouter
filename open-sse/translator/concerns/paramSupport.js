@@ -27,6 +27,10 @@ const STRIP_RULES = [
   // max_tokens > 4096 returns HTTP 400 "max_tokens exceeds the limit of 4096".
   // Clamp before sending so the request never reaches that error path.
   { provider: "agnes", maxOutputCap: 4096 },
+  // Current OpenAI models (gpt-5.x / gpt-6.x) reject `max_tokens` with HTTP 400
+  // ("Use 'max_completion_tokens' instead"). Clients send `max_tokens`, so the
+  // parameter is renamed rather than dropped — the caller's value is preserved.
+  { provider: "openai", renameParams: { max_tokens: "max_completion_tokens" } },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.
@@ -47,6 +51,12 @@ export function stripUnsupportedParams(provider, model, body) {
   for (const rule of STRIP_RULES) {
     if (rule.provider && rule.provider !== provider) continue;
     if (!matches(rule, model)) continue;
+    // Rename params (keeps an explicit target value if the client already sent one).
+    for (const [from, to] of Object.entries(rule.renameParams || {})) {
+      if (body[from] === undefined) continue;
+      if (body[to] === undefined) body[to] = body[from];
+      delete body[from];
+    }
     for (const key of rule.drop || []) {
       if (body[key] !== undefined) delete body[key];
     }
