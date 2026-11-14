@@ -1,3 +1,80 @@
+# v0.5.88.29 (2026-11-15)
+
+## Port upstream 9router (master sampai `1855aa44`, 2026-11-12)
+
+Sinkron butir-per-butir dari upstream, bukan merge. Tidak ada commit upstream
+setelah 2026-11-12; PR 2026-11-14 di upstream masih unmerged dan tidak dipakai
+sebagai sumber.
+
+## Fitur
+
+- **Provider baru `synthetic`** (`syn`, `synthetic-new`) — `synthetic.new`
+  OpenAI-compatible, 9 model `hf:*` + passthrough, validasi key lewat
+  `GET /v2/quotas` (bukan katalog publik) dan baris kuota mingguan di
+  usage-limits. Port `ebe398a9` + `402230ed`.
+- **Provider baru `sensenova` dan `sensenova-intl`** — dua id terpisah karena
+  key dan katalog berbeda per situs (`token.sensenova.cn` vs
+  `token.sensenova.ai`, intl 401 untuk key CN). CN: 9 model (termasuk
+  `sensenova-u1.5-*` image dan `deepseek-flash`/`glm-5.3`/`kimi-k3`), intl: 5.
+  Port `351b04cb` + `b9c34543` + `14b27dc7`.
+- **ClinePass: quota tracker** untuk usage-limits (`five_hour`/`weekly`/
+  `monthly` → `used/total`), auth JWT WorkOS atau API key `clp_*`. Port
+  `5f925cf9`.
+- **Claude Fable 5.2**, Fable 5.1 dipensiunkan (registry, capabilities,
+  pricing, opencode-zen), model list live via OAuth
+  (`/v1/models?limit=1000`, Bearer + `oauth-2025-04-20` untuk OAuth,
+  `x-api-key` untuk API key, satu refresh saat 401/403, gagal → katalog
+  registry), dan versi Claude CLI auto-update. Port `10b0afa4` +
+  `12e7930e` + `43bc940e`.
+- **`thinking_levels`** di `/v1/models` (dari registry/capabilities, tanpa
+  fetch live) dan varian effort untuk `opencode-settings` (varian yang sudah
+  di-tuning user tidak ditimpa). Port `7abc190d`.
+- **Proxy Pools**: filter status + select visible ranges (termasuk
+  shift-range) di `src/shared/utils/proxyPoolSelection.js`.
+- **AddCustomModelModal**: pilihan tipe eksplisit (llm/image/tts/stt/embedding)
+  dan kontrak `onSave(id, type, caps)` diteruskan `page.js`. Port `850eb573`.
+- **Usage → Request details**: helper token bersama, `output_tokens` Claude
+  tidak lagi tampil 0. Port `fe0d1a29`.
+
+## Perbaikan
+
+- **Xiaomi Token Plan**: katalog disamakan dengan katalog live — `mimo-v2.6-pro`,
+  `mimo-v2.6-flash`, `mimo-v2.5-asr` (stt), TTS dengan `kind`; model lama
+  (`mimo-v2.5-pro`, `mimo-v2-pro`, `mimo-v2-omni`, `mimo-v2-tts`) dihapus
+  mengikuti upstream. Port `5e54377b`.
+- **OpenCode**: retry sekali saat 429 free-lane overload, sesi yang ditolak
+  dibuang dari semua store sesi sebelum retry, error terstruktur
+  (`opencode_free_lane_overloaded`) kalau retry juga gagal. Sesi native dari
+  client tidak diganti. Port `989b1eec` (jadwal 8-retry upstream sengaja tidak
+  diambil).
+- **Codex**: advertise CLI `0.167.1` (satu sumber di registry, UA/`version`
+  ikut). Port `aaf9b65f`.
+
+## Sengaja BELUM diport (strict providers — butuh review eksplisit)
+
+Lihat aturan baru di `AGENTS.md` §Strict providers. Tiga butir upstream
+menyentuh fingerprint klien, jadi tidak diambil tanpa keputusan operator:
+
+- `8a833631` — Antigravity: bucket kuota `gemini_argon_weekly` /
+  `gemini_argon_session` terpisah. Sekarang Argon tetap masuk bucket
+  `gemini_weekly`.
+- `82aeb907` — Antigravity: resolusi tier model dari `reasoning_effort` /
+  `thinking.budget_tokens` klien. Sekarang tier hanya lewat id eksplisit
+  (`gemini-4-argon-high|medium|low`).
+- `3ca04639` — CodeBuddy intl: pertahankan system prompt klien dan netralkan
+  hanya penanda identitas agen. Sekarang system prompt klien **dibuang** dan
+  diganti `"You are CodeBuddy Code."`.
+
+## Test
+
+- 396 test hijau di 25 file yang tersentuh (provider, usage, models, dashboard,
+  opencode, claude, translator).
+- Baseline `verify-providers` (106 provider), `verify-alias`, `verify-oauth-urls`
+  byte-for-byte sama; snapshot `golden-url-header` diperbarui dan entri
+  `freebuff` yang usang dihapus.
+- Smoke modul: 146 provider ter-load, `synthetic`/`sensenova`/`sensenova-intl`
+  resolve baseUrl + auth, Fable 5.2 caps/thinking levels, katalog Xiaomi baru.
+
 # v0.5.88.28 (2026-11-07)
 
 ## Perbaikan
