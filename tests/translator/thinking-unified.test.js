@@ -97,6 +97,16 @@ describe("applyThinking per provider format", () => {
     expect(out.output_config).toEqual({ effort: "high" });
     expect(out.thinking).toBeUndefined();
   });
+  it("permanently adaptive Claude keeps an explicitly requested display", () => {
+    // Anthropic defaults display to "omitted", so dropping the switch would hide
+    // the thinking text the client asked for (Copilot's /v1/messages shim).
+    const out = apply("claude", "claude-fable-5-2", {
+      thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort: "high" },
+    }, "claude");
+    expect(out.thinking).toEqual({ type: "adaptive", display: "summarized" });
+    expect(out.output_config).toEqual({ effort: "high" });
+  });
   it("claude haiku → enabled+budget", () => {
     const out = apply("claude", "claude-haiku-4.5", { reasoning_effort: "high" }, "claude");
     expect(out.thinking).toEqual({ type: "enabled", budget_tokens: 24576 });

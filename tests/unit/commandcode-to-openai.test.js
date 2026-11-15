@@ -137,12 +137,17 @@ describe("commandcode-to-openai — finish", () => {
 });
 
 describe("commandcode-to-openai — error event", () => {
+  // A mid-stream error event throws (so the wrapping stream is marked errored and the
+  // request can be retried/failed over) instead of being emitted as fake content
+  // terminated by finish_reason "stop".
   it("stringifies object errors so client sees readable message", () => {
-    const { chunks } = feed([
-      { type: "error", error: { type: "server_error", message: "Boom" } },
-    ]);
-    const text = chunks[0].choices[0].delta.content;
-    expect(text).toContain("Boom");
-    expect(text).not.toContain("[object Object]");
+    let message = "";
+    try {
+      feed([{ type: "error", error: { type: "server_error", message: "Boom" } }]);
+    } catch (err) {
+      message = err.message;
+    }
+    expect(message).toContain("Boom");
+    expect(message).not.toContain("[object Object]");
   });
 });

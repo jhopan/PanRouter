@@ -46,7 +46,7 @@ describe("Ollama Local Phonon registry entry", () => {
     expect(REGISTRY.filter((e) => e.id === "ollama-local")).toHaveLength(1);
     expect(ollamaLocal.id).toBe("ollama-local");
     expect(ollamaLocal.alias).toBe("ollama-local");
-    expect(ollamaLocal.serviceKinds).toEqual(["llm", "embedding", "tts"]);
+    expect(ollamaLocal.serviceKinds).toEqual(["llm", "systemone", "embedding", "tts"]);
   });
 
   it("declares the local speech endpoint and its auth", () => {

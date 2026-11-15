@@ -40,10 +40,27 @@ export class CommandCodeExecutor extends BaseExecutor {
   }
 
   async execute(opts) {
-    const result = await super.execute(opts);
-    if (!result?.response?.ok || !result.response.body) return result;
-    result.response = await inspectAndWrapCommandCodeResponse(result.response, opts.model);
-    return result;
+    // An in-stream error event surfaces here as a non-ok wrapped Response. Retry the
+    // transient 5xx family a couple of times before the caller's combo/account
+    // fallback spends the next credential on the same outage.
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const result = await super.execute(opts);
+      if (!result?.response?.ok || !result.response.body) return result;
+
+      const wrappedResponse = await inspectAndWrapCommandCodeResponse(result.response, opts.model);
+      if (!wrappedResponse.ok && attempt < maxRetries) {
+        const isRetryableStatus = wrappedResponse.status === 502 || wrappedResponse.status === 503 || wrappedResponse.status === 504;
+        if (isRetryableStatus) {
+          opts.log?.debug?.("RETRY", `CommandCode upstream returned status ${wrappedResponse.status}, retrying ${attempt + 1}/${maxRetries}...`);
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
+      }
+
+      result.response = wrappedResponse;
+      return result;
+    }
   }
 
   parseError(response, bodyText) {

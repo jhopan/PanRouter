@@ -13,18 +13,22 @@
  *   3. Empty string — the route writes no Authorization header value,
  *      which is fine for requireApiKey=false deployments.
  *
- * The placeholder "sk_PanRouter" is NEVER written; it was never a real key.
+ * The placeholders "sk_PanRouter" (generic card) and "sk_9router" (legacy
+ * per-tool cards) are NEVER written; neither was ever a real key.
  */
 
 import { getApiKeys } from "@/lib/db";
+
+const PLACEHOLDER_KEYS = new Set(["sk_PanRouter", "sk_9router"]);
 
 /**
  * @param {string|null|undefined} callerKey  Key sent by the frontend.
  * @returns {Promise<string>}
  */
 export async function resolveCliApiKey(callerKey) {
-  if (callerKey && callerKey.trim() && callerKey.trim() !== "sk_PanRouter") {
-    return callerKey.trim();
+  const trimmed = typeof callerKey === "string" ? callerKey.trim() : "";
+  if (trimmed && !PLACEHOLDER_KEYS.has(trimmed)) {
+    return trimmed;
   }
   try {
     const keys = await getApiKeys();

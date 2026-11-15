@@ -210,4 +210,19 @@ describe("Nous route wiring (API key + OAuth)", () => {
       model: "poolside/laguna-s-2.1:free",
     });
   });
+
+  it("resolves the modelsFetcher filter the dashboard asks for", async () => {
+    // The dashboard GETs /api/providers/suggested-models?type=<modelsFetcher.type>;
+    // an unregistered type answers 400 and the Nous free catalog silently empty.
+    const { default: nousRegistry } = await import("../../open-sse/providers/registry/nous.js");
+    const { FILTERS } = await import("../../src/app/api/providers/suggested-models/filters.js");
+
+    expect(nousRegistry.modelsFetcher.type).toBe("nous-free");
+    expect(FILTERS["nous-free"]).toBeTypeOf("function");
+    expect(FILTERS["nous-free"]([
+      { id: "vendor/free-chat:free", name: "Free Chat", context_length: 262144, pricing: { prompt: "0", completion: "0" } },
+      { id: "vendor/small-chat:free", name: "Small", context_length: 32768, pricing: { prompt: "0", completion: "0" } },
+      { id: "vendor/paid-chat:free", name: "Paid", context_length: 262144, pricing: { prompt: "0.1", completion: "0.1" } },
+    ])).toEqual([{ id: "vendor/free-chat:free", name: "Free Chat", contextLength: 262144 }]);
+  });
 });

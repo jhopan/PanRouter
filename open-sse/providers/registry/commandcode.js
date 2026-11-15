@@ -59,6 +59,9 @@ export default {
     { id: "google/gemini-4-carbon", name: "Gemini 4 Carbon" },
     { id: "claude-fable-5-2", name: "Claude Fable 5.2" },
   ],
+  // The vendor accepts any id its own catalog publishes; the static list above is
+  // only the offline picker. Keep unknown-but-valid ids usable without a registry edit.
+  passthroughModels: true,
   features: {
     usage: true,
     usageApikey: true,

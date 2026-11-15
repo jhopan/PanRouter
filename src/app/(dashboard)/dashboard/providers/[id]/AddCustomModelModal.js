@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { Button, Modal, Select, Toggle } from "@/shared/components";
-import { CAPACITY_META } from "@/shared/constants/models";
+import { CAPACITY_META, STT_TRANSPORT_META, STT_TRANSPORTS } from "@/shared/constants/models";
 
 const defaultCaps = () => Object.fromEntries(Object.keys(CAPACITY_META).map((key) => [key, false]));
 
@@ -34,10 +34,12 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   const [fullTesting, setFullTesting] = useState(false);
   const [fullResult, setFullResult] = useState(null); // { caps, detail } from detect-caps
   const [saving, setSaving] = useState(false);
+  // Realtime dispatch marker for the transport select; "" = provider default REST.
+  const [transport, setTransport] = useState("");
 
   // Reset state when modal opens
   useEffect(() => {
-    if (isOpen) { setModelId(""); setCaps(defaultCaps()); setModelType("llm"); setTestStatus(null); setTestError(""); setFullResult(null); }
+    if (isOpen) { setModelId(""); setCaps(defaultCaps()); setModelType("llm"); setTransport(""); setTestStatus(null); setTestError(""); setFullResult(null); }
   }, [isOpen]);
 
   // Strip provider's own alias prefix (e.g. "cc/model" -> "model" for cc provider)
@@ -100,7 +102,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
     if (!cleanId || saving) return;
     setSaving(true);
     try {
-      await onSave(cleanId, modelType, modelType === "llm" ? caps : undefined);
+      await onSave(cleanId, modelType, modelType === "llm" ? caps : undefined, modelType === "stt" ? transport : null);
     } finally {
       setSaving(false);
     }
@@ -114,6 +116,7 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
   const handleTypeChange = (e) => {
     setModelType(e.target.value);
     setCaps(defaultCaps());
+    setTransport("");
     setTestStatus(null);
     setTestError("");
     setFullResult(null);
@@ -184,6 +187,17 @@ export default function AddCustomModelModal({ isOpen, providerAlias, providerDis
               ))}
             </div>
           </div>
+        )}
+
+        {modelType === "stt" && (
+          <Select
+            label="Transport"
+            value={transport}
+            onChange={(e) => setTransport(e.target.value)}
+            placeholder="Provider default (REST)"
+            options={STT_TRANSPORTS.map((t) => ({ value: t, label: STT_TRANSPORT_META[t].label }))}
+            hint="Realtime transport marker for the STT dispatcher. Empty keeps the provider's REST format."
+          />
         )}
 
         {/* Test Full result */}

@@ -4,6 +4,7 @@ import {
   inspectAndWrapCommandCodeResponse,
   CommandCodeExecutor,
 } from "../../open-sse/executors/commandcode.js";
+import { BaseExecutor } from "../../open-sse/executors/base.js";
 import { handleComboChat } from "../../open-sse/services/combo.js";
 
 function createNdjsonStream(lines) {
@@ -157,44 +158,63 @@ describe("inspectAndWrapCommandCodeResponse", () => {
     expect(text).toContain('"arguments":"{\\"command\\": \\"ls\\"}"');
   });
 
-  it("retries when initial stream yields an error and succeeds on second attempt", async () => {
-    let callCount = 0;
+  it("retries a transient in-stream error and succeeds on the next attempt", async () => {
     const executor = new CommandCodeExecutor();
-    
-    // Override execute on instance to test retry behavior
-    executor.execute = async (opts) => {
-      const maxRetries = 2;
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        callCount++;
-        let rawResponse;
-        if (callCount === 1) {
-          rawResponse = new Response(createNdjsonStream([
-            JSON.stringify({
-              type: "error",
-              error: { type: "server_error", message: "Network connection lost." }
-            }) + "\n"
-          ]), { status: 200, headers: { "Content-Type": "text/event-stream" } });
-        } else {
-          rawResponse = new Response(createNdjsonStream([
-            JSON.stringify({ type: "start" }) + "\n",
-            JSON.stringify({ type: "text-delta", text: "Recovered from lost connection" }) + "\n",
-            JSON.stringify({ type: "finish" }) + "\n"
-          ]), { status: 200, headers: { "Content-Type": "text/event-stream" } });
-        }
+    const ndjson = (events) =>
+      new Response(createNdjsonStream(events.map((e) => JSON.stringify(e) + "\n")), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
 
-        const wrappedResponse = await inspectAndWrapCommandCodeResponse(rawResponse, opts.model);
-        if (!wrappedResponse.ok && attempt < maxRetries) {
-          continue;
-        }
-        return { response: wrappedResponse };
-      }
-    };
+    let callCount = 0;
+    const spy = vi.spyOn(BaseExecutor.prototype, "execute").mockImplementation(async () => {
+      callCount++;
+      return {
+        response:
+          callCount === 1
+            ? ndjson([{ type: "error", error: { statusCode: 503, message: "Network connection lost." } }])
+            : ndjson([
+                { type: "start" },
+                { type: "text-delta", text: "Recovered from lost connection" },
+                { type: "finish" },
+              ]),
+      };
+    });
 
-    const res = await executor.execute({ model: "deepseek/deepseek-v4.1-flash" });
-    expect(res.response.ok).toBe(true);
-    expect(callCount).toBe(2);
-    const text = await res.response.text();
-    expect(text).toContain("Recovered from lost connection");
+    try {
+      const res = await executor.execute({
+        model: "deepseek/deepseek-v4.1-flash",
+        log: { debug: vi.fn() },
+      });
+      expect(callCount).toBe(2);
+      expect(res.response.ok).toBe(true);
+      const text = await res.response.text();
+      expect(text).toContain("Recovered from lost connection");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("does not retry a non-transient upstream error", async () => {
+    const executor = new CommandCodeExecutor();
+    let callCount = 0;
+    const spy = vi.spyOn(BaseExecutor.prototype, "execute").mockImplementation(async () => {
+      callCount++;
+      return {
+        response: new Response(
+          createNdjsonStream([JSON.stringify({ type: "error", error: { statusCode: 401, message: "Invalid API key" } }) + "\n"]),
+          { status: 200, headers: { "Content-Type": "text/event-stream" } },
+        ),
+      };
+    });
+
+    try {
+      const res = await executor.execute({ model: "deepseek/deepseek-v4.1-flash", log: { debug: vi.fn() } });
+      expect(callCount).toBe(1);
+      expect(res.response.status).toBe(401);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

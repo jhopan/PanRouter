@@ -48,6 +48,15 @@ const STRIP_RULES = [
     ],
     renameMessageFields: { reasoning: "reasoning_content" },
   },
+  // Strict OpenAI-compatible validators reject unknown assistant-message fields.
+  // Clients that talk to reasoning models (e.g. Hermes) echo the prior turn's
+  // reasoning back on every assistant message; Groq answers 400 and Mistral 422
+  // ("extra_forbidden") on it, which knocks these providers out of every
+  // multi-turn combo. Providers that *require* the field (DeepSeek, Kimi) are
+  // handled by reasoningContentInjector and are not listed here.
+  { provider: "groq", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
+  { provider: "mistral", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
+  { provider: "cerebras", dropMessageFields: ["reasoning_content", "reasoning", "reasoning_details"] },
 ];
 
 // Test a rule's match (regex or predicate) against the model id.

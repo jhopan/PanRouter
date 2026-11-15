@@ -166,6 +166,9 @@ export async function updateProviderCredentials(connectionId, newCredentials) {
 
     if (newCredentials.accessToken)         updates.accessToken  = newCredentials.accessToken;
     if (newCredentials.refreshToken)        updates.refreshToken = newCredentials.refreshToken;
+    // Providers that mint an inference key alongside the OAuth token (Nous agent_key)
+    // return it as apiKey; without this write the connection keeps the expired key.
+    if (newCredentials.apiKey)              updates.apiKey       = newCredentials.apiKey;
     if (newCredentials.idToken)             updates.idToken = newCredentials.idToken;
     if (newCredentials.lastRefreshAt)       updates.lastRefreshAt = newCredentials.lastRefreshAt;
     if (newCredentials.expiresAt)           updates.expiresAt = newCredentials.expiresAt;

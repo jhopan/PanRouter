@@ -3,8 +3,9 @@ import { isBannedConnection } from "open-sse/services/bannedAccounts.js";
 import { GROK_CLI_PAGER_USER_AGENT, GROK_CLI_VERSION } from "open-sse/config/grokCli.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { testProxyUrl } from "@/lib/network/proxyTest";
-import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getDefaultModel } from "open-sse/config/providerModels.js";
+import { probeBedrockCredentials } from "open-sse/executors/bedrock.js";
 import { resolveOllamaLocalHost, PROVIDERS } from "open-sse/config/providers.js";
 import { CODEX_CLI_VERSION } from "open-sse/config/appConstants.js";
 import {
@@ -564,6 +565,19 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
     }
   }
 
+  // AWS-signed providers (Bedrock): without this every Test ends in the switch's default,
+  // "Provider test not supported", and marks a working connection as errored.
+  if (AI_PROVIDERS[connection.provider]?.credentialForm === "aws") {
+    try {
+      return await probeBedrockCredentials(
+        connection,
+        (url, options) => fetchWithConnectionProxy(url, options, effectiveProxy),
+      );
+    } catch (err) {
+      return { valid: false, error: err.message };
+    }
+  }
+
   try {
     switch (connection.provider) {
       case "commandcode": {
@@ -971,6 +985,7 @@ export async function testSingleConnection(id) {
   if (result.refreshed && result.newTokens) {
     if (result.newTokens.accessToken) updateData.accessToken = result.newTokens.accessToken;
     if (result.newTokens.refreshToken) updateData.refreshToken = result.newTokens.refreshToken;
+    if (result.newTokens.apiKey) updateData.apiKey = result.newTokens.apiKey;
     if (result.newTokens.idToken) updateData.idToken = result.newTokens.idToken;
     if (result.newTokens.lastRefreshAt) updateData.lastRefreshAt = result.newTokens.lastRefreshAt;
     if (result.newTokens.expiresIn) updateData.expiresIn = result.newTokens.expiresIn;

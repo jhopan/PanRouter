@@ -116,7 +116,17 @@
     "devin": "devin",
     "devin-cli": "devin-cli",
     "morph": "morph",
-    "morphllm": "morph"
+    "morphllm": "morph",
+    "br": "bedrock",
+    "bedrock": "bedrock",
+    "aws-bedrock": "bedrock",
+    "brx": "bedrock-xai",
+    "bedrock-xai": "bedrock-xai",
+    "bedrock-grok": "bedrock-xai",
+    "nous": "nous",
+    "nous-portal": "nous",
+    "nous-research": "nous",
+    "ns": "nous"
   },
   "idToAlias": {
     "agentrouter": "agentrouter",
@@ -265,6 +275,7 @@
     "deepgram",
     "deepseek",
     "edge-tts",
+    "el",
     "elevenlabs-tts-models",
     "fai",
     "fai-vl",

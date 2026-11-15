@@ -103,7 +103,25 @@ export const MODEL_CAPABILITIES = {
   "claude-opus-4-8-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-4.6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-4-6": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
-  "claude-sonnet-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingOffType: "between_tools", forcedToolChoice: false },
+  "claude-sonnet-5-5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingOffType: "between_tools", forcedToolChoice: false },
+  // Claude Opus 5.5 / Sonnet 5.5 dotted ids (Kiro preview, GitHub Copilot, Token
+  // Harbor) and the dashed variants: Opus 5.5 rejects thinking.type "disabled"
+  // and forced tool_choice (any/tool) with 400; Sonnet 5.5 takes "between_tools"
+  // in its place and rejects forced tool_choice too.
+  "claude-opus-5.5":                   { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-opus-5.5-thinking":          { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-opus-5.5-agentic":           { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-opus-5.5-thinking-agentic":  { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-sonnet-5.5":                 { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingOffType: "between_tools", forcedToolChoice: false },
+  "claude-opus-5-5":                   { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-opus-5-5-thinking":          { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-opus-5-5-high":              { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-opus-5-5-medium":            { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-opus-5-5-low":               { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingCanDisable: false, forcedToolChoice: false },
+  "claude-sonnet-5-5-thinking": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingOffType: "between_tools", forcedToolChoice: false },
+  "claude-sonnet-5-5-high": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingOffType: "between_tools", forcedToolChoice: false },
+  "claude-sonnet-5-5-medium": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingOffType: "between_tools", forcedToolChoice: false },
+  "claude-sonnet-5-5-low": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000, thinkingOffType: "between_tools", forcedToolChoice: false },
   "claude-sonnet-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-5-thinking": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   "claude-sonnet-5-agentic": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
@@ -115,6 +133,10 @@ export const MODEL_CAPABILITIES = {
   // GLM vision variants (text GLM has no vision) — 5.3-Flash and 5V-Turbo are
   // natively multimodal per z.ai, and 5.3-Flash carries the full 1M window.
   "glm-5.3-flash":     { vision: true, videoInput: true, pdf: true, reasoning: true, thinkingFormat: "zai", contextWindow: 1000000, maxOutput: 131072 },
+  // GLM-5.2 has a 1M window and 131072 output. An exact entry shadows the
+  // *glm-5.2* pattern completely, so it must repeat that pattern's
+  // thinkingEffortSupported or reasoning_effort is dropped (supported from 5.2 on).
+  "glm-5.2":           { reasoning: true, thinkingFormat: "zai", thinkingEffortSupported: true, thinkingCanDisable: false, contextWindow: 1000000, maxOutput: 131072 },
   "glm-4.6v":          { vision: true, videoInput: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000, maxOutput: 32768 },
   "glm-4.5v":          { vision: true, videoInput: true, reasoning: true, thinkingFormat: "zai", contextWindow: 64000, maxOutput: 16384 },
 
@@ -263,6 +285,19 @@ export const PROVIDER_CAPABILITIES = {
     "poolside/laguna-xs-2.1:free":      { tools: true, reasoning: true, thinkingFormat: "nous", contextWindow: 262144, maxOutput: 32768 },
     "stealth/missingno":                { tools: true, reasoning: true, thinkingFormat: "nous", contextWindow: 262144, maxOutput: 131072 },
   },
+  // GitHub Copilot advertises dotted Claude ids; the shared adaptive rules apply
+  // (haiku 5.5 is adaptive-only on the Copilot /v1/messages lane).
+  "github": {
+    "claude-haiku-5.5": { vision: true, pdf: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
+  },
+  "commandcode": {
+    // The generic commandcode fallback (1M/384k for every unlisted model) happened
+    // to give haiku-5-5 the right context by accident. Pin it to the catalog values:
+    // GET https://api.commandcode.ai/provider/v1/models reports context_length 1000000
+    // for this id (claude-haiku-4-5-20251001 is 200000, so the 1M is per-model, not
+    // gateway-wide) — and the synced catalog carries maxOutput 128000.
+    "claude-haiku-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "commandcode", thinkingEffortSupported: true, contextWindow: 1000000, maxOutput: 128000 },
+  },
   "codex": {
     "gpt-6-astra":               CODEX_GPT_6_BASE_CAPS,
     "gpt-6-sol":                 CODEX_GPT_6_BASE_CAPS,
@@ -298,7 +333,7 @@ export const PROVIDER_CAPABILITIES = {
   // reasoning.canDisableThinking flag — see the note in the codebuddy-cn block
   // below; it is NOT the inverse of onlyReasoning.
   "codebuddy-cn": {
-    "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 48000 },
+    "glm-5.2":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: true, contextWindow: 1000000, maxOutput: 131072 },
     "glm-5.1":            { vision: true, reasoning: true, thinkingFormat: "openai", thinkingCanDisable: false, contextWindow: 200000, maxOutput: 48000 },
     "glm-5.0":            { reasoning: true, thinkingFormat: "openai", contextWindow: 200000, maxOutput: 48000 },
     // maxOutput 64000 per both the plugin-baked fallback and the live server
@@ -603,11 +638,66 @@ function refine(base, provider, model) {
   return result;
 }
 
+// Mirrors Command Code CLI `isKnownTextOnlyModel` (no image input). New models
+// default to vision; only this denylist stays text-only.
+const COMMANDCODE_TEXT_ONLY = new Set([
+  "deepseek/deepseek-v4-pro",
+  "deepseek/deepseek-v4-flash",
+  "deepseek/deepseek-v4-flash-fast",
+  "zai-org/glm-5.3",
+  "zai-org/glm-5.2",
+  "zai-org/glm-5.2-fast",
+  "zai-org/glm-5.1",
+  "zai-org/glm-5",
+  "minimaxai/minimax-m2.7",
+  "minimax/minimax-m2.7-free",
+  "minimaxai/minimax-m2.5",
+  "xiaomi/mimo-v2.5-pro",
+  "qwen/qwen3.6-max-preview",
+  "qwen/qwen3.7-max",
+  "meituan/longcat-2.0:free",
+  "stepfun/step-3.5-flash",
+  "tencent/hy4-preview",
+  "tencent/hy3",
+  "tencent/hy3-paid",
+  "nvidia/nemotron-3-ultra-550b-a55b",
+  "poolside/laguna-s-2.1-free",
+  "inclusionai/ling-3.0-flash-free",
+  "inclusionai/ling-3.0-flash-sante:free",
+]);
+
+function isCommandCodeTextOnly(model) {
+  const key = String(model || "").toLowerCase();
+  if (COMMANDCODE_TEXT_ONLY.has(key)) return true;
+  for (const id of COMMANDCODE_TEXT_ONLY) {
+    const base = id.includes("/") ? id.slice(id.lastIndexOf("/") + 1) : id;
+    if (key === base || key.endsWith("/" + base)) return true;
+  }
+  return false;
+}
+
 export function getCapabilitiesForModel(provider, model) {
   if (!model) return { ...DEFAULT_CAPABILITIES };
 
   // Canonical exact lookup strips vendor prefix: "anthropic/claude-opus-4.7" -> "claude-opus-4.7".
   const baseModel = model.includes("/") ? model.split("/").pop() : model;
+
+  // CommandCode wire is /alpha/generate for every model. Family patterns
+  // (deepseek-v4 → thinkingFormat:deepseek, vision:false) must not win here.
+  if (provider === "commandcode" || provider === "cmc") {
+    const providerCaps = PROVIDER_CAPABILITIES.commandcode;
+    if (providerCaps?.[model]) return { ...DEFAULT_CAPABILITIES, ...providerCaps[model] };
+    if (providerCaps?.[baseModel]) return { ...DEFAULT_CAPABILITIES, ...providerCaps[baseModel] };
+    return {
+      ...DEFAULT_CAPABILITIES,
+      reasoning: true,
+      thinkingFormat: "commandcode",
+      thinkingEffortSupported: true,
+      vision: !isCommandCodeTextOnly(model),
+      contextWindow: 1000000,
+      maxOutput: 384000,
+    };
+  }
 
   // 1. Provider-specific override
   if (provider) {

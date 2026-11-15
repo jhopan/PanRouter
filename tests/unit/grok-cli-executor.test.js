@@ -9,6 +9,7 @@ import {
   supportsGrokCliReasoningEffort,
 } from "../../open-sse/executors/grok-cli.js";
 import { getExecutor, hasSpecializedExecutor } from "../../open-sse/executors/index.js";
+import { GROK_CLI_VERSION } from "../../open-sse/config/grokCli.js";
 import { PROVIDERS, PROVIDER_OAUTH, PROVIDER_MODELS } from "../../open-sse/providers/index.js";
 import { getModelUpstreamId } from "../../open-sse/config/providerModels.js";
 import { getModelInfoCore, resolveProviderAlias } from "../../open-sse/services/model.js";
@@ -98,7 +99,7 @@ describe("GrokCliExecutor", () => {
     expect(headers.Accept).toBe("text/event-stream");
     expect(headers["x-xai-token-auth"]).toBeUndefined();
     expect(headers["x-grok-client-identifier"]).toBe("grok-shell");
-    expect(headers["x-grok-client-version"]).toBe("0.2.99");
+    expect(headers["x-grok-client-version"]).toBe(GROK_CLI_VERSION);
     expect(headers["x-grok-session-id"]).toBe("sess-abc");
     expect(headers["x-grok-conv-id"]).toBe("sess-abc");
     expect(headers["x-grok-req-id"]).toBe("req-xyz");

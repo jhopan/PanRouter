@@ -21,6 +21,9 @@ export default {
   // is the honest failure — the list is a catalogue, not a claim about this host.
   // Source: https://ollama.com/search?c=embedding
   models: [
+    { id: "clef", name: "Clef", kind: "systemone" },
+    { id: "clef-flash", name: "Clef Flash", kind: "systemone" },
+
     // nomic-embed-text
     { id: "nomic-embed-text",                     name: "Nomic Embed Text",                      kind: "embedding", dimensions: 768 },
     { id: "nomic-embed-text:latest",              name: "Nomic Embed Text (Latest)",             kind: "embedding", dimensions: 768 },
@@ -165,7 +168,12 @@ export default {
     { id: "phonon:pt",               name: "Phonon Portuguese",       kind: "tts", params: ["voice", "response_format"] },
     { id: "phonon:40m-pt",           name: "Phonon 40M Portuguese",   kind: "tts", params: ["voice", "response_format"] },
   ],
-  serviceKinds: ["llm", "embedding", "tts"],
+  serviceKinds: ["llm", "systemone", "embedding", "tts"],
+  systemoneConfig: {
+    baseUrl: "http://localhost:11434/v1/systemone",
+    // Saved host (providerSpecificData.baseUrl) is joined with this path.
+    path: "/v1/systemone",
+  },
   embeddingConfig: {
     // Read by the UI; the adapter builds the same path from the resolved host.
     // Ollama itself ignores auth, hence authType "none".

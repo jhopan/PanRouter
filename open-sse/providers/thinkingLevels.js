@@ -30,6 +30,7 @@ const FORMAT_LEVELS = {
   hunyuan: L.base,
   step: L.base,
   nous: L.base,
+  commandcode: ["none", "low", "medium", "high", "xhigh", "max"],
 };
 
 const CODEX_GPT_5_6_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];

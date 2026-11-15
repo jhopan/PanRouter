@@ -125,6 +125,10 @@ export async function getModelInfoCore(modelStr, aliasesOrGetter) {
 // Config-driven prefix → provider inference (first match wins, fallback "openai").
 const MODEL_PREFIX_PROVIDERS = [
   [/^claude-/, "anthropic"],
+  // Bedrock inference profile IDs: us.anthropic.*, global.anthropic.*, eu.anthropic.*, etc.
+  // Claude Code stores the Bedrock model ID directly (e.g. us.anthropic.claude-sonnet-4-6),
+  // so bare usage without a provider/ prefix must route to bedrock, not fall through to openai.
+  [/^(us|eu|ap|global)\.(anthropic|meta|amazon|mistral|xai)\./, "bedrock"],
   [/^gemini-/, "gemini"],
   [/^gpt-/, "openai"],
   [/^o[134]/, "openai"],

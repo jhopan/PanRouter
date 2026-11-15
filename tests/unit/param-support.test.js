@@ -97,4 +97,34 @@ describe("stripUnsupportedParams", () => {
       expect(body.max_completion_tokens).toBeUndefined();
     });
   });
+
+  // Groq answers 400 and Mistral 422 ("extra_forbidden") when a replayed
+  // assistant turn still carries reasoning fields; Cerebras is strict too.
+  describe("drops replayed reasoning fields on assistant turns", () => {
+    const replayedBody = () => ({
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "assistant", content: "hi", reasoning_content: "r1", reasoning: "r2", reasoning_details: [{ type: "x" }] },
+        { role: "user", content: "next" },
+      ],
+    });
+
+    for (const provider of ["groq", "mistral", "cerebras"]) {
+      it(`strips them for ${provider}`, () => {
+        const body = replayedBody();
+        stripUnsupportedParams(provider, "some-model", body);
+
+        expect(body.messages[1]).toEqual({ role: "assistant", content: "hi" });
+        expect(body.messages[0].content).toBe("sys");
+        expect(body.messages[2].content).toBe("next");
+      });
+    }
+
+    it("keeps them for providers that require the field (deepseek)", () => {
+      const body = replayedBody();
+      stripUnsupportedParams("deepseek", "deepseek-chat", body);
+
+      expect(body.messages[1].reasoning_content).toBe("r1");
+    });
+  });
 });
