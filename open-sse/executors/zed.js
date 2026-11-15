@@ -28,6 +28,7 @@ import {
   resolveZedModels,
   zedLlmFetch,
 } from "../shared/zedAuth.js";
+import { getZedClientVersion } from "../utils/zedClientVersion.js";
 
 const ZED_PROVIDER = {
   anthropic: "Anthropic",
@@ -250,7 +251,8 @@ class ZedExecutor extends BaseExecutor {
           "Content-Type": "application/json",
           Accept: "application/x-ndjson, text/event-stream, */*",
           "User-Agent": "9router/zed",
-          "x-zed-version": this.config?.appVersion?.toString() || "0.200.0",
+          // Explicit appVersion wins; otherwise the refreshed release pin.
+          "x-zed-version": this.config?.appVersion?.toString() || getZedClientVersion(),
           [ZED_HEADERS.clientSupportsStatus]: "true",
           [ZED_HEADERS.clientSupportsStreamEnded]: "true",
         },

@@ -24,6 +24,7 @@ import AddCustomModelModal from "./AddCustomModelModal";
 import BulkImportCodexModal from "./BulkImportCodexModal";
 import BulkImportGrokCliModal from "./BulkImportGrokCliModal";
 import MinimaxLeaseButton from "../components/MinimaxLeaseButton.js";
+import ZedImportCard from "./ZedImportCard";
 
 const ONE_BY_ONE_DELAY_MS = 1000;
 
@@ -1394,6 +1395,10 @@ export default function ProviderDetailPage() {
             </a>
           )}
         </div>
+      )}
+
+      {providerId === "zed" && !isCompatible && (
+        <ZedImportCard onImported={fetchConnections} />
       )}
 
       {isCompatible && providerNode && (

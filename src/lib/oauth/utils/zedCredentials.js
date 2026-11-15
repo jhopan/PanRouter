@@ -4,11 +4,15 @@ import { access, constants, readFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { randomUUID } from "crypto";
+import { isRunningInDocker } from "./dockerDetect.js";
 
 const execFileAsync = promisify(execFile);
 
 export const ZED_DEFAULT_CREDENTIALS_URL = "https://zed.dev";
 export const ZED_KEYRING_LABEL = "zed-github-account";
+export const ZED_KEYCHAIN_DOCKER_ERROR =
+  "Zed auto-import cannot read the keychain inside Docker: the IDE keyring lives on the host machine, " +
+  "not in the container. Sign in to Zed on the host and import the credentials manually.";
 
 /**
  * Resolve the credential URL Zed uses as the keyring/keychain key.
@@ -114,6 +118,14 @@ async function queryKvStore(dbPath, key) {
  */
 export async function readZedIdeCredentials() {
   const credentialsUrl = await resolveZedCredentialsUrl();
+
+  // Inside a container the OS keychain is the host's, and the keychain CLIs
+  // (security / secret-tool / powershell) do not exist here: report that
+  // instead of shelling out and surfacing a confusing ENOENT.
+  if (isRunningInDocker()) {
+    return { found: false, error: ZED_KEYCHAIN_DOCKER_ERROR, credentialsUrl };
+  }
+
   let pair = null;
 
   if (process.platform === "linux") {
