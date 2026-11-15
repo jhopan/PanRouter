@@ -1,3 +1,76 @@
+# v0.5.88.38 (2026-11-15)
+
+## Empat item terakhir dari backlog upstream
+
+### Monaco dipin (`5883110b`)
+
+`@monaco-editor/react` tidak memakai `monaco-editor` dari `node_modules`; loader-nya
+menarik build dari jsdelivr sesuai versi yang di-hardcode di paket loader, jadi
+audit npm tetap merah walau paketnya dinaikkan. Sekarang:
+
+- `src/shared/constants/monaco.js` — `MONACO_VERSION = "0.57.0"` + `MONACO_VS_PATH`.
+- `dashboard/translator/page.js` — `loader.config({ paths: { vs: MONACO_VS_PATH } })`
+  di dalam `dynamic()` yang sudah ada (tetap lazy-load, `ssr: false`).
+- `package.json` `monaco-editor` → `^0.57.0` (terpasang 0.57.0; DOMPurify 3.4.15).
+- Test penjaga: versi CDN ↔ range package.json ↔ paket terpasang harus sinkron.
+
+### Node di Docker dipin (`32a064e2`)
+
+- `Dockerfile`: `ARG NODE_IMAGE=node:22-alpine` → `node:22.23.4-alpine`
+  (masih bisa di-override lewat ARG) untuk menambal CVE-2026-111497 (Brotli RCE)
+  dan CVE Node Oktober 2026 lainnya.
+- `.nvmrc` baru: `22.23.4`; `release.yml` `node-version` ikut 22.23.4.
+
+### Zed live catalog disambungkan (`ef181752` + `8a4f4d9d`)
+
+Resolver-nya (`resolveZedModels`) sudah ada di `zedAuth.js` tapi tidak pernah
+dipanggil dari dashboard, jadi picker hanya menampilkan model yang di-pin.
+
+- `src/app/api/providers/[id]/models/route.js`: cabang `zed: { customResolver }`
+  (filter `isDisabled`, peta cap lengkap, `warning` saat kosong/gagal — tidak
+  pernah throw).
+- `ModelSelectModal.js`: `"zed"` masuk `LIVE_CATALOG_PROVIDERS` + hook live-nya
+  (public `/v1/models` tetap registry-pinned).
+- `registry/zed.js`: `hidden: true` dihapus (upstream) supaya provider-nya bisa
+  dijangkau dari dashboard.
+- Bug nyata ikut diperbaiki: `parseZedCallbackPayload` tidak mengenali bentuk
+  callback proxy lokal (`/?user_id=…&access_token=…`) sehingga login Zed tidak
+  pernah selesai; plus guard kunci PKCS#1 yang salah dan `proxyOptions`
+  diteruskan. `system_id` kini dibawa dari authorize → session → exchange
+  (`registerZedSession`), dan `capabilities.js` punya row `deepseek-v4-1-flash`
+  (dash) selain `deepseek-v4.1-flash` (dot) untuk id katalog Zed.
+- Test: `zed-live-models`, `zed-native-auth`, `zed-completions-wire`,
+  `zed-kenari-deepseek-vision-modal` — semuanya memakai `DATA_DIR` temp
+  (isolasi dari `fb30246c`/`975f28a5`), teardown tahan `EPERM|EBUSY` Windows.
+
+### MiniMax desktop lease (`85d73bd6` + `201e81fb`)
+
+Refresh token MiniMax sekali pakai, jadi router + aplikasi desktop saling
+membatalkan. Mode lease meminjam token dari broker aplikasi desktop:
+
+- `open-sse/services/minimaxCodeLease.js` (baru) — frame JSON panjang 4-byte BE
+  lewat named pipe Windows `\\.\pipe\mcode-auth-lease-<sha256(dataDir)[:16]>`
+  atau `mcode-auth-lease-v1.sock` di data dir; capability
+  `<dataDir>/run/mcode-auth-lease-v1.cap`; method `status`/`lease`; cache lease
+  dengan clamp validitas; `isLeaseConnection()` = `authType === "mcode-lease"`;
+  urutan data dir: `providerSpecificData.mcodeDataDir` → `MINIMAX_DESKTOP_DATA_DIR`
+  → `~/.minimax`.
+- Executor `minimax-code`: koneksi lease meminjam token per request; `401` membuang
+  cache lalu ambil lease baru (tanpa refresh token); jalur OAuth tidak berubah.
+- Gerbang usage menerima lease (`providers/client`, `usage/[connectionId]`) dan
+  `authType` kini diteruskan lewat ctx dispatch (asal "Usage not implemented").
+- Dashboard: tombol/aksi lease (`lease-status`, `lease-connect`) + entri guard,
+  ikon "Desktop Lease" di baris koneksi.
+
+## Verifikasi
+
+- Battery gabungan: monaco + zed + minimax + usage-dispatch + capabilities +
+  opencode + claude + seluruh `translator/` → hijau (angka lengkap di sesi).
+- Baseline provider & alias tetap byte-for-byte (peak 107 provider).
+- Yang belum diverifikasi live: lease MiniMax (butuh aplikasi desktop berjalan &
+  login di mesin yang sama; di sini pipe tidak ada sehingga `lease-status`
+  mengembalikan `BROKER_UNAVAILABLE` dan `lease-connect` 409 — diuji dengan mock).
+
 # v0.5.88.37 (2026-11-15)
 
 ## OpenCode: gelombang port penuh
