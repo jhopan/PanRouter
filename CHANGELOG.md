@@ -1,3 +1,76 @@
+# v0.5.88.40 (2026-11-16)
+
+## Zed dari OmniRoute
+
+Checkout OmniRoute kita tertinggal (HEAD 2026-08-26, `origin/main` lokal
+2026-09-21). Remote `main` sekarang `094a1aa1c0` (2026-11-09) — delta-nya
+sebagian besar CI/release/electron (kerja produk jalan di branch `release/vX`).
+Yang menyentuh Zed hanya dua commit kode, dan lapisan import OmniRoute yang
+belum pernah diport kini diambil.
+
+### 1. `x-zed-version` di-refresh otomatis (`ef3b71c6`)
+
+Sebelumnya kita mengirim `x-zed-version: 0.200.0` hardcode. Sekarang:
+
+- `open-sse/utils/zedClientVersion.js` — `0.200.0` sebagai **floor**, versi
+  dirilis `zed-industries/zed` (GitHub release) diambil setiap 6 jam; parse
+  dotted-triple (`v` dilepas), perbandingan numerik, **monotonic high-water**
+  (tidak pernah turun di bawah floor atau versi yang pernah terlihat, termasuk
+  setelah TTL lewat), dedupe in-flight, retry 15 menit setelah gagal, timeout 20
+  detik. Fire-and-forget: gagal = tetap pakai floor, tidak pernah melempar ke
+  jalur request.
+- `executors/zed.js` memakai nilai itu untuk header; `config.appVersion` eksplisit
+  tetap menang.
+
+### 2. Deteksi Docker
+
+`src/lib/oauth/utils/dockerDetect.js` (`/.dockerenv`, `docker` di
+`/proc/1/cgroup`, deps injectable). `readZedIdeCredentials()` sekarang
+mem- short-circuit di container dengan pesan jelas (`ZED_KEYCHAIN_DOCKER_ERROR`)
+sebelum menyentuh CLI keychain yang tidak mungkin ada di sana.
+
+### 3. Import 2 langkah (fingerprint, tanpa token mentah)
+
+Alur OmniRoute: **discover → konfirmasi → import**, server tidak pernah
+mengirim token ke klien.
+
+- `src/lib/zed-oauth/`: `credentialFingerprint` (sha256 `service|account|token`,
+  16 hex), `importUtils` (skip token kosong/<8 char dan provider tak dikenal,
+  buang duplikat + hitung), `confirmedAccounts` (validasi manual tanpa zod,
+  filter berdasarkan fingerprint yang dihitung ulang dari keychain), `keychain`
+  (membungkus reader kita), `saveCredential` (buat/ganti koneksi oauth Zed),
+  `manualImport` (parse callback URL/JSON/query).
+- Route baru `src/app/api/providers/zed/{discover,import,manual-import}` +
+  entri `dashboardGuard`; discover mengembalikan fingerprint saja, import
+  membaca ulang keychain dan mencocokkan fingerprint (fingerprint tak dikenal →
+  `count: 0`, bukan error).
+- Dashboard: `ZedImportCard` (scan → centang akun → import, plus jalur paste
+  callback untuk lingkungan tanpa keychain). Tombol import lama tidak diubah.
+
+### Tidak diambil
+
+- `src/mitm/{detection,handlers,targets}/zed.ts` — repo ini tidak mengirim
+  tooling MITM.
+- Proxy VSCode bertoken (`/api/v1/vscode/[token]`) dan `omniroute setup-zed`
+  (CLI-nya beda desain).
+- `zed-hosted` sebagai provider terpisah: kita memakai satu provider `zed`
+  (hosted + LLM token yang sama) — dilaporkan, bukan gap perilaku.
+- `1103f76f` (Gemini 4+ kirim `thinkingLevel` terendah saat thinking off):
+  **sudah setara** di kita — `*gemini-4*` memakai `thinkingFormat: "gemini-level"`
+  + `thinkingCanDisable: false`, dan cabang `gemini-level` meng-clamp ke level
+  terendah tanpa pernah mengirim `thinkingBudget: 0`.
+
+## Test
+
+- `unit/zed` → **10 file / 100 test lulus** (versi refresh, docker detect,
+  short-circuit credentials, fingerprint/partition/konfirmasi, discover/import/
+  manual-import dengan keychain & zedAuth di-mock, plus suite Zed yang sudah ada).
+- `unit/dashboard-guard` 24 lulus; battery gabungan 286 lulus / 0 gagal.
+- Baseline provider (107) & alias (127 token) tetap byte-for-byte.
+- Belum diuji live: lookup release GitHub (rate limit/anonim), container Docker
+  nyata, dan import dari keychain asli (butuh Zed login + `secret-tool`/Keychain/
+  Credential Manager).
+
 # v0.5.88.39 (2026-11-15)
 
 ## Sweep per provider — menutup ekor panjang yang audit massal tak lihat
