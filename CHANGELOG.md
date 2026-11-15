@@ -1,3 +1,56 @@
+# v0.5.88.35 (2026-11-15)
+
+## Kiro: identitas & header disamakan dengan hasil capture IDE 1.4.178
+
+Capture: mitmproxy (`127.0.0.1:8892`) dengan CA mitmproxy dipercaya sementara di
+`Cert:\CurrentUser\Root` (dihapus lagi setelah selesai), Kiro dijalankan dengan
+`--proxy-server`, lalu satu pesan `hi` dikirim dari IDE. Nilai `authorization`
+diredaksi.
+
+## Bukti wire (IDE 1.4.178, rilis terbaru menurut `kiro.dev/changelog/ide`)
+
+```
+POST https://runtime.us-east-1.kiro.dev/
+x-amz-target: KiroRuntimeService.GenerateAssistantResponse
+content-type: application/x-amz-json-1.0
+user-agent: aws-sdk-js/1.0.0 ua/2.1 os/win32#10.0.26200 lang/js md/nodejs#24.22.1
+            api/kiroruntime#1.0.0 m/N,E
+            KiroIDE-1.4.178-<machineId>-KAS/0.66.102-hotfix.1 acp-client/kiro-ide
+x-amz-user-agent: aws-sdk-js/1.0.0 KiroIDE-1.4.178-<machineId>-KAS/0.66.102-hotfix.1 acp-client/kiro-ide
+x-amzn-kiro-client-attribution: kiro-ide
+x-amzn-kiro-mode-identifier: default-v2
+x-amzn-kiro-fallback: 0;max=0
+x-amzn-kiro-attempt: 1;max=3
+amz-sdk-request: attempt=1; max=3
+```
+
+Surface lain dari capture yang sama: `management.<region>.kiro.dev` memakai
+`api/kirocontrolplanebearer#1.0.0`, `/mcp` memakai `api/codewhispererstreaming#1.0.39 m/N`,
+dan `getUsageLimits` memakai `api/codewhispererruntime#1.0.0 m/N,E`.
+
+## Perbaikan
+
+- **Ekor custom UA** kini `KiroIDE-<versi>-<machineId>-KAS/0.66.102-hotfix.1 acp-client/kiro-ide`
+  (sebelumnya berhenti di machineId). `KIRO_AGENT_SERVER_VERSION` +
+  `KIRO_CLIENT_ATTRIBUTION` jadi konstanta baru.
+- **Token `api/<service>#<versi>` per permukaan** lewat `kiroServiceIdForUrl()`:
+  `runtime.*` → `kiroruntime`, `codewhisperer.*` → `codewhispererstreaming`,
+  `q.*` → `codewhispererruntime`.
+- **Permukaan runtime** kini mengirim `x-amz-target: KiroRuntimeService.GenerateAssistantResponse`,
+  `Content-Type: application/x-amz-json-1.0`, serta `x-amzn-kiro-client-attribution`,
+  `-mode-identifier`, `-fallback`, `-attempt`; sebelumnya `X-Amz-Target` malah
+  dihapus di host itu.
+- **Header CLIRO parity** (`x-amz-sso-bearer`, `x-amzn-kiro-agent-mode`,
+  `x-amzn-codewhisperer-machine-id`) dibatasi ke host Amazon saja — IDE 1.4.178
+  tidak mengirimnya ke `runtime.*`.
+
+## Test
+
+- `kiro-runtime-wire` (2) mengunci ekor UA dan pemetaan service per permukaan;
+  `kiro-api-key-endpoint-routing` diperluas ke set header runtime.
+- Suite Kiro + translator Kiro + golden: 532 lulus (2 kegagalan grup besar
+  terbukti flaky: lulus saat dijalankan sendiri/pasangan).
+
 # v0.5.88.34 (2026-11-15)
 
 ## Antigravity: envelope agent asli tertangkap (capture lanjutan)
