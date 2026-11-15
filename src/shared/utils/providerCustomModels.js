@@ -2,6 +2,22 @@ function modelType(model) {
   return model?.kind || model?.type || "llm";
 }
 
+/**
+ * Upstream 597ee684: use the display name saved from Qoder's live catalog for
+ * entries a user already imported, so the dashboard/pickers show the upstream
+ * name instead of a stale local one. Qoder-only (aliases `qd` / `qdcn`); every
+ * other provider gets the list back untouched.
+ */
+export function applyQoderModelNames(models, customModels = [], providerAlias) {
+  if (providerAlias !== "qd" && providerAlias !== "qdcn") return models;
+  const names = new Map(
+    customModels
+      .filter((model) => model.providerAlias === providerAlias && modelType(model) === "llm" && model.name && model.name !== model.id)
+      .map((model) => [model.id, model.name]),
+  );
+  return models.map((model) => (names.has(model.id) ? { ...model, name: names.get(model.id) } : model));
+}
+
 export function getProviderCustomModelRows({
   customModels = [],
   modelAliases = {},

@@ -7,6 +7,7 @@
 // registered custom models, live per-account catalogs, disabled models) used to
 // be invisible to other callers.
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
+import { applyQoderModelNames } from "@/shared/utils/providerCustomModels";
 import {
   OAUTH_PROVIDERS,
   APIKEY_PROVIDERS,
@@ -291,7 +292,7 @@ export function buildModelGroups({
         .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
 
       const merged = [
-        ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
+        ...applyQoderModelNames(hardcodedModels, customModelsSafe, alias).map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
         ...customAliasModels,
         ...customRegisteredModels,
       ];

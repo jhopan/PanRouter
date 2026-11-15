@@ -1,0 +1,27 @@
+== qoder-proxy-replay.test.js | does not replay a signed POST after proxy response loss (null)
+
+Error: STACK_TRACE_ERROR
+    at task (file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:1784:27)
+    at Object.<anonymous> (file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:1817:16)
+    at Object.<anonymous> (file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:1563:28)
+    at Object.chain (file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:599:14)
+    at file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:7
+    at Array.forEach (<anonymous>)
+    at file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:2021:10
+    at C:/Users/ACER/Documents/Project/Panrouter/tests/unit/qoder-proxy-replay.test.js:44:42
+    at file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:1889:40
+    at runWithSuite (file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:2258:8)
+
+== qoder-static-model-fallback.test.js | caches rawConfigs for UI-hidden models too
+
+AssertionError: expected '/**\n * Qoder model catalog fetcher.\…' to match /if \(entry\.enable === false\) contin…/
+    at C:/Users/ACER/Documents/Project/Panrouter/tests/unit/qoder-static-model-fallback.test.js:47:20
+    at file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26
+    at file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)
+    at file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)
+    at file:///C:/Users/ACER/Documents/Project/Panrouter/tests/node_modules/@vitest/runner/dist/chunk-artifact.js:2956:64

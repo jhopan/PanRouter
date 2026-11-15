@@ -39,6 +39,26 @@ import {
 const FETCH_TIMEOUT_MS = 15_000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1h, same as the Kiro catalog
 
+/**
+ * Opt-in for upstream 597ee684's behaviour: include catalog entries flagged
+ * `enable:false` in the dashboard/import list (the IDE still serves some of
+ * them). Default off keeps PanRouter's narrow rule — one visible model,
+ * `qfmodel`, and a registry-pinned public `/v1/models`. The raw config of every
+ * key is cached either way, so chat routing does not depend on this flag.
+ */
+export function qoderFullCatalogEnabled() {
+  return String(process.env.QODER_FULL_CATALOG || "").toLowerCase() === "true";
+}
+
+/**
+ * Should this catalog entry be shown/imported? Hidden entries (`enable:false`)
+ * are kept in the raw config cache either way — chat routing never depends on
+ * this predicate, only the visible/importable list does.
+ */
+export function includeQoderCatalogEntry(entry, fullCatalog = qoderFullCatalogEnabled()) {
+  return entry?.enable !== false || fullCatalog;
+}
+
 const PAT_PREFIX = "pt-";
 
 // PAT → job-token cache: a job token is short-lived (24h), so we keep it per
@@ -262,7 +282,11 @@ async function fetchQoderCatalogRaw(credentials, signal, proxyOptions = null, re
     // Always cache the config — chat needs model_config even for UI-hidden
     // models (enable:false). Upstream still accepts chat for these keys.
     rawConfigs.set(key, entry);
-    if (entry.enable === false) continue;
+    // Upstream 597ee684 shows `enable:false` entries too (the IDE still serves
+    // some, e.g. Qwen4-Max-Preview under qmodel_latest). PanRouter keeps the
+    // default narrow — public /v1/models stays registry-pinned to qfmodel — and
+    // only widens the dashboard/import catalog when QODER_FULL_CATALOG=true.
+    if (!includeQoderCatalogEntry(entry)) continue;
 
     const display = entry.display_name || key;
     const ctx = Number(entry.max_input_tokens) || 131_072;

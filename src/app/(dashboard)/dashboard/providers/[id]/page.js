@@ -13,7 +13,7 @@ import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
 import { fetchSuggestedModels } from "@/shared/utils/providerModelsFetcher";
-import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
+import { applyQoderModelNames, getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
 import ModelRow from "./ModelRow";
 import PassthroughModelsSection from "./PassthroughModelsSection";
 import CompatibleModelsSection from "./CompatibleModelsSection";
@@ -157,7 +157,7 @@ export default function ProviderDetailPage() {
   const staticModels = getModelsByProviderId(providerId);
   const models = (providerId === "cursor" || providerId === "claude") && liveModels.length > 0
     ? liveModels
-    : staticModels;
+    : applyQoderModelNames(staticModels, customModels, getProviderAlias(providerId));
   const providerAlias = getProviderAlias(providerId);
   
   const isOpenAICompatible = isOpenAICompatibleProvider(providerId);
@@ -588,6 +588,29 @@ export default function ProviderDetailPage() {
       const models = data.models || [];
       if (models.length === 0) {
         alert(translate("No models returned"));
+        return;
+      }
+
+      // Qoder (upstream 597ee684): upsert every catalog entry with the upstream
+      // display name, so a model whose name changed upstream stops showing a
+      // stale local one. Other providers keep the add-only loop below.
+      if (providerId === "qoder" || providerId === "qoder-cn") {
+        for (const model of models) {
+          const id = String(model.id || model.name || "").replace(/^(qoder-cn|qoder)\//, "");
+          if (!id) continue;
+          const saved = await fetch("/api/models/custom", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ providerAlias: providerStorageAlias, id, type: "llm", name: model.name || id }),
+          });
+          if (!saved.ok) {
+            const error = await saved.json().catch(() => ({}));
+            throw new Error(error.error || translate("Failed to save model"));
+          }
+        }
+        await fetchCustomModels();
+        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("customModelChanged"));
+        alert(translate("Successfully updated") + ` ${models.length} ` + translate("models"));
         return;
       }
 

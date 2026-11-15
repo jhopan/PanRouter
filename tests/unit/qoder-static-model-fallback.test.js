@@ -40,11 +40,21 @@ describe("qoder — static map fallback", () => {
 describe("qoder — catalog parsing", () => {
   const models = read("../open-sse/services/qoderModels.js");
 
-  it("caches rawConfigs for UI-hidden models too", () => {
+  it("keeps UI-hidden models routable while hiding them from the picker", async () => {
     // enable:false models are hidden in the IDE but chat still accepts them;
-    // dropping them from rawConfigs would break those keys.
-    expect(models).toMatch(/rawConfigs\.set\(key, entry\)/);
-    expect(models).toMatch(/if \(entry\.enable === false\) continue/);
+    // their rawConfig must stay cached either way. The visible/importable list
+    // is gated by the opt-in instead of a hard filter.
+    const { includeQoderCatalogEntry, qoderFullCatalogEnabled } = await import("../../open-sse/services/qoderModels.js");
+    const hidden = { key: "Qwen4-Max-Preview", enable: false };
+    expect(includeQoderCatalogEntry(hidden, false)).toBe(false);
+    expect(includeQoderCatalogEntry(hidden, true)).toBe(true);
+    expect(typeof qoderFullCatalogEnabled()).toBe("boolean");
+    // The cache write must happen before the gate, or chat loses the config.
+    const src = read("../open-sse/services/qoderModels.js");
+    const cacheAt = src.indexOf("rawConfigs.set(key, entry)");
+    const gateAt = src.indexOf("includeQoderCatalogEntry(entry)");
+    expect(cacheAt).toBeGreaterThan(-1);
+    expect(gateAt).toBeGreaterThan(cacheAt);
   });
 
   it("reads the same endpoint the CLI uses", () => {
