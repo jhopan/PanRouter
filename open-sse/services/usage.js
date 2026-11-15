@@ -102,6 +102,7 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
   const result = await handler({
     provider,
+    authType: connection.authType,
     accessToken,
     apiKey,
     providerSpecificData,

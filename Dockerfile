@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG NODE_IMAGE=node:22-alpine
+ARG NODE_IMAGE=node:22.23.4-alpine
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
 # CN mirror for apk (used by builder and runner stages)
