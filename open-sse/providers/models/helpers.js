@@ -29,3 +29,12 @@ export function isMuseSparkModel(modelId) {
 export function isOpencodeFreeTierModel(modelId) {
   return /(?:^|[-_.])free$/i.test(String(modelId || "").replace(/\([^()]+\)\s*$/, "").trim());
 }
+
+// "model(level)" is a 9router thinking override; strip before matching.
+// Accepts both bare ids ("deepseek-v4-pro(max)") and provider-prefixed ones.
+export function isDeepSeekModel(modelId) {
+  if (!modelId || typeof modelId !== "string") return false;
+  const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
+  const base = clean.includes("/") ? clean.split("/").pop() : clean;
+  return /^deepseek-/i.test(base);
+}

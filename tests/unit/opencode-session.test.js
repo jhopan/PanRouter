@@ -39,6 +39,26 @@ function prepare(executor, overrides = {}) {
   return { credentials, prepared };
 }
 
+// Upstream Zen reads ses_<12 hex><14 base62> as ~(time * 0x1000 + counter)
+// truncated to the low 48 bits, so the recovered clock wraps at 2^36 ms.
+const SESSION_PREFIX_MASK = (1n << 48n) - 1n;
+const SESSION_TIME_WINDOW_MS = 120_000n;
+
+function sessionPrefixValue(id) {
+  return ~BigInt(`0x${id.slice(4, 16)}`) & SESSION_PREFIX_MASK;
+}
+
+function sessionCounter(id) {
+  return Number(sessionPrefixValue(id) & 0xfffn);
+}
+
+// Signed distance of the prefix from now*0x1000, in ms, across the wrap.
+function sessionTimeOffsetMs(id, now = Date.now()) {
+  const span = SESSION_PREFIX_MASK + 1n;
+  const diff = ((sessionPrefixValue(id) - BigInt(now) * 0x1000n) % span + span) % span;
+  return diff > span / 2n ? diff - span : diff;
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
   fetchMock.mockResolvedValue(new Response("{}", {
@@ -72,25 +92,54 @@ describe("OpenCode Free Session ID Format", () => {
   });
 
   // Upstream decodes the prefix as ~(time * 0x1000 + counter) and answers
-  // 403 FreeTierError unless the counter is small; hash-filled prefixes failed.
-  it("encodes a small counter in session prefixes so the free-tier gate accepts them", () => {
-    const counterOf = (id) => Number(~BigInt(`0x${id.slice(4, 16)}`) & 0xfffn);
+  // 403 FreeTierError unless the decoded time is recent and the counter small;
+  // digest-filled prefixes decoded to an arbitrary timestamp and failed (#4780).
+  it("encodes a recent inverted timestamp with a small counter in session prefixes", () => {
     for (const translate of [translateSessionId, translateZenSessionId]) {
       for (const raw of ["claude:550e8400-e29b-41d4-a716-446655440000", "session-from-codex", "", "x".repeat(300)]) {
         const translated = translate(raw, "claude");
         expect(translated).toMatch(OPENCODE_SESSION_RE);
-        expect(counterOf(translated)).toBe(1);
-        expect(translate(raw, "claude")).toBe(translated);
+        expect(sessionCounter(translated)).toBeLessThanOrEqual(16);
+        const offsetMs = sessionTimeOffsetMs(translated);
+        expect(offsetMs >= -SESSION_TIME_WINDOW_MS && offsetMs <= SESSION_TIME_WINDOW_MS).toBe(true);
       }
     }
-    expect(counterOf(generateSessionId(1_700_000_000_000))).toBeLessThanOrEqual(16);
-    expect(counterOf(generateZenSessionId(1_700_000_000_000))).toBe(1);
+    const expectedPrefix = ((~(1_700_000_000_000n * 0x1000n + 1n)) & SESSION_PREFIX_MASK)
+      .toString(16)
+      .padStart(12, "0");
+    expect(generateSessionId(1_700_000_000_000).slice(4, 16)).toBe(expectedPrefix);
+    expect(generateZenSessionId(1_700_000_000_000).slice(4, 16)).toBe(expectedPrefix);
+  });
+
+  it("reuses one minted id per client session and client tool across requests", () => {
+    for (const translate of [translateSessionId, translateZenSessionId]) {
+      const raw = "claude:non-opencode-uuid-12345";
+      const first = translate(raw, "claude");
+      expect(first).toMatch(OPENCODE_SESSION_RE);
+      // another session in between must not disturb the cached id
+      expect(translate(`${raw}-other`, "claude")).toMatch(OPENCODE_SESSION_RE);
+      expect(translate(raw, "claude")).toBe(first);
+      // the client tool is part of the identity
+      expect(translate(raw, "codex")).not.toBe(first);
+      expect(translate(raw, "claude")).toBe(first);
+    }
   });
 
   it("preserves already-valid OpenCode sessions without re-hashing", () => {
     const valid = "ses_f534dfae8ffeCy4Ee4tLWNygDc";
     expect(translateSessionId(valid)).toBe(valid);
     expect(translateSessionId(`  ${valid}  `)).toBe(valid);
+    expect(translateZenSessionId(valid)).toBe(valid);
+    expect(translateZenSessionId(`  ${valid}  `)).toBe(valid);
+  });
+
+  it("evicts the oldest translated session once the cache bound is exceeded", () => {
+    for (const translate of [translateSessionId, translateZenSessionId]) {
+      const probe = translate("claude:eviction-probe", "claude");
+      for (let i = 0; i < 1000; i++) translate(`claude:eviction-filler-${i}`, "claude");
+      // the probe aged out, so it is minted again instead of being handed back
+      expect(translate("claude:eviction-probe", "claude")).not.toBe(probe);
+    }
   });
 });
 

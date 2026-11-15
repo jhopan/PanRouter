@@ -63,7 +63,11 @@ export function getModelTargetFormat(aliasOrId, modelId) {
 export function getModelSupportedFormats(aliasOrId, modelId) {
   const models = PROVIDER_MODELS[aliasOrId];
   if (!models) return null;
-  return modelSupportedFormats(findModel(models, modelId, aliasOrId));
+  // A trailing "(level)" is a thinking selector, not part of the model id — the
+  // same strip getModelUpstreamId does, so glm-5.2(max) still resolves its
+  // supportedFormats and the chatCore transport guard can fire for it.
+  const baseId = typeof modelId === "string" ? modelId.replace(/\([^()]+\)\s*$/, "").trim() : modelId;
+  return modelSupportedFormats(findModel(models, baseId, aliasOrId));
 }
 
 export function getModelType(aliasOrId, modelId) {
