@@ -53,9 +53,11 @@ So, before porting any upstream/OmniRoute change that touches one of these provi
 3. **Keep our verified constant when upstream's is unverified.** Live wire tests + `wirefacts/` snapshots beat an unverified upstream literal; a port that only "makes a test green" by swapping a fingerprint is a regression, not a fix.
 4. **Then port, and say what was verified after** (targeted test + live request), because these providers cannot be validated from unit tests alone.
 
-Touched surfaces: `open-sse/config/kiroConstants.js`, `open-sse/executors/{antigravity,kiro,codebuddy*,default}.js`, `open-sse/providers/shared.js`, `open-sse/providers/registry/{antigravity,kiro,codebuddy-intl,codebuddy-cn}.js`, `src/lib/oauth/providers/*`, `src/lib/oauth/constants/oauth.js`.
+Touched surfaces: `open-sse/config/kiroConstants.js`, `open-sse/config/errorConfig.js`, `open-sse/config/appConstants.js`, `open-sse/executors/{antigravity,kiro,codebuddy*,default}.js`, `open-sse/providers/shared.js`, `open-sse/shared/kiroIdentity.js`, `open-sse/providers/registry/{antigravity,kiro,codebuddy-intl,codebuddy-cn}.js`, `open-sse/services/usage/{google,antigravity-weekly,codebuddy-cn}.js`, `open-sse/services/projectId.js`, `src/sse/services/{auth,antigravityQuota}.js`, `src/lib/oauth/providers/*`, `src/lib/oauth/constants/oauth.js`.
 
-The same warning applies when upstream changes only a *version string*: bumping an Antigravity Hub version, a CodeBuddy `IDE/<ver>` component, or a Kiro CLI version is a wire change even though it looks like a constant edit.
+Each provider's verified constants and the capture that proves them are pinned in its own section below (Antigravity / CodeBuddy Intl / Kiro). Change a value there only with a fresh capture or a live request, and update the section in the same commit.
+
+The same warning applies when upstream changes only a *version string*: bumping an Antigravity Hub version, a CodeBuddy `CLI/<ver>` component, a Kiro IDE version or its `KAS/<ver>` suffix is a wire change even though it looks like a constant edit.
 
 Read first:
 - `docs/ARCHITECTURE.md` — full system: request lifecycle, combo/account fallback, OAuth + token refresh, cloud sync, data model, env matrix.
@@ -199,6 +201,18 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 ### Cline model visibility
 
 - Never fetch and display Cline `/api/v1/models`: it is a huge proxy marketplace, not our curated catalog. Both dashboard provider models and public `/v1/models` return **registry-pinned Cline models only**. Keep `clinepass` resolver separate; it may fetch its own allowed `cline-pass/` rows.
+
+### Antigravity (Hub client imitation — captured)
+
+- **Identity** (`open-sse/providers/shared.js`): `antigravity/hub/2.32.1 (aidev_client; os_type=<host>; arch=<host>; cl=1021296516)`. Version = the installed Hub's own `app.getVersion()` (`Programs/antigravity/resources/app/product.json` → `2.32.1`), `cl` = its build label. `os_type`/`arch` are derived from the machine we run on (a Linux VPS must not claim `windows`). Launch args the Hub passes to its language server — `--subclient_type hub --override_ide_version <app version> --override_user_agent_name antigravity --cloud_code_endpoint <url>` — live in its `dist/lsDefaults.js`.
+- **Do not sync from 9router**: upstream `master` still ships `hub/2.24.0` with a fabricated `darwin/arm64` tail, and deletes `requestType` on the agent path. Ours is the captured value.
+- **Capture recipe** (no TLS interception): run the shipped Hub with `CLOUD_CODE_URL=http://127.0.0.1:<port>` pointing at a local listener — the language server honours that env var — and relay to `https://daily-cloudcode-pa.googleapis.com` if the UI must keep working. Demux the prompt over CDP (`--remote-debugging-port`) when OS foreground input is blocked. Captured 2026-11-15; `authorization` redacted.
+- **Wire facts** (what the real client sends — keep it that way):
+  - Headers on every captured call: `user-agent`, `authorization`, `accept-encoding` (+ `content-type`/`content-length` on POST). No `X-Goog-*`, no `Client-Metadata`, no `X-Client-*`.
+  - `loadCodeAssist` / `onboardUser` body: `{"metadata":{"ideType":"ANTIGRAVITY"}}` — proto **enum name as a string**, no `platform`/`pluginType` (those are Gemini-CLI fields), no `mode`.
+  - Agent turn: `requestType: "agent"` **together with** `request.labels` (`cascade_id`, `root_cascade_id`, `trajectory_id`, `request_id` = `<trajectory>-<step>`, `last_step_index`, `used_claude`, `used_claude_conservative`, `used_non_gemini_model`) — sending `requestType` without the labels is the combination that produced detail-free 429s. `requestId` = `agent/<cascade_id>/<epoch_ms>/<trajectory_id>/<step>`; `maxOutputTokens` cap `65536`. `model_enum` is the Hub's placeholder table and is deliberately omitted (no mapping).
+  - `fetchAvailableModels` / `retrieveUserQuotaSummary` body `{"project": …}`, no extra headers.
+- **Ban-relevant invariants** (do not regress): `TOS_VIOLATION` / `VALIDATION_REQUIRED` park the account 24h (`errorConfig.js`) while a generic 403 keeps its 2-minute cooldown; `VALIDATION_REQUIRED` is also handled *before* the request by `antigravityCapCache.js` + the auth pre-skip; quota buckets are `gemini_weekly` / `gemini_argon_weekly` / `claude_gpt_weekly`, with Argon read through the additive `antigravityArgonBucket()` (family mapping stays the fallback); the stale-bucket re-verification and the 3×60s strike breaker stay as they are. TLS/HTTP2 fingerprint is **not** imitated (Node undici vs the Hub's Go client) — accepted, not attempted.
 
 ### CodeBuddy Intl (CLI 2.178.0 + monthly quota parking + auto-ping)
 
