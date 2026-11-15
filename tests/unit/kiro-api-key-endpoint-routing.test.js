@@ -86,6 +86,18 @@ describe("Kiro auth-aware endpoint routing", () => {
     expect(codeWhispererHeaders["X-Amz-Target"]).toBe(
       "AmazonCodeWhispererStreamingService.GenerateAssistantResponse"
     );
-    expect(runtimeHeaders["X-Amz-Target"]).toBeUndefined();
+    // Captured from the 1.4.178 IDE: the runtime surface carries its own target,
+    // an amz-json content type and the kiro-* hints, and none of the CLIRO
+    // parity headers (x-amz-sso-bearer / agent-mode / machine-id).
+    expect(runtimeHeaders["X-Amz-Target"]).toBe("KiroRuntimeService.GenerateAssistantResponse");
+    expect(runtimeHeaders["Content-Type"]).toBe("application/x-amz-json-1.0");
+    expect(runtimeHeaders["x-amzn-kiro-client-attribution"]).toBe("kiro-ide");
+    expect(runtimeHeaders["x-amzn-kiro-mode-identifier"]).toBe("default-v2");
+    expect(runtimeHeaders["x-amzn-kiro-fallback"]).toBe("0;max=0");
+    expect(runtimeHeaders["x-amzn-kiro-attempt"]).toBe(runtimeHeaders["Amz-Sdk-Request"]);
+    expect(runtimeHeaders["x-amz-sso-bearer"]).toBeUndefined();
+    expect(runtimeHeaders["x-amzn-kiro-agent-mode"]).toBeUndefined();
+    expect(runtimeHeaders["x-amzn-codewhisperer-machine-id"]).toBeUndefined();
+    expect(runtimeHeaders["User-Agent"]).toContain("api/kiroruntime#");
   });
 });

@@ -25,6 +25,9 @@ export const KIRO_TOOL_DESCRIPTION_MAX_LENGTH = 10237;
 export const KIRO_TOOL_ID_MAX_LENGTH = 64;
 export const KIRO_CODEWHISPERER_TARGET =
   "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
+// Captured 2026-11-15: the 1.4.178 IDE posts KiroRuntimeService.GenerateAssistantResponse
+// to runtime.<region>.kiro.dev/ with content-type application/x-amz-json-1.0.
+export const KIRO_RUNTIME_TARGET = "KiroRuntimeService.GenerateAssistantResponse";
 export const KIRO_ENDPOINT_FALLBACK_STATUSES = new Set([401, 403, 404]);
 
 // Public default CodeWhisperer profile ARNs (us-east-1), keyed by auth method.

@@ -2,6 +2,7 @@ import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
 import {
   KIRO_CODEWHISPERER_TARGET,
+  KIRO_RUNTIME_TARGET,
   KIRO_ENDPOINT_FALLBACK_STATUSES,
   resolveKiroModel,
 } from "../config/kiroConstants.js";
@@ -10,7 +11,7 @@ import { refreshKiroToken } from "../services/tokenRefresh.js";
 import { SSE_DONE, SSE_HEADERS } from "../utils/sseConstants.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { STREAM_FIRST_CHUNK_TIMEOUT_MS } from "../config/runtimeConfig.js";
-import { kiroUserAgents } from "../shared/kiroIdentity.js";
+import { kiroServiceIdForUrl, kiroUserAgents } from "../shared/kiroIdentity.js";
 
 const KIRO_REPAIR_BUFFER_MAX_BYTES = 8 * 1024 * 1024;
 // Regions each Amazon service host actually serves. A region outside a
@@ -263,10 +264,23 @@ export class KiroExecutor extends BaseExecutor {
     // The registry value is a static fallback; the per-account identity carries
     // the real IDE version plus the machineId this credential is known by, so
     // chat and model discovery present the same fingerprint.
-    const { userAgent, amzUserAgent } = kiroUserAgents(credentials);
+    const { userAgent, amzUserAgent } = kiroUserAgents(credentials, { serviceId: kiroServiceIdForUrl(url) });
     headers["User-Agent"] = userAgent;
     headers["X-Amz-User-Agent"] = amzUserAgent;
-    if (url.includes("://codewhisperer.")) {
+
+    // Surfaces differ (captured from the 1.4.178 IDE):
+    //   runtime.<region>.kiro.dev   → x-amz-target + x-amz-json-1.0 + kiro-* hints
+    //   codewhisperer.<region>...   → AmazonCodeWhispererStreamingService.*
+    //   q.<region>.amazonaws.com    → no x-amz-target
+    const isRuntimeSurface = url.includes("://runtime.");
+    if (isRuntimeSurface) {
+      headers["Content-Type"] = "application/x-amz-json-1.0";
+      headers["X-Amz-Target"] = KIRO_RUNTIME_TARGET;
+      headers["x-amzn-kiro-client-attribution"] = "kiro-ide";
+      headers["x-amzn-kiro-mode-identifier"] = "default-v2";
+      headers["x-amzn-kiro-fallback"] = "0;max=0";
+      headers["x-amzn-kiro-attempt"] = headers["Amz-Sdk-Request"];
+    } else if (url.includes("://codewhisperer.")) {
       headers["X-Amz-Target"] = KIRO_CODEWHISPERER_TARGET;
     } else {
       delete headers["X-Amz-Target"];
@@ -296,11 +310,15 @@ export class KiroExecutor extends BaseExecutor {
     // CLIRO parity for the Amazon surfaces: the Kiro runtime accepts the
     // SSO bearer header + agent-mode marker. Without these the deprecated
     // path gateway answers REQUEST_BODY_INVALID for modern payloads.
-    if (credentials?.accessToken) {
-      headers["x-amz-sso-bearer"] = credentials.accessToken;
+    // The 1.4.178 IDE sends none of these to runtime.<region>.kiro.dev, so they
+    // stay scoped to the Amazon hosts (captured 2026-11-15).
+    if (!isRuntimeSurface) {
+      if (credentials?.accessToken) {
+        headers["x-amz-sso-bearer"] = credentials.accessToken;
+      }
+      headers["x-amzn-kiro-agent-mode"] = "spec";
+      headers["x-amzn-codewhisperer-machine-id"] = "kiro-desktop";
     }
-    headers["x-amzn-kiro-agent-mode"] = "spec";
-    headers["x-amzn-codewhisperer-machine-id"] = "kiro-desktop";
     const profileArn = credentials?.providerSpecificData?.profileArn;
     if (profileArn) {
       headers["x-amzn-codewhisperer-profile-arn"] = profileArn;

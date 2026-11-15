@@ -19,6 +19,22 @@ import os from "node:os";
 // <install>/resources/app/product.json: {"nameShort":"Kiro","version":"1.4.178"}.
 export const KIRO_IDE_VERSION = "1.4.178";
 export const KIRO_RUNTIME_SDK_VERSION = "1.0.0";
+// Kiro Agent Server that the 1.4.178 IDE embeds. Captured 2026-11-15 from a live
+// IDE request (mitmproxy + trusted CA) — every request UA ends with
+//   ... KiroIDE-1.4.178-<machineId>-KAS/0.66.102-hotfix.1 acp-client/kiro-ide
+// Not part of the gated version token, but it is what the real client sends.
+export const KIRO_AGENT_SERVER_VERSION = "0.66.102-hotfix.1";
+export const KIRO_CLIENT_ATTRIBUTION = "acp-client/kiro-ide";
+
+// Service id per surface, from the same capture:
+//   runtime.<region>.kiro.dev   → kiroruntime   (KiroRuntimeService.*)
+//   codewhisperer.<region>...   → codewhispererstreaming
+//   q.<region>.amazonaws.com    → codewhispererruntime
+export function kiroServiceIdForUrl(url = "") {
+  if (url.includes("://runtime.")) return "kiroruntime";
+  if (url.includes("://codewhisperer.")) return "codewhispererstreaming";
+  return "codewhispererruntime";
+}
 
 // The os/ and md/ pairs are NOT constants in the real client. Extracted from
 // extensions/kiro.kiro-agent/dist/extension.js, the bundled AWS SDK builds its
@@ -64,16 +80,19 @@ export function kiroMachineId(credentials) {
 
 /**
  * The two user-agent strings Kiro validates.
- * `KiroIDE-<version>-<machineId>` is the part the version gate reads.
+ * `KiroIDE-<version>-<machineId>` is the part the version gate reads; the
+ * `-KAS/<agent server> acp-client/kiro-ide` tail and `api/<service>#<sdk>`
+ * token are what the 1.4.178 client puts around it (captured).
  */
-export function kiroUserAgents(credentials) {
+export function kiroUserAgents(credentials, { serviceId = "codewhispererruntime", serviceVersion = KIRO_RUNTIME_SDK_VERSION } = {}) {
   const machineId = kiroMachineId(credentials);
+  const custom = `KiroIDE-${KIRO_IDE_VERSION}-${machineId}-KAS/${KIRO_AGENT_SERVER_VERSION} ${KIRO_CLIENT_ATTRIBUTION}`;
   const userAgent =
-    `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} ua/2.1 ` +
+    `aws-sdk-js/${serviceVersion} ua/2.1 ` +
     `os/${kiroOsPlatform()}#${kiroOsRelease()} ` +
     `lang/js md/nodejs#${kiroNodeVersion()} ` +
-    `api/codewhispererruntime#${KIRO_RUNTIME_SDK_VERSION} m/N,E ` +
-    `KiroIDE-${KIRO_IDE_VERSION}-${machineId}`;
-  const amzUserAgent = `aws-sdk-js/${KIRO_RUNTIME_SDK_VERSION} KiroIDE-${KIRO_IDE_VERSION}-${machineId}`;
+    `api/${serviceId}#${serviceVersion} m/N,E ` +
+    custom;
+  const amzUserAgent = `aws-sdk-js/${serviceVersion} ${custom}`;
   return { userAgent, amzUserAgent, machineId };
 }
