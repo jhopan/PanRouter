@@ -1,3 +1,109 @@
+# v0.5.88.39 (2026-11-15)
+
+## Sweep per provider — menutup ekor panjang yang audit massal tak lihat
+
+Metode: untuk setiap provider, daftar SEMUA commit upstream yang menyentuh
+file-nya (tanpa batas tanggal), baca isi diff-nya, cari padanan perilakunya di
+tree kita, lalu port yang hilang. Ini menemukan hal yang audit berbasis simbol
+tidak bisa: sambungan resolver, guard, ordering, dan header.
+
+### Cursor (7 commit hilang → diport)
+
+- Turn kosong AgentService: frame Run kini membawa ModelDetails (field 3) dan
+  `mcp_tools` (field 4), exec IDE ditolak, ack request-context tidak lagi
+  menggemakan tool MCP, `thinking_delta` Composer/Grok dibaca — plus decoder
+  `cursorProtobuf` (`encodeMcpTools`, `decodeMcpArgs`, Value/FIXED64).
+- Turn kosong tanpa stop sukses ditolak; sesi panjang dipulihkan
+  (`CURSOR_EMPTY_TURN_MAX_RETRIES/THRESHOLD/DELAY`).
+- `reasoning_effort` diteruskan ke Run; **Auto (Server Picks)** di-resolve ke
+  model default akun (`resolveAutoModelSelection` + `parseCursorAvailableModels`).
+- `strictProxy` ditahan di jalur h2 (`proxyIntentFailed()` + `proxyOptions`
+  sampai `auth.js`), plus penggunaan DashboardService di registry + baris
+  dashboard, dan echo metadata KV.
+- RTK untuk Cursor jalan **sebelum** translate (translatornya menulis ulang
+  bentuk `tool_result`/`role:tool`).
+- `tests/__baseline__/known-fails.txt` dibersihkan dari 35 baris usang.
+
+### GitHub / Copilot
+
+- Fable 5.1 dipensiunkan dari katalog; aturan thinking Claude 5.5 untuk id
+  bertitik (`thinkingUnified` menerima nama model) + row caps `github`.
+- `resolveCliApiKey` dipakai untuk route copilot; sentinel `sk_9router` ditolak
+  (termasuk di opencode-settings, deepseek-tui-settings, grok-build-settings).
+
+### CommandCode
+
+- Retry untuk 502/503/504 (maks 2, backoff 1s/2s); frame `error` di stream kini
+  **melempar** (sebelumnya memalsukan `stop` + konten kosong), jadi combo/
+  account-fallback bekerja.
+- `passthroughModels`, auto-import dari CLI (`~/.commandcode/auth.json`) + tombol
+  "Import from CLI", level thinking, dan cabang caps provider lengkap dengan
+  denylist text-only (`COMMANDCODE_TEXT_ONLY`), plus row `claude-haiku-5-5`.
+
+### Xiaomi / Grok CLI
+
+- Semua commit upstream untuk dua provider ini sudah terwakili (katalog v2.6,
+  login desktop 5 cluster, dual auth, TTS, SuperGrok gRPC-web, identitas 1.0.44).
+- Tiga test Grok yang masih men-pin `0.2.99` kini menurunkan versi dari konstanta
+  `GROK_CLI_VERSION` — sebelumnya merah karena nilai usang, bukan kode.
+
+### Trae / Windsurf / Nous / iFlow
+
+- Semua file inti identik dengan upstream. Yang merah karena **wiring**:
+  `nous-free` ditambahkan ke filter suggested-models (tanpa itu katalog Nous
+  kosong), `apiKey` hasil refresh Nous kini dipersist (kolomnya sudah ada),
+  alias baseline + ikon nous, dan coverage test iFlow (HMAC dihitung ulang dari
+  header yang benar-benar dikirim).
+
+### Bedrock (sebagian besar routing hilang → diport)
+
+Executor/registry/awsConstants/eventstream/sigv4 sudah identik, tetapi
+**provider-nya tidak terjangkau**: export executor, routing `us|eu|ap|global.*`
+di `model.js`, serializer + form kredensial AWS di route provider, probe
+validate/Test, dua modal (AddApiKeyModal & EditConnectionModal), ikon, dan 5 test
+upstream.
+
+### Media (TTS/STT/image)
+
+- Engine-nya identik; gap-nya konfigurasi/UI: ElevenLabs STT (`sttConfig` +
+  `scribe_v1/v2`) sehingga provider-nya bisa dijangkau, field STT lengkap
+  (`timestamps_granularity`, `tag_audio_events`, `diarize`, `num_speakers`),
+  plumbing `transport` untuk custom model (Gemini Live STT akhirnya bisa dipilih),
+  kartu koneksi media-providers, self-hosted TTS example card, router HuggingFace,
+  reference image + aspect-ratio + failure/usage di image Gemini/Antigravity,
+  dan 3 test yang sempat hilang dipulihkan.
+
+### Lintas-provider
+
+- `paramSupport`: aturan drop untuk groq/mistral/cerebras.
+- Antigravity: rewrite identitas Hermes + strip `x-anthropic-billing-header`.
+- `ollama-local`: model keputusan `clef`/`clef-flash` (System One).
+- Solver kapabilitas: row Claude 5.5 bertitik & berhyphen (Opus 5.5 tak menerima
+  `thinking.type: disabled`, Sonnet 5.5 pakai `between_tools`), row kanonik
+  `glm-5.2` (zai + effort), `codebuddy-cn.glm-5.2` maxOutput 131072, clamp
+  `output_config.effort` untuk `xhigh` yang tidak didukung.
+- Pricing: baris Muse (termasuk tarif contributor) — `cline-free-tier-models`
+  kembali mengukur tarif published.
+
+## Tidak diambil (dilaporkan, bukan gap)
+
+- Keluarga **web-cookie** (chatgpt-web/gemini-web/grok-web/muse-web/uc-web/
+  veoaifree-web + browser pool) — fiturnya memang tidak ada di repo ini.
+- `fa73c938` CommandCode live catalog — kebijakan registry-pinned.
+- `OAuthModal` `stopOwnedProxy` — refactor kepemilikan flow; `ZedAuthModal`
+  sudah memakai pola itu, dua provider media belum.
+- AWS Polly: `format: "aws-polly"` tanpa handler di **kedua** tree (dead config).
+
+## Verifikasi
+
+- Battery pasca-sweep: **1494 lulus / 0 gagal** (cursor, opencode, claude,
+  github, cline, commandcode, xiaomi, grok-cli, nous, iflow, bedrock, zed,
+  minimax, media + seluruh `translator/`).
+- Baseline provider (107), alias (127 token) dan OAuth URL byte-for-byte.
+- Yang butuh akun/uang untuk verifikasi live: Cursor (Auto pick, strictProxy,
+  usage DashboardService), Copilot dotted-id, Nous device-flow, iFlow signature,
+  Bedrock SigV4/profil SSO, HuggingFace modelMap, ElevenLabs entitlements.
+
 # v0.5.88.38 (2026-11-15)
 
 ## Empat item terakhir dari backlog upstream
