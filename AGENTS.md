@@ -44,7 +44,7 @@ Precedence when they disagree: **freebucks-proxy (jhopan fork) > OmniRoute**. Th
 
 ### Strict providers — port with a warning first (Antigravity, CodeBuddy, Kiro)
 
-These three authenticate by **client fingerprint**, not just a token: Antigravity sends a Hub client version + User-Agent (`2.32.1`), CodeBuddy Intl sends `IDE/2.160.0 CodeBuddy/2.160.0` plus exact model IDs from `codebuddy --help`, and Kiro sends an IDE/CLI version in the UA and only uses region-scoped service hosts it actually serves. A wrong value does **not** fail loudly — it shows up as `403`, `country_not_allowed`, an "invalid model", a 400 schema rejection, or a plain quota-looking 429.
+These three authenticate by **client fingerprint**, not just a token: Antigravity sends a Hub client version + User-Agent (`2.32.1`), CodeBuddy Intl sends `CLI/2.178.0 CodeBuddy/2.178.0` (+ `X-IDE-Version: 2.178.0`) plus exact model IDs from `codebuddy --help`, and Kiro sends an IDE/CLI version in the UA and only uses region-scoped service hosts it actually serves. A wrong value does **not** fail loudly — it shows up as `403`, `country_not_allowed`, an "invalid model", a 400 schema rejection, or a plain quota-looking 429.
 
 So, before porting any upstream/OmniRoute change that touches one of these providers:
 
@@ -200,9 +200,10 @@ src/app/api/v1/*            (next.config.mjs rewrites /v1/* → /api/v1/*)
 
 - Never fetch and display Cline `/api/v1/models`: it is a huge proxy marketplace, not our curated catalog. Both dashboard provider models and public `/v1/models` return **registry-pinned Cline models only**. Keep `clinepass` resolver separate; it may fetch its own allowed `cline-pass/` rows.
 
-### CodeBuddy Intl (CLI 2.160.0 + monthly quota parking + auto-ping)
+### CodeBuddy Intl (CLI 2.178.0 + monthly quota parking + auto-ping)
 
-- Installed `codebuddy --version` verified **2.160.0**. Intl chat/OAuth fingerprint uses `IDE/2.160.0 CodeBuddy/2.160.0`; registry models match exact `codebuddy --help` supported model IDs (including `gpt-6-*`, `gemini-3.5-flash`, `kimi-k2.8-preview`). Keep CN registry separate until its own CLI is verified.
+- Installed `codebuddy --version` verified **2.178.0**. Intl chat/OAuth fingerprint uses `CLI/2.178.0 CodeBuddy/2.178.0` with `X-IDE-Version: 2.178.0` (`platform: "ide"`); registry models match exact `codebuddy --help` supported model IDs (including `gpt-6-*`, `gemini-3.5-flash`, `kimi-k2.8-preview`). Keep CN registry separate until its own CLI is verified — CN still carries `CLI/2.108.1`.
+- **Do not sync the intl fingerprint from 9router**: upstream `master` still ships `IDE/2.108.1 CodeBuddy/2.108.1`, while ours matches the installed CLI (verified by the identity tests, which fail on a split between the registry UA and the chat path).
 - Provider `codebuddy-intl` (`cbai`) has recurring Monthly and one-shot Bonus Pack rows. Upstream `429` code `14018` / `Credits exhausted` is quota exhaustion: park the model until the tracker’s **Monthly** `CycleEndTime`, not generic backoff and not Bonus Pack expiry. A bonus pack never refills; monthly allowance does.
 - **Auto-ping / Daily check-in**: Toggleable per-connection on dashboard (`codebuddyIntlAutoPing`). Once a day on a randomized daylight slot (08:00–20:00 WIB), sends a single tiny chat using the cheapest model (`fast-model`, 1 token) via the official Intl transport to trigger daily active activity without spamming.
 
