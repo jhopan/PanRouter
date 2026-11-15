@@ -1,3 +1,34 @@
+# v0.5.88.36 (2026-11-15)
+
+## Qoder: katalog penuh sebagai opt-in (port `597ee684`)
+
+Upstream berhenti menyaring entri katalog yang bertanda `enable:false` karena
+sebagian masih dilayani IDE (contoh `Qwen4-Max-Preview` di bawah
+`qmodel_latest`), lalu menyimpan `display_name` katalog ke model yang sudah
+diimpor. PanRouter mengambil keduanya, tetapi default-nya tetap sempit.
+
+- **Opt-in** `QODER_FULL_CATALOG=true` (default off). Saat off: daftar dashboard
+  dan impor tetap hanya model yang terlihat di IDE, `/v1/models` publik tetap
+  registry-pinned (`qfmodel`). Saat on: `includeQoderCatalogEntry()` meloloskan
+  entri `enable:false`.
+- **Routing tidak berubah.** Cache `model_config` untuk **setiap** key tetap
+  diisi sebelum gerbang (gerbang ada setelah `rawConfigs.set`), jadi chat untuk
+  key tersembunyi tetap jalan seperti sebelumnya.
+- **Nama dari katalog upstream** dipakai di halaman provider, `ModelsCard`,
+  `ModelSelectModal`, dan `selectableModels` lewat `applyQoderModelNames()`
+  (hanya alias `qd`/`qdcn`; provider lain tidak tersentuh).
+- Tombol impor Qoder kini **upsert** nama (bukan hanya menambah yang baru),
+  sehingga nama yang berubah di upstream tidak tertinggal sebagai nama lokal
+  yang basi.
+
+## Test
+
+- `qoder-catalog-exposure` (5): gerbang default off/on, nilai selain `true`
+  dianggap off, dan `applyQoderModelNames` hanya mengganti nama milik Qoder.
+- `qoder-static-model-fallback` diperbarui: assertion berbasis teks sumber
+  diganti uji perilaku (gerbang setelah `rawConfigs.set`), supaya filter tidak
+  pernah memutus config model tersembunyi.
+
 # v0.5.88.35 (2026-11-15)
 
 ## Kiro: identitas & header disamakan dengan hasil capture IDE 1.4.178
