@@ -1,3 +1,81 @@
+# v0.5.88.37 (2026-11-15)
+
+## OpenCode: gelombang port penuh
+
+Lima commit upstream yang belum masuk, plus dua perbaikan yang memang
+diperlukan agar hasilnya benar.
+
+## Endpoint opencode-go (`7ef6df56`)
+
+OpenCode memensiunkan `/zen/go/v1` untuk key personal/Teams — di sana sekarang
+403, sedangkan `/inference/go` bekerja.
+
+| Lane | Sebelum | Sekarang |
+|---|---|---|
+| chat | `zen/go/v1/chat/completions` | `inference/go/openai/v1/chat/completions` |
+| claude | `zen/go/v1/messages` | `inference/go/anthropic/v1/messages` |
+| responses | `zen/go/v1/responses` | `inference/go/openai/v1/responses` |
+| usage | `zen/go/v1/usage` | `inference/go/v1/usage` |
+
+Ikut diperbarui: executor (`RESPONSES_BASE_URL`), probe validasi & test provider.
+Tidak ada lagi `zen/go` di `open-sse/` maupun `src/`.
+
+## Perbaikan lain
+
+- **`633c82f5`** — transport claude opencode-go memakai
+  `thinkingFormat: "claude-adaptive"`, dan `formats/claude.js` menangani DeepSeek
+  adaptif (`thinking.type = "adaptive"` + `output_config.effort`, tanpa
+  `reasoning_effort`).
+- **`95dafae3`** — free tier membalas **429 FreeUsageLimitError** kalau ada tool
+  yang namanya mengandung `terminal`; sekarang nama itu di-alias ke
+  `run_command` (bernomor kalau bentrok) lewat peta sent→original yang sudah ada,
+  jadi `retargetToolChoice`/restore tetap jalan.
+- **`483c10f5`** — definisi tool fingerprint dinormalisasi **di tempat** kalau
+  parameter caller cocok: OpenCode menyusun deskripsi `shell` dari
+  `process.platform`, jadi tool `shell` di Windows berbeda dua kata dari
+  capture dan dulu dianggap konflik (client lalu menolak tool call model).
+- **`ef4679df`** — id sesi terjemahan (zen + free lane) kini di-mint sekali per
+  `(clientTool, clientSession)` dan di-cache (batas 1000, TTL dari
+  `MEMORY_CONFIG`), sehingga prefix 12-hex selalu ter-decode ke
+  `~(now*4096+counter)` yang valid — skema digest sebelumnya menghasilkan
+  timestamp arbitrer yang ditolak Zen.
+- **Dua penopang yang belum ada di repo ini** (tanpa ini cell routing tetap
+  todo): fallback `modelTargetTransport` di `chatCore.js` (commit upstream
+  `b00ba1aa`) agar model Responses-only yang diminta client OpenAI dikirim ke
+  URL yang cocok dengan body hasil terjemahan, dan `getModelSupportedFormats()`
+  yang melepas suffix `(level)` sebelum lookup registry supaya guard transport
+  ikut berlaku untuk `glm-5.2(max)` dan sejenisnya.
+
+## Dihapus
+
+- `tests/unit/opencode-muse-spark-thinking.test.js` — premisnya mati:
+  `muse-spark-1.2/1.3-contributor-free` sudah dipensiunkan upstream (410
+  ModelDeprecated) dan test-nya masih men-pin URL `zen/v1` yang lama. Cakupan
+  jalur Responses di lane go tetap ada di
+  `opencode-go-muse-spark-responses.test.js`.
+
+## Tidak diambil (dan kenapa)
+
+- `ce060c79` + `a76c2afc` — "restore the free tier with the TLS client Hello it
+  accepts" + proxy lewat transport wreq-js. Ini memerlukan klien TLS Rust
+  (`wreq-js`) dan runtime dep lazy; transport kita `proxyAwareFetch` (undici),
+  jadi tidak bisa ditiru tanpa menambah runtime Go/Rust. Efeknya hanya pada
+  fingerprint TLS, bukan pada header/body.
+- `e70ea24d` — `lazyRuntime.js` (loader Playwright/wreq). Tidak ada konsumen di
+  repo ini.
+
+## Test
+
+- `opencode-go-transport-routing` (26) kini **tanpa todo**: 5 cell yang
+  sebelumnya di-skip sudah nyata (matrix deepseek bare/suffixed, guard glm/kimi/
+  minimax chat-only, plus haiku-5-5 → /messages untuk client openai & responses).
+- `opencode-go-deepseek-thinking-injection` baru (dari `633c82f5`).
+- `opencode-fingerprint` +10 kasus (alias `terminal`, normalisasi in-place).
+- `opencode-session` diperluas: prefix timestamp valid & counter ≤16, satu id
+  per sesi client, passthrough id client, eviksi cache.
+- Battery: 638 lulus / 0 gagal (opencode + translator + claude + model registry).
+  Baseline provider & OAuth URL tetap byte-for-byte.
+
 # v0.5.88.36 (2026-11-15)
 
 ## Qoder: katalog penuh sebagai opt-in (port `597ee684`)
