@@ -109,3 +109,8 @@ tests/translator/__snapshots__/golden-url-header.test.js.snap
 
 # Release artifacts — built by CI (release.yml), never committed
 *.tgz
+
+# Local capture/investigation scratch (never commit these)
+.tmp-*
+__pycache__/
+*.pyc
